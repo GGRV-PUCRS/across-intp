@@ -47,7 +47,7 @@
 # tooling are skipped and recorded in the run index; the script never lies
 # about a result it could not produce.
 #
-# Designed for the Hetzner SB Xeon Gold 5412U (Sapphire Rapids, 24C/48T,
+# Designed for the Xeon Gold 5412U-class (Sapphire Rapids, 24C/48T,
 # ~45 MB L3, 8 x DDR5-4800 ECC, 2 x 1.92 TB NVMe, 1 GbE) but does NOT assume
 # specific device names -- everything is autodetected via shared/intp-detect.sh.
 #
@@ -98,7 +98,7 @@ V2_BIN="$REPO_ROOT/variants/v2-c-abi/intp-hybrid"
 V2_1_BIN="$REPO_ROOT/variants/v2.1-cgroup-native/intp-hybrid"
 V3_1_RUNNER="$REPO_ROOT/variants/v3.1-bpftrace/run-intp-bpftrace.sh"
 V3_BIN="$REPO_ROOT/variants/v3-ebpf-ring/intp-ebpf"
-V3_2_BIN="$REPO_ROOT/variants/v3.2-ebpf-core/intp-eBPF-CORE"
+V3_2_BIN="$REPO_ROOT/variants/v3.2-ebpf-core/intp-ebpf-agg"
 V3_3_BIN="$REPO_ROOT/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup"
 
 DEFAULT_STAGES="detect,build,solo,pairwise,overhead,timeseries,report"
@@ -109,7 +109,18 @@ DEFAULT_VARIANTS="v0,v0.1,v0.2,v1,v1.1,v2,v2.1,v3.1,v3,v3.2"
 #   • where the SUPPORTING STACK runs (HDFS+Spark on host vs in-container/VM)
 #
 #   bare              workload + profiler on host (HDFS + Spark on host)
-#   container         workload in container, profiler on host (--pid=host)
+#   container         workload in Docker, profiler on host (--pid=host)
+#   container-podman  workload in rootful Podman (daemonless, OCI), profiler on
+#                     host (--pid=host); host-visible cgroups => attributed like
+#                     the docker env. No daemon to start or keep alive.
+#   container-k8s     workload in a Kubernetes Pod (k3s), profiler on host; the
+#                     DEEPEST cgroup nesting (kubepods.slice/.../cri-containerd-
+#                     <id>.scope). Launcher resolves the in-pod stress-ng host
+#                     PID via crictl; C17 self-resolves the deep cgroup. k3s is
+#                     opt-in heavy (setup-host.sh --with-k8s) and DAEMON-FUL.
+#   container-lxc     workload in an LXC/LXD (Incus) system container, profiler
+#                     on host attached to the container CGROUP (the cgroup-native
+#                     path v2.1 / future v3.3 are built for); HDFS+Spark on host
 #   container-guest   workload + profiler inside container (own PID namespace);
 #                     HDFS + Spark still on host
 #   container-full    workload + profiler + HDFS + Spark all inside one image
@@ -152,8 +163,59 @@ DRY_RUN=0
 SKIP_BUILD=0
 ALLOW_V0_ON_NEW_KERNEL=0
 OUTPUT_DIR=""
+# --portable-metrics (C26 / DESIGN §10): a SEPARATE benchmark that captures the
+# 6 VM-portable metrics (schedlat psi_mem membw_est psi_io schedthr steal) into
+# portable.tsv (instead of profiler.tsv) and aggregates them, header-aware, into
+# aggregate-portable-means.tsv. The canonical 7-metric capture is untouched;
+# only v2.1 and v3.3 implement --portable-metrics, so pair this with
+# `--variants v2.1,v3.3`. Analyze with bench/analyze-portable.py.
+PORTABLE_METRICS=0
 
 CONTAINER_IMAGE="${INTP_BENCH_CONTAINER:-ubuntu:24.04}"
+# Podman (rootful, daemonless) engine for the container-podman env. PODMAN_BIN
+# is the client (`podman`); PODMAN_IMAGE mirrors CONTAINER_IMAGE. Run as root
+# (the harness runs as root) podman places containers in HOST-VISIBLE cgroup v2
+# cgroups, so the host-side profiler attributes them exactly like docker.
+PODMAN_BIN="${INTP_BENCH_PODMAN_BIN:-podman}"
+PODMAN_IMAGE="${INTP_BENCH_PODMAN_IMAGE:-ubuntu:24.04}"
+# Kubernetes (k3s) engine for the container-k8s env. KUBECTL is the API client
+# (`kubectl`; on a k3s-only host `k3s kubectl` works as a fallback). CRICTL is
+# the CRI client (`crictl`, bundled with k3s) used to resolve the in-pod
+# stress-ng host-PID-namespace PID via `crictl inspect .info.pid`. K8S_IMAGE is
+# the pod image; K8S_NS the namespace. This is the DEEPEST cgroup nesting
+# (kubepods.slice/kubepods-<qos>.slice/kubepods-<qos>-pod<uid>.slice/
+# cri-containerd-<id>.scope) -- C17's resolve_pid_cgroup() reads /proc/<pid>/
+# cgroup so it self-resolves that deep path from the returned PID exactly as it
+# does for docker/podman. k3s is opt-in heavy (see setup-host.sh --with-k8s);
+# never installed by default.
+KUBECTL="${INTP_BENCH_KUBECTL:-kubectl}"
+CRICTL="${INTP_BENCH_CRICTL:-crictl}"
+K8S_IMAGE="${INTP_BENCH_K8S_IMAGE:-docker.io/library/ubuntu:24.04}"
+K8S_NS="${INTP_BENCH_K8S_NS:-intp-bench}"
+# LXC/LXD (Incus) engine for the container-lxc env. Prefer incus (the modern,
+# apt-installable LXD continuation) over the /usr/sbin/lxc LXD-snap shim: on
+# Ubuntu 24.04 LXD is snap-only/bloated and frequently uninitialized (empty
+# storage pool => instance creation fails "No root device could be found"),
+# while incus ships via apt with the same client CLI. incus uses the 'images:'
+# remote (LXD's 'ubuntu:' alias is absent), so pick the matching image. The
+# launcher resolves the workload cgroup from /proc/<initpid>/cgroup, so it is
+# agnostic to the engine's cgroup layout (lxc.payload.* etc.). Override with
+# INTP_BENCH_LXC_BIN / INTP_BENCH_LXC_IMAGE.
+# Resolve the engine FIRST (explicit override > prefer incus > lxc), THEN pick the
+# default image off the RESOLVED engine, so an explicit INTP_BENCH_LXC_BIN=incus
+# (without INTP_BENCH_LXC_IMAGE) still gets incus's 'images:' remote rather than
+# LXD's absent 'ubuntu:' alias (which would fail to resolve).
+if [ -n "${INTP_BENCH_LXC_BIN:-}" ]; then
+    LXC_BIN="$INTP_BENCH_LXC_BIN"
+elif command -v incus >/dev/null 2>&1; then
+    LXC_BIN="incus"
+else
+    LXC_BIN="lxc"
+fi
+case "$LXC_BIN" in
+    *incus*) LXC_IMAGE="${INTP_BENCH_LXC_IMAGE:-images:ubuntu/24.04}" ;;
+    *)       LXC_IMAGE="${INTP_BENCH_LXC_IMAGE:-ubuntu:24.04}" ;;
+esac
 VM_IMAGE="${INTP_BENCH_VM_IMAGE:-}"           # qcow2 path, optional
 # VM_CPUS / VM_MEM remain back-compat knobs; if unset they inherit
 # BENCH_CPUS / BENCH_MEM (computed by _compute_default_resources). The
@@ -199,6 +261,11 @@ _MEM_BW_MAX_BPS_RESOLVED=""
 
 ACTIVE_RESCTRL_HELPER=0
 CURRENT_WORKLOAD_CGROUP=""
+# Set to the host tap interface name (intp-tap-<name>) while a VM workload is
+# running under the optional tap-netdev path (INTP_BENCH_VM_TAP=1). Empty when
+# the default SLIRP user-net is in use, in which case v3.3/v2.1 VM netp degrades
+# to a system-wide observation.
+CURRENT_VM_TAP_IFACE=""
 # V1-specific: count stap runs and do a deep kernel-module cleanup every N
 # runs to prevent stap_ module accumulation from draining the systemd DBus
 # session budget (pam_systemd creates a scope per SSH login; if stap_ modules
@@ -348,7 +415,8 @@ Stages (--stage CSV, default: $DEFAULT_STAGES):
 
 Selection:
   --variants CSV           Variants to run (default: $DEFAULT_VARIANTS)
-  --env CSV                Execution environments (default: bare; allowed: bare,container,vm)
+  --env CSV                Execution environments (default: bare;
+                           allowed: bare,container,container-podman,container-k8s,container-lxc,vm,...)
   --workloads CSV          Workload IDs (default: all)
 
 Timing:
@@ -381,6 +449,12 @@ Other:
                                                     Disable governor pinning (default: on -> 'performance')
   --skip-build             Do not auto-build missing variants
   --allow-v0               Allow V0 on kernel >= 6.8 (will fail at runtime)
+  --portable-metrics       SEPARATE VM-portable benchmark (C26): capture the 6
+                           portable metrics (schedlat psi_mem membw_est psi_io
+                           schedthr steal) into portable.tsv + aggregate-portable-
+                           means.tsv. Canonical 7-metric capture untouched. Only
+                           v2.1 / v3.3 implement it -> use --variants v2.1,v3.3.
+                           Analyze with bench/analyze-portable.py.
   --dry-run                Print actions without executing
   -h, --help               Show this help
 
@@ -389,6 +463,8 @@ Examples:
   sudo $0 --stage solo,report --variants v2,v3.1,v3
   sudo $0 --env bare,container --workloads app01_ml_llc,app10_search
   sudo $0 --stage overhead --reps 5
+  sudo $0 --portable-metrics --variants v2.1,v3.3 --env bare,container,vm-guest \\
+          --stage solo,report
 EOF
 }
 
@@ -438,6 +514,7 @@ parse_args() {
             --bench-mem)             BENCH_MEM="$2"; shift 2 ;;
             --skip-build)            SKIP_BUILD=1; shift ;;
             --allow-v0)              ALLOW_V0_ON_NEW_KERNEL=1; shift ;;
+            --portable-metrics)      PORTABLE_METRICS=1; shift ;;
             --dry-run)               DRY_RUN=1; shift ;;
             -h|--help)               usage; exit 0 ;;
             *) die "Unknown option: $1" ;;
@@ -846,9 +923,18 @@ variant_kernel_ok() {
 variant_env_ok() {
     local variant="$1" env="$2"
     case "$env" in
-        vm|container)
+        vm|container|container-podman|container-k8s|container-lxc)
             # Host-observer modes: profiler runs on host attached to qemu /
-            # container PID. Any variant works.
+            # container PID or cgroup. Any variant works (container-lxc is
+            # cgroup-first: cgroup-native variants attach to the container
+            # cgroup, --pids-only variants to the container init PID).
+            # container-podman is the docker analog on a daemonless, OCI runtime:
+            # rootful podman puts the container in host-visible cgroups, so the
+            # profiler attributes its PID/cgroup exactly like the docker env.
+            # container-k8s is a k3s Pod: the deepest cgroup nesting (kubepods
+            # .slice/.../cri-containerd-<id>.scope). The launcher resolves the
+            # in-pod stress-ng host PID via crictl; C17's resolve_pid_cgroup
+            # self-resolves that deep cgroup for v3.3, v2.1/v3.2 use --pids.
             return 0
             ;;
         container-guest)
@@ -963,18 +1049,69 @@ start_groundtruth() {
     } > "$gt" 2>/dev/null &
     echo $! > "$outdir/.gt.pid"
 
-    # Run perf stat in parallel for the same window (sums for instr/cycles/llc)
+    # Interval-mode, system-wide perf for the per-interval GT perf columns
+    # (instr/cycles/llc_ref/llc_miss). System-wide (-a) so it captures the
+    # tenant's forked workers; for SOLO runs the tenant is the only significant
+    # load, so this is its ground truth (like cpu_busy_pct, it is system-wide).
+    # '-x; -I <ms>' emits one CSV line per (interval, event); merged into
+    # groundtruth.tsv afterward by merge_perf_into_groundtruth (stop_groundtruth).
     if command -v perf >/dev/null 2>&1; then
-        local perf_args=( -e instructions,cycles,cache-references,cache-misses )
-        if [ "$target_pid" != "0" ]; then
-            perf_args+=( --pid "$target_pid" )
-        else
-            perf_args+=( -a )
-        fi
-        perf stat -x';' "${perf_args[@]}" -- sleep "$duration" \
-            > "$outdir/perf-stat.txt" 2>&1 &
+        local iv_ms; iv_ms=$(awk -v s="$INTERVAL" 'BEGIN{v=s*1000; printf "%d", (v<100?100:v)}')
+        perf stat -x';' -I "$iv_ms" -a \
+            -e instructions,cycles,cache-references,cache-misses \
+            -- sleep "$duration" > "$outdir/perf-stat.txt" 2>&1 &
         echo $! > "$outdir/.perf.pid"
     fi
+}
+
+# Merge interval-mode perf counts (perf-stat.txt) into the groundtruth.tsv perf
+# columns (instr/cycles/llc_ref/llc_miss), which start_groundtruth wrote as '--'
+# (perf runs as a separate process, so its counters must be folded in here). perf
+# '-x; -I' emits one CSV line per (interval,event): time;value;unit;event;...
+# Group by interval (time-ordered) and fill GT data rows by index; this makes the
+# llcmr ground truth (llc_miss/llc_ref) adjudicable. resctrl_mbw_bps/
+# resctrl_llcocc_bytes stay as-is: resctrl CMT is exclusive per-task, so while the
+# profiler-under-test holds the tenant's RMID an independent occupancy read is not
+# possible -- the profiler's own direct resctrl read is the occupancy GT.
+merge_perf_into_groundtruth() {
+    local outdir="$1"
+    local gt="$outdir/groundtruth.tsv" pf="$outdir/perf-stat.txt"
+    [ -f "$gt" ] && [ -f "$pf" ] && command -v python3 >/dev/null 2>&1 || return 0
+    python3 - "$gt" "$pf" <<'PY' 2>/dev/null || true
+import sys, collections
+gt, pf = sys.argv[1], sys.argv[2]
+ev = {"instructions": 0, "cycles": 1, "cache-references": 2, "cache-misses": 3}
+per = collections.OrderedDict()           # interval-time -> [instr,cycles,ref,miss]
+for line in open(pf):
+    s = line.strip()
+    if not s or s[0] == '#':
+        continue
+    f = s.split(';')
+    if len(f) < 4:
+        continue
+    name = f[3].strip()
+    if name not in ev:
+        continue
+    try:
+        val = float(f[1])
+    except ValueError:
+        continue
+    per.setdefault(f[0].strip(), [None, None, None, None])[ev[name]] = val
+rows = list(per.values())
+lines = open(gt).read().splitlines()
+if not lines:
+    sys.exit(0)
+out, di = [lines[0]], 0
+def fmt(x): return ("%d" % x) if x is not None else "--"
+for ln in lines[1:]:
+    c = ln.split('\t')
+    if len(c) >= 12 and di < len(rows):
+        r = rows[di]
+        c[6], c[7], c[8], c[9] = fmt(r[0]), fmt(r[1]), fmt(r[2]), fmt(r[3])
+        ln = '\t'.join(c); di += 1
+    out.append(ln)
+open(gt, 'w').write('\n'.join(out) + '\n')
+PY
 }
 
 stop_groundtruth() {
@@ -988,6 +1125,7 @@ stop_groundtruth() {
         wait_pid_timeout "$(cat "$outdir/.perf.pid")" "$WAIT_TIMEOUT_S" "groundtruth/perf" || true
         rm -f "$outdir/.perf.pid"
     }
+    merge_perf_into_groundtruth "$outdir"
 }
 
 # -----------------------------------------------------------------------------
@@ -1072,22 +1210,41 @@ _apply_bench_caps_to_cgroup() {
     local cg="$1"
     [ -z "$cg" ] && return 0
     [ -d "$cg" ] || return 0
-    if [ -n "$BENCH_CPUS" ] && [ -f "$cg/cpu.max" ]; then
-        # cpu.max format: "<quota> <period>"; quota = N * period gives N cpus.
-        printf '%d 100000\n' "$(( BENCH_CPUS * 100000 ))" \
-            > "$cg/cpu.max" 2>/dev/null \
-            || warn "[parity/bare] cpu.max write failed for $cg (controller delegated?)"
-    fi
-    if [ -n "$BENCH_MEM" ] && [ -f "$cg/memory.max" ]; then
-        local bytes
-        bytes=$(numfmt --from=iec "$BENCH_MEM" 2>/dev/null || echo "")
-        if [ -n "$bytes" ]; then
-            printf '%s\n' "$bytes" > "$cg/memory.max" 2>/dev/null \
-                || warn "[parity/bare] memory.max write failed for $cg"
+    # No parity caps requested -> leave CURRENT_CAPS_APPLIED unset (run_one
+    # records "n/a").
+    [ -n "$BENCH_CPUS$BENCH_MEM" ] || return 0
+    # Track whether the caps actually landed. A missing controller file means
+    # the controller was not delegated to this cgroup => the cap silently
+    # would NOT apply; record that as caps not applied (P2 audit), do not die.
+    local ok=1
+    if [ -n "$BENCH_CPUS" ]; then
+        if [ -f "$cg/cpu.max" ]; then
+            # cpu.max format: "<quota> <period>"; quota = N * period gives N cpus.
+            printf '%d 100000\n' "$(( BENCH_CPUS * 100000 ))" \
+                > "$cg/cpu.max" 2>/dev/null \
+                || { warn "[parity/bare] cpu.max write failed for $cg"; ok=0; }
         else
-            warn "[parity/bare] could not parse BENCH_MEM='$BENCH_MEM' as IEC size"
+            warn "[parity/bare] cpu.max absent for $cg (cpu controller not delegated)"
+            ok=0
         fi
     fi
+    if [ -n "$BENCH_MEM" ]; then
+        if [ -f "$cg/memory.max" ]; then
+            local bytes
+            bytes=$(numfmt --from=iec "$BENCH_MEM" 2>/dev/null || echo "")
+            if [ -n "$bytes" ]; then
+                printf '%s\n' "$bytes" > "$cg/memory.max" 2>/dev/null \
+                    || { warn "[parity/bare] memory.max write failed for $cg"; ok=0; }
+            else
+                warn "[parity/bare] could not parse BENCH_MEM='$BENCH_MEM' as IEC size"
+                ok=0
+            fi
+        else
+            warn "[parity/bare] memory.max absent for $cg (memory controller not delegated)"
+            ok=0
+        fi
+    fi
+    [ "$ok" = 1 ] && CURRENT_CAPS_APPLIED="yes" || CURRENT_CAPS_APPLIED="no"
 }
 
 launch_workload_bare() {
@@ -1124,6 +1281,7 @@ launch_workload_bare() {
         mkdir -p "$cg"
         CURRENT_WORKLOAD_CGROUP="$cg"
         _apply_bench_caps_to_cgroup "$cg"
+        _publish_caps_applied "$logfile" "${CURRENT_CAPS_APPLIED:-n/a}"
         # shellcheck disable=SC2086
         bash -c "echo \$\$ > '$cg/cgroup.procs'; exec stress-ng $args --timeout '${duration}s' --metrics-brief" > "$logfile" 2>&1 &
         echo $!
@@ -1172,6 +1330,8 @@ launch_workload_container() {
     [ -n "$BENCH_CPUS" ] && parity_args+=( --cpus="$BENCH_CPUS" )
     [ -n "$BENCH_MEM" ]  && parity_args+=( --memory="$BENCH_MEM" )
 
+    local caps_status="n/a"
+    [ -n "$BENCH_CPUS$BENCH_MEM" ] && caps_status="yes"
     docker run --rm -d --name "$name" \
         --pid=host --cap-add SYS_NICE \
         --network host \
@@ -1182,6 +1342,7 @@ launch_workload_container() {
         > "$logfile" 2>&1 \
         || {
             warn "[parity/container] docker run with --cpus/--memory failed; retrying without parity caps"
+            [ -n "$BENCH_CPUS$BENCH_MEM" ] && caps_status="no"
             docker run --rm -d --name "$name" \
                 --pid=host --cap-add SYS_NICE \
                 --network host \
@@ -1190,10 +1351,382 @@ launch_workload_container() {
                 bash -c "apt-get update -qq && apt-get install -y -qq stress-ng >/dev/null && stress-ng $args --timeout ${duration}s --metrics-brief" \
                 > "$logfile" 2>&1
         }
+    _publish_caps_applied "$logfile" "$caps_status"
     # Get the PID of the in-container stress-ng on the host PID namespace
     local cpid
     cpid=$(docker inspect -f '{{.State.Pid}}' "$name" 2>/dev/null || echo 0)
     echo "$cpid"
+}
+
+# Workload in a rootful Podman container, profiler on host (--pid=host). Podman
+# is DAEMONLESS and OCI-compatible: there is no daemon to start, and run as root
+# it places the container in HOST-VISIBLE cgroup v2 cgroups, so the host-side
+# profiler attributes it EXACTLY like docker. This is a verbatim clone of
+# launch_workload_container (the docker env) with `docker` -> `$PODMAN_BIN` and
+# CONTAINER_IMAGE -> PODMAN_IMAGE: same parity caps, same apt-install+stress-ng
+# inside, same dry-run branch, same logfile, and the in-container stress-ng host
+# PID returned via `inspect -f {{.State.Pid}}`. No profiler change is needed:
+# C17's run_profiler_v3_3 self-resolves the cgroup from the returned PID, and
+# v2.1/v2/v3.2 take the PID via --pids -- identical to the docker path.
+#
+# Quiesce note: because podman has no persistent daemon, a container-podman
+# campaign keeps NO runtime daemon alive. run-big-batch.sh's keep-set only adds
+# `docker` for container/-guest/-full and `lxd incus` for container-lxc;
+# container-podman matches neither => empty keep-set => docker+lxd+incus all get
+# quiesced and nothing is kept (correct -- there is no podman daemon to keep).
+launch_workload_container_podman() {
+    local logfile="$1" duration="$2" args="$3" name="$4"
+    CURRENT_WORKLOAD_CGROUP=""
+    if [ "$DRY_RUN" -eq 1 ]; then
+        log "DRY: $PODMAN_BIN run ... stress-ng $args"
+        echo $$
+        return 0
+    fi
+    if ! command -v "$PODMAN_BIN" >/dev/null 2>&1; then
+        warn "podman not installed -- container-podman launch failed"
+        echo 0; return 1
+    fi
+    "$PODMAN_BIN" rm -f "$name" >/dev/null 2>&1 || true
+
+    # Capability matrix (mirrors the docker launcher):
+    #   --pid=host       so the host-side profiler can see the workload PID
+    #   --network=host   so net traffic counters reflect the same NIC the host sees
+    #   SYS_NICE         stress-ng affinity / nice() calls
+    # When INTP_CONTAINER_INGUEST_PROFILER=1 (future in-guest profiler hook),
+    # the container also needs perf/BPF capabilities. Defaults stay minimal so
+    # the current host-attached path doesn't request privileges it doesn't use.
+    local extra_caps=()
+    if [ "${INTP_CONTAINER_INGUEST_PROFILER:-0}" = "1" ]; then
+        extra_caps+=(--cap-add CAP_PERFMON --cap-add CAP_BPF --cap-add CAP_SYS_RESOURCE)
+        # resctrl bind mount is required for v2/v3/v3.1 RDT metrics in-container
+        if [ -d /sys/fs/resctrl ]; then
+            extra_caps+=(-v /sys/fs/resctrl:/sys/fs/resctrl)
+        fi
+    fi
+
+    # Parity caps. If --cpus / --memory are rejected (e.g. unsupported
+    # cgroup mode on a legacy host) podman exits non-zero; warn and retry
+    # without the caps so the rep still produces a measurement.
+    local parity_args=()
+    [ -n "$BENCH_CPUS" ] && parity_args+=( --cpus="$BENCH_CPUS" )
+    [ -n "$BENCH_MEM" ]  && parity_args+=( --memory="$BENCH_MEM" )
+
+    local caps_status="n/a"
+    [ -n "$BENCH_CPUS$BENCH_MEM" ] && caps_status="yes"
+    "$PODMAN_BIN" run --rm -d --name "$name" \
+        --pid=host --cap-add SYS_NICE \
+        --network host \
+        "${parity_args[@]}" \
+        "${extra_caps[@]}" \
+        "$PODMAN_IMAGE" \
+        bash -c "apt-get update -qq && apt-get install -y -qq stress-ng >/dev/null && stress-ng $args --timeout ${duration}s --metrics-brief" \
+        > "$logfile" 2>&1 \
+        || {
+            warn "[parity/container-podman] $PODMAN_BIN run with --cpus/--memory failed; retrying without parity caps"
+            [ -n "$BENCH_CPUS$BENCH_MEM" ] && caps_status="no"
+            "$PODMAN_BIN" run --rm -d --name "$name" \
+                --pid=host --cap-add SYS_NICE \
+                --network host \
+                "${extra_caps[@]}" \
+                "$PODMAN_IMAGE" \
+                bash -c "apt-get update -qq && apt-get install -y -qq stress-ng >/dev/null && stress-ng $args --timeout ${duration}s --metrics-brief" \
+                > "$logfile" 2>&1
+        }
+    _publish_caps_applied "$logfile" "$caps_status"
+    # Get the PID of the in-container stress-ng on the host PID namespace
+    local cpid
+    cpid=$("$PODMAN_BIN" inspect -f '{{.State.Pid}}' "$name" 2>/dev/null || echo 0)
+    echo "$cpid"
+}
+
+# Workload in a Kubernetes Pod (backed by k3s), profiler on host. This is the
+# DEEPEST cgroup nesting of any env: the stress-ng process lands in
+# kubepods.slice/kubepods-<qos>.slice/kubepods-<qos>-pod<uid>.slice/
+# cri-containerd-<id>.scope. It is the hardest test of v3.3's ancestor-cgid
+# gate + target_level, yet needs NO profiler change: we resolve the in-pod
+# stress-ng HOST-PID-namespace PID via crictl and echo it (same stdout contract
+# as docker/podman). C17's resolve_pid_cgroup() reads the unified line of
+# /proc/<pid>/cgroup, so it self-resolves that deep kubepods path; v2.1/v3.2
+# take the PID via --pids. Mirrors launch_workload_container's shape: dry-run
+# branch, `command -v` guards, stale-pod pre-clean, parity caps from
+# BENCH_CPUS/BENCH_MEM (like docker --cpus/--memory), on-the-fly apt install of
+# stress-ng inside the pod (importing bench/setup/Dockerfile.bench into k3s via
+# `k3s ctr image import`, or pulling from ghcr.io via bench/.../publish-images.sh,
+# avoids the per-run install -- point INTP_BENCH_K8S_IMAGE at the pre-baked
+# image then drop the apt-get prefix). On any failure echo 0 + warn, like docker.
+#
+# Quiesce note: k3s.service is DAEMON-FUL (kubelet + containerd + control plane);
+# for non-k8s campaigns it is heavy idle interference and MUST be stopped
+# (host-services.sh quiesce), and a container-k8s campaign keeps it
+# (run-big-batch.sh keep-set).
+launch_workload_container_k8s() {
+    local logfile="$1" duration="$2" args="$3" name="$4"
+    CURRENT_WORKLOAD_CGROUP=""
+    # k8s object names must be RFC 1123 labels (lowercase alnum + '-', <=63 chars,
+    # start/end alnum). The bench run name contains '_' (app10_search) and '.'
+    # (v2.1) which are invalid, so sanitize: lowercase, map any non-[a-z0-9-] to
+    # '-', collapse/trim dashes, and cap length keeping the unique tail.
+    local pod
+    pod=$(printf 'intp-k8s-%s' "$name" | tr '[:upper:]' '[:lower:]' \
+            | tr -c 'a-z0-9-' '-' | sed -E 's/-+/-/g; s/^-+//; s/-+$//')
+    # Cap to the 63-char RFC 1123 limit (keep the unique tail) ONLY if over.
+    # Avoid bash "${x: -n}", which empties strings shorter than n on bash 5.2.
+    [ "${#pod}" -gt 63 ] && pod=$(printf '%s' "$pod" | tail -c 63 | sed -E 's/^-+//')
+    if [ "$DRY_RUN" -eq 1 ]; then
+        log "DRY: $KUBECTL apply -f - (Pod/$pod ns=$K8S_NS image=$K8S_IMAGE) stress-ng $args --timeout ${duration}s"
+        log "DRY:   resolve host PID via $CRICTL inspect (.info.pid)"
+        echo $$
+        return 0
+    fi
+    if ! command -v "$KUBECTL" >/dev/null 2>&1; then
+        warn "kubectl not installed -- container-k8s launch failed (try INTP_BENCH_KUBECTL='k3s kubectl')"
+        echo 0; return 1
+    fi
+    if ! command -v "$CRICTL" >/dev/null 2>&1; then
+        warn "crictl not installed -- container-k8s launch failed (bundled with k3s)"
+        echo 0; return 1
+    fi
+
+    # Pre-clean any stale pod from a prior aborted rep (mirrors docker rm -f).
+    "$KUBECTL" delete pod "$pod" -n "$K8S_NS" --force --grace-period=0 \
+        >/dev/null 2>&1 || true
+
+    # Create the namespace if absent (idempotent; ignore "already exists").
+    "$KUBECTL" get namespace "$K8S_NS" >/dev/null 2>&1 \
+        || "$KUBECTL" create namespace "$K8S_NS" >/dev/null 2>&1 || true
+
+    # Parity caps from BENCH_CPUS/BENCH_MEM -> resources.limits, like docker's
+    # --cpus / --memory. Omit the resources block entirely when both are unset
+    # (an empty limits map is rejected by the API server). Built as indented
+    # YAML lines so the heredoc below stays a valid Pod manifest either way.
+    local limits_yaml=""
+    if [ -n "$BENCH_CPUS" ] || [ -n "$BENCH_MEM" ]; then
+        limits_yaml="      resources:
+        limits:"
+        [ -n "$BENCH_CPUS" ] && limits_yaml="$limits_yaml
+          cpu: \"$BENCH_CPUS\""
+        [ -n "$BENCH_MEM" ]  && limits_yaml="$limits_yaml
+          memory: \"$BENCH_MEM\""
+    fi
+
+    # In-pod command mirrors the docker on-the-fly install: try stress-ng, else
+    # apt-get install it, then exec it. exec replaces the shell so the host PID
+    # we resolve below is stress-ng itself (the profiler's target).
+    local podcmd="command -v stress-ng || (apt-get update -qq && apt-get install -y -qq stress-ng); exec stress-ng $args --timeout ${duration}s --metrics-brief"
+
+    # Single-container Pod, restartPolicy Never (one-shot like docker --rm).
+    if ! "$KUBECTL" apply -f - >>"$logfile" 2>&1 <<YAML
+apiVersion: v1
+kind: Pod
+metadata:
+  name: $pod
+  namespace: $K8S_NS
+  labels:
+    app: intp-bench
+    intp-pod: $pod
+spec:
+  restartPolicy: Never
+  containers:
+    - name: stress-ng
+      image: $K8S_IMAGE
+      command: ["sh", "-c"]
+      args:
+        - |
+          $podcmd
+$limits_yaml
+YAML
+    then
+        warn "container-k8s: '$KUBECTL apply' failed for $pod (see $logfile)"
+        echo 0; return 1
+    fi
+
+    # Wait for the pod container to be running. kubectl wait for Ready is the
+    # primary path; fall back to a Running-phase poll because a one-shot pod
+    # may never report Ready (no readiness probe) yet still be Running.
+    "$KUBECTL" wait --for=condition=Ready "pod/$pod" -n "$K8S_NS" \
+        --timeout=120s >>"$logfile" 2>&1 || {
+        local phase
+        for _ in $(seq 1 60); do
+            phase=$("$KUBECTL" get "pod/$pod" -n "$K8S_NS" \
+                -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+            [ "$phase" = "Running" ] && break
+            sleep 2
+        done
+    }
+
+    # Resolve the in-pod stress-ng HOST-PID-namespace PID via crictl:
+    #   1. crictl ps -q --label/--name to get the container id for this pod
+    #   2. crictl inspect <id> | .info.pid  (the host-visible PID)
+    # crictl talks to k3s's containerd over CRI; the same socket the kubelet
+    # uses. The pod label set above (intp-pod=$pod) scopes the lookup.
+    local cid hostpid=""
+    for _ in $(seq 1 30); do
+        cid=$("$CRICTL" ps -q --state Running --label "intp-pod=$pod" 2>/dev/null \
+            | head -1)
+        [ -z "$cid" ] && cid=$("$CRICTL" ps -q --state Running --name stress-ng 2>/dev/null \
+            | head -1)
+        if [ -n "$cid" ]; then
+            # .info.pid is the container init PID in the HOST pid namespace.
+            # Prefer jq (a bench dependency) for a precise .info.pid path -- the
+            # crictl JSON also contains runtimeSpec namespaces with {"type":"pid"}
+            # entries, so a naive grep '"pid"' can match the wrong line if the
+            # field order ever changes. Fall back to grep+sed only if jq is absent.
+            if command -v jq >/dev/null 2>&1; then
+                hostpid=$("$CRICTL" inspect "$cid" 2>/dev/null \
+                    | jq -r '.info.pid // empty' 2>/dev/null)
+            else
+                hostpid=$("$CRICTL" inspect "$cid" 2>/dev/null \
+                    | grep -m1 '"pid"' | sed -E 's/[^0-9]//g')
+            fi
+            [ -n "$hostpid" ] && [ "$hostpid" != "0" ] && break
+        fi
+        sleep 2
+    done
+
+    if [ -z "$hostpid" ] || [ "$hostpid" = "0" ]; then
+        warn "container-k8s: could not resolve in-pod stress-ng host PID for $pod (see $logfile)"
+        echo 0; return 1
+    fi
+    # Echo the host-PID-namespace PID. C17's resolve_pid_cgroup self-resolves the
+    # deep kubepods cgroup from it for v3.3; v2.1/v3.2 use it via --pids.
+    echo "$hostpid"
+}
+
+# launch_workload runs in a $( ... | tail -1 ) subshell, so a global it sets
+# (the cgroup it resolves only after launch) cannot reach run_one. Hand it back
+# through a per-rep sidecar in the workload's output dir (dirname of logfile);
+# run_one reads and removes it. Only container-lxc needs this -- the bare env
+# precomputes its predictable cgroup path in the parent shell.
+_lxc_publish_cgroup() {
+    local logfile="$1"
+    [ -n "${CURRENT_WORKLOAD_CGROUP:-}" ] || return 0
+    printf '%s\n' "$CURRENT_WORKLOAD_CGROUP" \
+        > "$(dirname "$logfile")/.workload-cgroup" 2>/dev/null || true
+}
+
+# Publish whether the parity CPU/RAM caps actually applied for this rep (P2
+# audit). Same subshell rationale as _lxc_publish_cgroup: launch_workload runs
+# in a $(... | tail -1) subshell, so the launcher writes a sidecar that run_one
+# folds into run.json. Status: yes|no (bare/docker/podman, verified) or n/a (no
+# caps requested). lxc/k8s/vm leave no sidecar => run_one records "engine"
+# (caps requested + passed to the engine, not independently verified here).
+_publish_caps_applied() {
+    local logfile="$1" status="$2"
+    [ -n "$status" ] || return 0
+    printf '%s\n' "$status" \
+        > "$(dirname "$logfile")/.caps-applied" 2>/dev/null || true
+}
+
+# Publish vm-guest SSH connection state for run_one -> run_profiler_inguest_vm.
+# launch_workload runs in a $(... | tail -1) subshell, so the launcher's
+# `export INTP_VMG_*` is lost to run_one and the in-guest profiler was skipped
+# ("vm-guest state not exported"). Hand it back via a per-rep sidecar that
+# run_one sources before dispatching the profiler.
+_vmg_publish_state() {
+    local logfile="$1" tmpdir="$2" sshport="$3" gpid="$4" guest_cg="${5:-}"
+    { printf 'INTP_VMG_TMPDIR=%q\n'      "$tmpdir"
+      printf 'INTP_VMG_SSHPORT=%q\n'     "$sshport"
+      printf 'INTP_VMG_GUEST_PID=%q\n'   "$gpid"
+      printf 'INTP_VMG_GUEST_CGROUP=%q\n' "$guest_cg"
+    } > "$(dirname "$logfile")/.vmg-state" 2>/dev/null || true
+}
+
+# Incus/LXD instance names allow only [a-zA-Z0-9-] (NO '.'/'_', unlike docker),
+# must start with a letter, and are <=63 chars. The per-run name carries the
+# variant ('v2.1' -> '.') and workload ('app10_search' -> '_'), which incus
+# rejects ("Invalid instance name ... can only contain alphanumeric and hyphen"),
+# silently dropping container-lxc to system-wide profiling (llcocc pinned, GT
+# host-idle). Sanitize like the k8s pod-name fix (C21): map invalid chars to '-',
+# collapse repeats, cap with `tail -c 63` (NOT `${x: -63}`, which empties short
+# names on bash 5.2), and guarantee a leading letter. Used by BOTH the launcher
+# and stop_workload so they delete/exec the same name.
+_lxc_instance_name() {
+    local n
+    n=$(printf '%s' "$1" | tr -c 'a-zA-Z0-9-' '-' | tr -s '-' | tail -c 63)
+    case "$n" in [!a-zA-Z]*) n="x$n" ;; esac
+    printf '%s' "$n"
+}
+
+# Workload in an LXC/LXD (Incus) system container; the profiler stays on the
+# host and attaches to the container's CGROUP -- the cgroup-native attribution
+# path v2.1 (and future v3.3) are designed for ("a container is a cgroup").
+# CURRENT_WORKLOAD_CGROUP is set to the container's unified cgroup, resolved
+# from /proc/<initpid>/cgroup so we don't hardcode LXD's layout. Echoes the
+# container init PID on the host as a liveness signal and a --pids fallback for
+# the older PID-only variants. Mirrors launch_workload_container's dry-run,
+# parity-cap, and best-effort semantics.
+#
+# Caveat: cpu.stat and perf cgroup-mode aggregate descendants, so targeting the
+# container's top cgroup attributes the whole container; io.stat is per-cgroup
+# (non-recursive) in cgroup v2, so blk reflects I/O charged at the container
+# cgroup itself -- adequate for stress-ng workloads charged at that level.
+launch_workload_container_lxc() {
+    local logfile="$1" duration="$2" args="$3" name="$4"
+    name="$(_lxc_instance_name "$name")"   # incus name rules (see _lxc_instance_name)
+    CURRENT_WORKLOAD_CGROUP=""
+    if [ "$DRY_RUN" -eq 1 ]; then
+        log "DRY: $LXC_BIN launch $LXC_IMAGE $name && $LXC_BIN exec $name -- stress-ng $args --timeout ${duration}s"
+        [ "$USE_CGROUP_TARGETING" = "1" ] && CURRENT_WORKLOAD_CGROUP="/sys/fs/cgroup/lxc.payload.$name"
+        _lxc_publish_cgroup "$logfile"
+        echo $$
+        return 0
+    fi
+    if ! command -v "$LXC_BIN" >/dev/null 2>&1; then
+        warn "$LXC_BIN (LXD/Incus client) not installed -- container-lxc launch failed"
+        echo 0; return 1
+    fi
+    "$LXC_BIN" delete --force "$name" >/dev/null 2>&1 || true
+
+    # Parity caps -> LXD limits.cpu (integer vCPU count) / limits.memory (bytes;
+    # LXD accepts a raw integer). Retry without them if the host rejects the
+    # limit, mirroring the Docker launcher, so the rep still yields a sample.
+    local parity_args=()
+    [ -n "$BENCH_CPUS" ] && parity_args+=( -c "limits.cpu=$BENCH_CPUS" )
+    if [ -n "$BENCH_MEM" ]; then
+        local membytes; membytes=$(numfmt --from=iec "$BENCH_MEM" 2>/dev/null || echo "")
+        [ -n "$membytes" ] && parity_args+=( -c "limits.memory=$membytes" )
+    fi
+
+    if ! "$LXC_BIN" launch "$LXC_IMAGE" "$name" "${parity_args[@]}" >>"$logfile" 2>&1; then
+        warn "[parity/container-lxc] launch with limits failed; retrying without parity caps"
+        "$LXC_BIN" launch "$LXC_IMAGE" "$name" >>"$logfile" 2>&1 \
+            || { warn "container-lxc: '$LXC_BIN launch' failed (see $logfile)"; echo 0; return 1; }
+    fi
+
+    # Wait for init to obtain a host PID.
+    local initpid="" tries
+    for tries in 1 2 3 4 5 6 7 8 9 10; do
+        # `|| true`: awk's early `exit` SIGPIPEs `lxc info`, fatal under pipefail.
+        initpid=$("$LXC_BIN" info "$name" 2>/dev/null | awk 'tolower($1)=="pid:"{print $2; exit}') || true
+        [ -n "$initpid" ] && [ "$initpid" != "0" ] && break
+        sleep 0.5
+    done
+    if [ -z "$initpid" ] || [ "$initpid" = "0" ]; then
+        warn "container-lxc: could not resolve init PID for $name"
+        "$LXC_BIN" delete --force "$name" >/dev/null 2>&1 || true
+        echo 0; return 1
+    fi
+
+    # Resolve the container's unified (cgroup v2) cgroup from the host view.
+    if [ "$USE_CGROUP_TARGETING" = "1" ]; then
+        local cgrel
+        cgrel=$(awk -F: '/^0::/{print $3; exit}' "/proc/$initpid/cgroup" 2>/dev/null)
+        if [ -n "$cgrel" ] && [ -d "/sys/fs/cgroup$cgrel" ]; then
+            CURRENT_WORKLOAD_CGROUP="/sys/fs/cgroup$cgrel"
+        else
+            warn "container-lxc: could not resolve cgroup for $name (initpid=$initpid); profiler falls back to --pids/system-wide"
+        fi
+    fi
+    _lxc_publish_cgroup "$logfile"
+
+    # Ensure stress-ng is present, then run the workload inside the container.
+    # Backgrounded: the launcher returns once the workload is running and the
+    # container cgroup already scopes it for the host-side profiler.
+    "$LXC_BIN" exec "$name" -- bash -c \
+        "command -v stress-ng >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq stress-ng >/dev/null 2>&1; }; exec stress-ng $args --timeout ${duration}s --metrics-brief" \
+        >>"$logfile" 2>&1 &
+
+    echo "$initpid"
 }
 
 # Tracks tmpdirs created by launch_workload_vm so they can be reaped.
@@ -1354,8 +1887,17 @@ launch_workload_container_guest() {
 launch_workload_vm() {
     local logfile="$1" duration="$2" args="$3" name="$4"
     CURRENT_WORKLOAD_CGROUP=""
+    # Default SLIRP user-net path leaves the tap iface empty; the optional
+    # tap-netdev path below sets it. Reset here so a prior VM run's tap iface
+    # never leaks into this run's profiler dispatch.
+    CURRENT_VM_TAP_IFACE=""
     if [ "$DRY_RUN" -eq 1 ]; then
-        log "DRY: qemu-system-x86_64 -enable-kvm ... stress-ng $args"
+        if [ "${INTP_BENCH_VM_TAP:-0}" = "1" ]; then
+            CURRENT_VM_TAP_IFACE="intp-tap-$name"
+            log "DRY: qemu-system-x86_64 -enable-kvm ... -netdev tap,ifname=$CURRENT_VM_TAP_IFACE ... stress-ng $args"
+        else
+            log "DRY: qemu-system-x86_64 -enable-kvm ... -netdev user ... stress-ng $args"
+        fi
         echo $$
         return 0
     fi
@@ -1408,12 +1950,29 @@ EOF
     cloud-localds "$tmpdir/seed.iso" "$tmpdir/user-data" "$tmpdir/meta-data" \
         || die "cloud-localds failed to build seed.iso for $name"
 
+    # Networking: default to SLIRP user-net (no host tap, requires no setup).
+    # Opt into a host tap interface with INTP_BENCH_VM_TAP=1 so the host can
+    # observe per-VM NIC traffic on intp-tap-<name>; v3.3 (and v2.1) then pass
+    # --target-vm "$CURRENT_VM_TAP_IFACE". Without the tap there is no host-side
+    # per-VM netp signal and VM netp degrades to a system-wide observation.
+    # The tap device must already exist / be creatable for the qemu user
+    # (script=no,downscript=no means qemu will NOT bring it up itself); set up
+    # the bridge/tap out of band. Falls back to SLIRP if creation is impossible.
+    local netdev_args=( -netdev "user,id=n0" -device "virtio-net-pci,netdev=n0" )
+    if [ "${INTP_BENCH_VM_TAP:-0}" = "1" ]; then
+        local tapif="intp-tap-$name"
+        netdev_args=( -netdev "tap,id=n0,ifname=$tapif,script=no,downscript=no"
+                      -device "virtio-net-pci,netdev=n0" )
+        CURRENT_VM_TAP_IFACE="$tapif"
+        log "  VM tap path enabled: host tap iface=$tapif (v3.3/v2.1 will use --target-vm $tapif)"
+    fi
+
     qemu-system-x86_64 -enable-kvm -nographic \
         -name "$name" \
         -smp "$VM_CPUS" -m "$VM_MEM" \
         -drive "file=$VM_IMAGE,if=virtio,format=qcow2" \
         -drive "file=$tmpdir/seed.iso,if=virtio,format=raw" \
-        -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
+        "${netdev_args[@]}" \
         > "$logfile" 2>&1 &
     local qpid=$!
     VM_HOST_PIDS+=("$qpid")
@@ -1459,7 +2018,7 @@ launch_workload_vm_guest() {
     local logfile="$1" duration="$2" args="$3" name="$4"
     CURRENT_WORKLOAD_CGROUP=""
     if [ "$DRY_RUN" -eq 1 ]; then
-        log "DRY: qemu-system-x86_64 -enable-kvm + cloud-init SSH ... stress-ng $args"
+        log "DRY: qemu-system-x86_64 -enable-kvm -cpu host,pmu=on + cloud-init SSH ... stress-ng $args"
         echo $$
         return 0
     fi
@@ -1500,8 +2059,15 @@ EOF
     cloud-localds "$tmpdir/seed.iso" "$tmpdir/user-data" "$tmpdir/meta-data" \
         || die "cloud-localds failed for vm-guest $name"
 
+    # -cpu host,pmu=on (C25/P5): expose the host CPU model + a virtual PMU to
+    # the guest so the in-guest profiler can read perf LLC counters => llcmr is
+    # measurable in vm-guest (directional). Requires KVM (-enable-kvm, present).
+    # Without it the guest gets qemu64 with no PMU and llcmr degrades to 0.
+    # (Real-NIC netp/nets via a TAP device is wired with the cross-env-net
+    # dispatch; vm-guest keeps -netdev user for the SSH-based profiler launch.)
     qemu-system-x86_64 -enable-kvm -nographic \
         -name "$name" \
+        -cpu host,pmu=on \
         -smp "$VM_CPUS" -m "$VM_MEM" \
         -drive "file=$VM_IMAGE,if=virtio,format=qcow2" \
         -drive "file=$tmpdir/seed.iso,if=virtio,format=raw" \
@@ -1528,18 +2094,37 @@ EOF
     export INTP_VMG_TMPDIR="$tmpdir"
     export INTP_VMG_SSHPORT="$sshport"
 
-    # Launch stress-ng inside guest in the background; profiler is launched
-    # by run_profiler_inguest_vm which does its own ssh.
+    # Launch stress-ng inside the guest, inside a DEDICATED guest cgroup, so the
+    # in-guest profiler scopes to the whole stress-ng tree via --cgroup instead
+    # of --pids on the (idle) supervisor PID: stress-ng forks N workers off a
+    # near-idle supervisor, so a single-PID scope reads cpu/llcmr ~0 -- bare and
+    # container use cgroup scoping for exactly this reason (T1). The launcher is
+    # staged as a script (heredoc) to avoid nested ssh/sudo/cgroup quoting:
+    # $args/${duration}/$guest_cg are host-expanded; \$\$ / \$! evaluate in-guest.
+    local guest_cg="/sys/fs/cgroup/intp-vmg-wl"
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        -i "$tmpdir/key" -p "$sshport" intp@127.0.0.1 "cat > /tmp/intp-wl-launch.sh" <<EOF || warn "vm-guest: staging workload launcher failed for $name"
+#!/bin/sh
+sudo mkdir -p $guest_cg 2>/dev/null
+sudo sh -c 'echo \$\$ > $guest_cg/cgroup.procs 2>/dev/null; exec stress-ng $args --timeout ${duration}s --metrics-brief' > /tmp/wl.log 2>&1 &
+echo \$! > /tmp/intp-wl.pid
+EOF
     ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
         -i "$tmpdir/key" -p "$sshport" intp@127.0.0.1 \
-        "nohup bash -lc 'stress-ng $args --timeout ${duration}s --metrics-brief > /tmp/wl.log 2>&1 & echo \$! > /tmp/intp-wl.pid; wait' >/dev/null 2>&1 &" \
+        "nohup sh /tmp/intp-wl-launch.sh >/dev/null 2>&1 &" \
         || warn "ssh stress-ng dispatch failed for $name"
     sleep 1
     local gpid; gpid=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
         -i "$tmpdir/key" -p "$sshport" intp@127.0.0.1 'cat /tmp/intp-wl.pid 2>/dev/null' 2>/dev/null || echo 0)
     # Return host-side qemu PID so the existing stop_workload path can kill it.
-    # The guest-local stress-ng PID is exported in INTP_VMG_GUEST_PID.
+    # The guest workload cgroup (used for profiler scoping) + PID (informational)
+    # are published for run_profiler_inguest_vm.
     export INTP_VMG_GUEST_PID="$gpid"
+    export INTP_VMG_GUEST_CGROUP="$guest_cg"
+    # C25/P5: the exports above are lost across the launch_workload subshell;
+    # publish the vm-guest state so run_one can source it for the in-guest
+    # profiler launch (without this run_profiler_inguest_vm skips => no data).
+    _vmg_publish_state "$logfile" "$tmpdir" "$sshport" "$gpid" "$guest_cg"
     echo "$qpid"
 }
 
@@ -1685,9 +2270,16 @@ EOF
 
 launch_workload() {
     # $1 env, $2 logfile, $3 duration, $4 stress_args, $5 unique_name
+    # Clear the VM tap iface before every workload; only launch_workload_vm
+    # under INTP_BENCH_VM_TAP=1 re-sets it. Prevents a prior VM-tap run from
+    # leaking --target-vm into a later bare/container/SLIRP run.
+    CURRENT_VM_TAP_IFACE=""
     case "$1" in
         bare)             launch_workload_bare            "$2" "$3" "$4" "$5" ;;
         container)        launch_workload_container       "$2" "$3" "$4" "$5" ;;
+        container-podman) launch_workload_container_podman "$2" "$3" "$4" "$5" ;;
+        container-k8s)    launch_workload_container_k8s   "$2" "$3" "$4" "$5" ;;
+        container-lxc)    launch_workload_container_lxc   "$2" "$3" "$4" "$5" ;;
         container-guest)  launch_workload_container_guest "$2" "$3" "$4" "$5" ;;
         container-full)   launch_workload_container_full  "$2" "$3" "$4" "$5" ;;
         vm)               launch_workload_vm              "$2" "$3" "$4" "$5" ;;
@@ -1709,6 +2301,24 @@ stop_workload() {
             ;;
         container|container-guest|container-full)
             docker rm -f "$name" >/dev/null 2>&1 || true
+            ;;
+        container-podman)
+            # Mirrors the docker arm; --rm already reaps a finished container,
+            # this force-removes a still-running one. Best-effort, never aborts.
+            "$PODMAN_BIN" rm -f "$name" >/dev/null 2>&1 || true
+            ;;
+        container-k8s)
+            # Mirrors the docker/podman arm: force-delete the pod (and its
+            # containerd scope cgroup) whether finished or still Running.
+            # restartPolicy Never means it won't relaunch. Best-effort.
+            "$KUBECTL" delete pod "intp-k8s-$name" -n "$K8S_NS" \
+                --force --grace-period=0 >/dev/null 2>&1 || true
+            ;;
+        container-lxc)
+            # Deleting the instance stops it and reaps its cgroup; --force
+            # covers a still-running container. Sanitize to the same name the
+            # launcher used (incus name rules). Best-effort, never aborts.
+            "$LXC_BIN" delete --force "$(_lxc_instance_name "$name")" >/dev/null 2>&1 || true
             ;;
         vm|vm-full)
             terminate_pid_gracefully "$pid" "stop_workload/$env/$name"
@@ -2163,23 +2773,10 @@ run_profiler_v2() {
     awk '/^[0-9]/{n++}END{print n+0}' "$outfile" > "$outfile.samples"
 }
 
-# Resolve a PID's cgroup v2 path (host view) to /sys/fs/cgroup<rel>, for the
-# cgroup-native variants (v2.1/v3.3) when a workload is launched by PID
-# (docker/podman container, vm-guest) rather than in a pre-created cgroup.
-# Echoes the resolved path, or nothing if it cannot be resolved.
-resolve_pid_cgroup() {
-    local pid="$1" cgrel
-    [ -n "$pid" ] && [ "$pid" != "0" ] || return 0
-    cgrel=$(awk -F: '/^0::/{print $3; exit}' "/proc/$pid/cgroup" 2>/dev/null)
-    [ -n "$cgrel" ] && [ -d "/sys/fs/cgroup$cgrel" ] && printf '%s\n' "/sys/fs/cgroup$cgrel"
-}
-
 # v2.1 is the cgroup-native sibling of v2: same intp-hybrid CLI, but its
 # cpu/blk/llcmr backends attribute per-cgroup (continuous) when --cgroup is
-# given, and blk self-detects disk bandwidth. For PID-launched envs (docker/
-# vm-guest hand a PID, not a cgroup) the target PID's cgroup v2 path is
-# resolved and passed via --cgroup so v2.1 attributes the tenant instead of
-# falling back to its system-wide <root> resctrl mon_group.
+# given, and blk self-detects disk bandwidth. Pass --disk-bw-max-bps here if a
+# measured per-host value is ever wired in (binary self-detects otherwise).
 run_profiler_v2_1() {
     local outfile="$1" duration="$2" pid="$3" cgroup_path="${4:-}"
     if [ "$DRY_RUN" -eq 1 ]; then
@@ -2192,11 +2789,19 @@ run_profiler_v2_1() {
         else
             log "DRY: $V2_1_BIN --interval $INTERVAL --duration $duration (system-wide) -> $outfile"
         fi
-        printf 'netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu\n' > "$outfile"
+        if [ "$PORTABLE_METRICS" = "1" ]; then
+            printf 'netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu\tschedlat\tpsi_mem\tmembw_est\tpsi_io\tschedthr\tsteal\n' > "$outfile"
+            printf '0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n' >> "$outfile"
+        else
+            printf 'netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu\n' > "$outfile"
+        fi
         echo 0 > "$outfile.samples"
         return 0
     fi
     local args=( --interval "$INTERVAL" --duration "$duration" --output tsv )
+    # Portable benchmark (C26): append the 6 VM-portable columns. Canonical 7
+    # stay byte-identical; the capture lands in portable.tsv (run_one).
+    [ "$PORTABLE_METRICS" = "1" ] && args+=( --portable-metrics )
     local scope="system-wide"
     if [ -n "$cgroup_path" ]; then
         args+=( --cgroup "$cgroup_path" )
@@ -2205,10 +2810,15 @@ run_profiler_v2_1() {
         args+=( --pids "$pid" )
         scope="pid=$pid"
     elif [ -n "$pid" ] && [ "$pid" != "0" ]; then
-        # PID-launched envs (docker/vm-guest hand a PID, not a cgroup): resolve
-        # the PID's cgroup v2 path and scope v2.1 to it, exactly as
-        # run_profiler_v3_3 does. Without this v2.1 falls to its system-wide
-        # <root> resctrl mon_group and reports whole-machine L3 occupancy.
+        # C25/P7 (T3 fix): for PID-launched envs (docker/podman hand a PID, not
+        # a cgroup) resolve the PID's cgroup v2 path and scope v2.1 to it,
+        # exactly as run_profiler_v3_3 does. Without this v2.1 falls to its
+        # system-wide <root> resctrl mon_group and reports whole-machine L3
+        # occupancy (llcocc ~97 in-container vs ~2 on bare; T3). --cgroup gives
+        # the tenant's mon_group so occupancy attributes the tenant. The
+        # residual incus(lxc) whole-container-cgroup scope artifact is not
+        # addressed by this (it passes an explicit cgroup_path) and stays a
+        # documented caveat.
         local cg21; cg21=$(resolve_pid_cgroup "$pid")
         if [ -n "$cg21" ]; then
             args+=( --cgroup "$cg21" )
@@ -2216,6 +2826,13 @@ run_profiler_v2_1() {
         else
             warn "v2.1: could not resolve cgroup for pid=$pid; running system-wide"
         fi
+    fi
+    # When the optional VM tap path is active (INTP_BENCH_VM_TAP=1), point v2.1
+    # at the per-VM tap iface too, mirroring run_profiler_v3_3, so the
+    # v2.1<->v3.3 VM comparison observes the same NIC. Empty otherwise (SLIRP).
+    if [ -n "${CURRENT_VM_TAP_IFACE:-}" ]; then
+        args+=( --target-vm "$CURRENT_VM_TAP_IFACE" )
+        scope="$scope tap=$CURRENT_VM_TAP_IFACE"
     fi
     {
         printf '# variant=v2.1 scope=%s\n' "$scope"
@@ -2349,19 +2966,29 @@ run_profiler_v3_2() {
     awk '/^[0-9]/{n++}END{print n+0}' "$outfile" > "$outfile.samples"
 }
 
+# Resolve a PID's cgroup v2 path (host view) to /sys/fs/cgroup<rel>, for the
+# cgroup-only v3.3 profiler when a workload is launched by PID (docker/podman
+# container, vm-guest) rather than in a pre-created cgroup. Empty if unresolvable.
+resolve_pid_cgroup() {
+    local pid="$1" cgrel
+    [ -n "$pid" ] && [ "$pid" != "0" ] || return 0
+    cgrel=$(awk -F: '/^0::/{print $3; exit}' "/proc/$pid/cgroup" 2>/dev/null)
+    [ -n "$cgrel" ] && [ -d "/sys/fs/cgroup$cgrel" ] && printf '%s\n' "/sys/fs/cgroup$cgrel"
+}
+
 run_profiler_v3_3() {
-    # V3.3 (eBPF cgroup-native). Cloned from run_profiler_v3_2 but invokes
-    # V3_3_BIN and passes --no-diag-cols EXACTLY where v3.2 passes --no-raw-mbw.
-    # This keeps the captured TSV at leading-ts + EXACTLY the 7 canonical
-    # columns; the v3.3 diagnostic columns (netp_dev, nets_sys, mbw_raw_mbps,
-    # blk_MBps) are emitted only WITHOUT --no-diag-cols and would otherwise
-    # leak into stage_report's off=n-7 metric window. Do not drop the
+    # V3.3 (eBPF cgroup-native). Cloned verbatim from run_profiler_v3_2 but
+    # invokes V3_3_BIN and passes --no-diag-cols EXACTLY where v3.2 passes
+    # --no-raw-mbw (C13). This keeps the captured TSV at leading-ts + EXACTLY
+    # the 7 canonical columns; the v3.3 diagnostic columns (netp_dev, nets_sys,
+    # mbw_raw_mbps, blk_MBps) are emitted only WITHOUT --no-diag-cols and would
+    # otherwise leak into stage_report's off=n-7 metric window. Do not drop the
     # --no-diag-cols flag from any capture site here.
     #
-    # v3.3 is cgroup-id only (no --pids path). For PID-launched envs (docker
-    # container, vm-guest) the target PID's cgroup v2 path is resolved and
-    # passed via --cgroup so they get per-cgroup attribution instead of
-    # silently degrading to system-wide (an all-zero in-container capture).
+    # VM tap: when launch_workload_vm ran under INTP_BENCH_VM_TAP=1 it exports
+    # CURRENT_VM_TAP_IFACE=intp-tap-<name>; we hand it to --target-vm so netp
+    # reflects the per-VM tap. Without the tap (default SLIRP) the var is empty
+    # and netp degrades to the system-wide observation.
     local outfile="$1" duration="$2" pid="$3" cgroup_path="${4:-}"
     if [ "$DRY_RUN" -eq 1 ]; then
         if [ -n "$cgroup_path" ]; then
@@ -2371,18 +2998,33 @@ run_profiler_v3_3() {
         else
             log "DRY: $V3_3_BIN --interval $INTERVAL --duration $duration --no-diag-cols (system-wide) -> $outfile"
         fi
-        printf 'netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu\n' > "$outfile"
+        [ -n "${CURRENT_VM_TAP_IFACE:-}" ] && log "DRY:   v3.3 --target-vm $CURRENT_VM_TAP_IFACE (tap active)"
+        if [ "$PORTABLE_METRICS" = "1" ]; then
+            printf 'netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu\tschedlat\tpsi_mem\tmembw_est\tpsi_io\tschedthr\tsteal\n' > "$outfile"
+            printf '0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\t0\n' >> "$outfile"
+        else
+            printf 'netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu\n' > "$outfile"
+        fi
         echo 0 > "$outfile.samples"
         return 0
     fi
-    # --no-diag-cols: captured TSV stays leading-ts + exactly 7 metrics.
+    # --no-diag-cols (C13): captured TSV stays leading-ts + exactly 7 metrics.
     local args=( --interval "$INTERVAL" --duration "$duration"
                  --output tsv --no-diag-cols )
+    # Portable benchmark (C26): append the 6 VM-portable columns AFTER the 7
+    # canonical (--no-diag-cols still suppresses the 4 diag cols, so the row is
+    # leading-ts + 7 canonical + 6 portable = 14 fields). Capture -> portable.tsv.
+    [ "$PORTABLE_METRICS" = "1" ] && args+=( --portable-metrics )
     local scope="system-wide"
     if [ -n "$cgroup_path" ]; then
         args+=( --cgroup "$cgroup_path" )
         scope="cgroup=$cgroup_path"
     elif [ -n "$pid" ] && [ "$pid" != "0" ]; then
+        # v3.3 is cgroup-id only (no --pids path). Resolve the target PID's
+        # cgroup v2 path so PID-launched envs (docker/podman container,
+        # vm-guest) get per-cgroup attribution instead of silently degrading to
+        # system-wide -- the docker container launcher hands us a PID, not a
+        # cgroup (W3 found v3.3 ran system-wide => all-zero in the container).
         local cg33; cg33=$(resolve_pid_cgroup "$pid")
         if [ -n "$cg33" ]; then
             args+=( --cgroup "$cg33" )
@@ -2390,6 +3032,10 @@ run_profiler_v3_3() {
         else
             warn "v3.3: could not resolve cgroup for pid=$pid; running system-wide"
         fi
+    fi
+    if [ -n "${CURRENT_VM_TAP_IFACE:-}" ]; then
+        args+=( --target-vm "$CURRENT_VM_TAP_IFACE" )
+        scope="$scope tap=$CURRENT_VM_TAP_IFACE"
     fi
     local mbw_bps; mbw_bps="$(resolve_mem_bw_max_bps)"
     [ -n "$mbw_bps" ] && args+=( --mem-bw-max-bps "$mbw_bps" )
@@ -2408,22 +3054,27 @@ _inguest_profiler_cmd() {
     # _inguest_profiler_cmd <variant> <pid> <duration> <interval> <prefix> [cgroup]
     # For the cgroup-native variants (v2.1/v3.3) prefer --cgroup when the
     # in-guest workload was placed in a dedicated cgroup: --pids on the idle
-    # stress-ng supervisor misses the worker children (cpu/llcmr ~0).
+    # stress-ng supervisor misses the worker children (cpu/llcmr ~0). T1.
     local variant="$1" pid="$2" duration="$3" interval="$4" prefix="$5" cgroup="${6:-}"
+    # Portable benchmark (C26): the in-guest v2.1/v3.3 invocations also append
+    # the 6 VM-portable columns. This is the path that recovers the
+    # memory/scheduling dimensions in-guest where mbw/llcocc/llcmr are gapped.
+    local pm=""
+    [ "$PORTABLE_METRICS" = "1" ] && pm=" --portable-metrics"
     case "$variant" in
         v2)   echo "$prefix/variants/v2-c-abi/intp-hybrid --pid $pid --interval $interval --duration $duration --no-prom" ;;
         v2.1) if [ -n "$cgroup" ]; then
-                  echo "$prefix/variants/v2.1-cgroup-native/intp-hybrid --cgroup $cgroup --interval $interval --duration $duration"
+                  echo "$prefix/variants/v2.1-cgroup-native/intp-hybrid --cgroup $cgroup --interval $interval --duration $duration$pm"
               else
-                  echo "$prefix/variants/v2.1-cgroup-native/intp-hybrid --pids $pid --interval $interval --duration $duration"
+                  echo "$prefix/variants/v2.1-cgroup-native/intp-hybrid --pids $pid --interval $interval --duration $duration$pm"
               fi ;;
         v3)   echo "$prefix/variants/v3-ebpf-ring/intp-ebpf --pid $pid --interval $interval --duration $duration" ;;
         v3.1) echo "bash $prefix/variants/v3.1-bpftrace/run-intp-bpftrace.sh --pid $pid --interval $interval --duration $duration" ;;
-        v3.2) echo "$prefix/variants/v3.2-ebpf-core/intp-eBPF-CORE --pids $pid --interval $interval --duration $duration --no-raw-mbw" ;;
+        v3.2) echo "$prefix/variants/v3.2-ebpf-core/intp-ebpf-agg --pids $pid --interval $interval --duration $duration --no-raw-mbw" ;;
         v3.3) if [ -n "$cgroup" ]; then
-                  echo "$prefix/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup --cgroup $cgroup --interval $interval --duration $duration --no-diag-cols"
+                  echo "$prefix/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup --cgroup $cgroup --interval $interval --duration $duration --no-diag-cols$pm"
               else
-                  echo "$prefix/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup --pids $pid --interval $interval --duration $duration --no-diag-cols"
+                  echo "$prefix/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup --pids $pid --interval $interval --duration $duration --no-diag-cols$pm"
               fi ;;
         v1.1) echo "stap -DMAXACTION=8192 -DSTP_NO_OVERLOAD --suppress-handler-errors $prefix/variants/v1.1-stap-modern/intp-v1.1.stp -x $pid --target-pid=$pid -F" ;;
         v0|v0.1|v1) echo "stap -DMAXACTION=8192 --suppress-handler-errors $prefix/variants/v0.1-stap-nollc/intp-6.8.stp -x $pid -F" ;;
@@ -2473,10 +3124,19 @@ run_profiler_inguest_vm() {
         "$REPO_ROOT/" intp@127.0.0.1:/home/intp/intp/ 2>/dev/null || \
         warn "rsync of IntP checkout into vm-guest failed"
 
+    # Target the GUEST-LOCAL workload PID (INTP_VMG_GUEST_PID, propagated via
+    # the .vmg-state sidecar), NOT the $pid arg -- $pid is the host-side qemu
+    # PID and is meaningless inside the guest PID namespace, so the profiler
+    # attributes no activity (cpu/llcmr read 0). T1 target-PID fix.
+    local gpid="${INTP_VMG_GUEST_PID:-}" gcg="${INTP_VMG_GUEST_CGROUP:-}"
+    if [ -z "$gcg" ] && { [ -z "$gpid" ] || [ "$gpid" = "0" ]; }; then
+        warn "vm-guest: no guest-local workload cgroup or PID -- profiler would mis-target; skipping"
+        return 1
+    fi
     local cmd
-    cmd=$(_inguest_profiler_cmd "$variant" "$pid" "$duration" "$INTERVAL" "/home/intp/intp")
+    cmd=$(_inguest_profiler_cmd "$variant" "$gpid" "$duration" "$INTERVAL" "/home/intp/intp" "$gcg")
     [ -z "$cmd" ] && { warn "no in-guest cmd for variant=$variant"; return 1; }
-    log "    [in-guest vm] $cmd"
+    log "    [in-guest vm] $cmd  (guest cgroup=${gcg:-none} pid=$gpid)"
     ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
         -i "$tmpdir/key" -p "$sshport" intp@127.0.0.1 \
         "sudo bash -lc '$cmd > /tmp/profiler.tsv 2>&1'" &
@@ -2563,9 +3223,14 @@ run_one() {
     local notes=""
     local run_rc=0
 
-    # ── Resume guard: skip run if profiler.tsv already has samples ──────────
+    # Capture basename: portable mode (C26) lands in portable.tsv, canonical
+    # mode in profiler.tsv. Computed once so the resume guard and the actual
+    # capture path (below) can never disagree.
+    local _capture="profiler.tsv"
+    [ "$PORTABLE_METRICS" = "1" ] && _capture="portable.tsv"
+    # ── Resume guard: skip run if the capture file already has samples ───────
     local _outdir_check="$OUTPUT_DIR/$env/$variant/$stage/$wl_id/rep$rep"
-    local _prof_check="$_outdir_check/profiler.tsv"
+    local _prof_check="$_outdir_check/$_capture"
     local _samples_check=0
     if [ -f "$_prof_check.samples" ]; then
         _samples_check=$(cat "$_prof_check.samples" 2>/dev/null || echo 0)
@@ -2593,7 +3258,10 @@ run_one() {
 
     local outdir="$OUTPUT_DIR/$env/$variant/$stage/$wl_id/rep$rep"
     mkdir -p "$outdir"
-    local prof="$outdir/profiler.tsv"
+    # Portable benchmark (C26) captures into portable.tsv so the canonical
+    # profiler.tsv schema (and its off=n-7 report) is never disturbed; the
+    # portable report aggregates portable.tsv separately, header-aware.
+    local prof="$outdir/$_capture"
     local wl_log="$outdir/workload.log"
     local cname="intp-bench-${env}-${variant}-${wl_id}-${rep}-$$"
     local total=$((WARMUP + duration + COOLDOWN))
@@ -2622,6 +3290,38 @@ run_one() {
         notes="workload_launch_failed"
         record_index "$env" "$variant" "$stage" "$wl_id" "$rep" "$start_iso" 0 1 "" "" "$notes" "skip"
         return 0
+    fi
+
+    # Envs that resolve their cgroup only after launch (container-lxc) publish
+    # it via a per-rep sidecar, since launch_workload runs in a subshell.
+    if [ -z "$wl_cgroup" ] && [ "$USE_CGROUP_TARGETING" = "1" ] && [ -f "$outdir/.workload-cgroup" ]; then
+        wl_cgroup=$(cat "$outdir/.workload-cgroup" 2>/dev/null || echo "")
+        rm -f "$outdir/.workload-cgroup" 2>/dev/null || true
+    fi
+
+    # vm-guest publishes its SSH connection state (tmpdir/sshport/guest PID) via
+    # a per-rep sidecar, same subshell rationale as the cgroup sidecar above:
+    # launch_workload_vm_guest exports them but the $(... | tail -1) subshell
+    # drops them, so run_profiler_inguest_vm saw nothing and skipped. Source it
+    # here, before run_profiler dispatches, so the in-guest launch has the key.
+    if [ "$env" = "vm-guest" ] && [ -f "$outdir/.vmg-state" ]; then
+        # shellcheck disable=SC1090
+        . "$outdir/.vmg-state"
+        export INTP_VMG_TMPDIR INTP_VMG_SSHPORT INTP_VMG_GUEST_PID INTP_VMG_GUEST_CGROUP
+        rm -f "$outdir/.vmg-state" 2>/dev/null || true
+    fi
+
+    # Parity caps audit (P2): launchers publish whether the CPU/RAM caps
+    # actually applied. Default "n/a" if no caps were requested; "engine" if
+    # caps were requested but this env applied them through the engine without
+    # a harness-verified sidecar (lxc/k8s/vm). bare/docker/podman publish a
+    # verified yes|no. A run with caps_applied!=yes is excluded from parity
+    # comparisons downstream.
+    local caps_applied="n/a"
+    [ -n "$BENCH_CPUS$BENCH_MEM" ] && caps_applied="engine"
+    if [ -f "$outdir/.caps-applied" ]; then
+        caps_applied=$(cat "$outdir/.caps-applied" 2>/dev/null || echo "$caps_applied")
+        rm -f "$outdir/.caps-applied" 2>/dev/null || true
     fi
 
     if [ -n "$wl_cgroup" ]; then
@@ -2684,6 +3384,9 @@ run_one() {
   "duration_observed_s": $elapsed,
   "samples": $samples,
   "workload_pid": "$wl_pid",
+  "bench_cpus": "$BENCH_CPUS",
+  "bench_mem": "$BENCH_MEM",
+  "caps_applied": "$caps_applied",
   "notes": "$notes"
 }
 EOF
@@ -3097,8 +3800,16 @@ stage_report() {
                 /^[0-9]/ {
                     # 7 metrics live in the last 7 columns regardless of prefix:
                     #   V0/V0.1 (stap):    7 cols (no time_ms, no host ts)         → off=0
-                    #   V2/V3/V3.1:        8 cols (host ts + 7 metrics)            → off=1
+                    #   V2/V2.1/V3/V3.1:   8 cols (host ts + 7 metrics)            → off=1
+                    #   V3.2/V3.3:         8 cols (host ts + 7 metrics)            → off=1
                     #   V1/V1.1 (stap):    9 cols (host ts + time_ms + 7 metrics)  → off=2
+                    # INVARIANT: run_profiler_v3_2 (--no-raw-mbw) and
+                    # run_profiler_v3_3 (--no-diag-cols) MUST suppress all
+                    # diagnostic columns so the captured row is leading-ts + the
+                    # 7 canonical metrics ONLY. A leaked diag column (v3.3:
+                    # netp_dev/nets_sys/mbw_raw_mbps/blk_MBps) would push off
+                    # past the real metric window and be mis-read here. off=n-7
+                    # below assumes exactly 7 trailing metrics — do not relax it.
                     n=NF; off=n-7
                     if (off < 0) next
                     for(i=1;i<=7;i++){
@@ -3131,6 +3842,72 @@ stage_report() {
     log "  python3 $SCRIPT_DIR/plot/plot-intp-bench.py $OUTPUT_DIR"
 }
 
+# Portable benchmark report (C26 / DESIGN §10). Aggregates the per-rep
+# portable.tsv captures into aggregate-portable-means.tsv. HEADER-AWARE, NOT
+# off=n-7: the 6 portable columns are located by NAME from the column-header
+# line (so a leaked diagnostic column can never shift the window), then averaged
+# across the rep's data rows. '--' (source unavailable) is skipped, not summed.
+stage_report_portable() {
+    log "== report (portable) =="
+    # The portable capture (portable.tsv) carries the 13-metric SUPERSET (7
+    # canonical + 6 portable). Emit the full 13-col aggregate-means.tsv so the
+    # SAME campaign feeds the cross-env omnibus (plot-cross-environment.py reads
+    # the 7 it knows) AND the cross-deployment paired-delta generator; then derive
+    # the 6-col portable view. HEADER-AWARE (locate each metric by name, robust to
+    # a leaked diag column) and ts-agnostic (off = NF - header field count: 1 for
+    # host-observer captures, 0 for in-guest docker-exec/ssh captures). NOT off=n-7.
+    local agg="$OUTPUT_DIR/aggregate-means.tsv"
+    local pagg="$OUTPUT_DIR/aggregate-portable-means.tsv"
+    {
+        printf 'env\tvariant\tstage\tworkload\trep\tnetp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu\tschedlat\tpsi_mem\tmembw_est\tpsi_io\tschedthr\tsteal\n'
+        find "$OUTPUT_DIR" -name portable.tsv | while read -r f; do
+            local env variant stage wl rep
+            env=$(echo "$f" | awk -F/ '{print $(NF-5)}')
+            variant=$(echo "$f" | awk -F/ '{print $(NF-4)}')
+            stage=$(echo "$f" | awk -F/ '{print $(NF-3)}')
+            wl=$(echo "$f" | awk -F/ '{print $(NF-2)}')
+            rep=$(echo "$f" | awk -F/ '{print $(NF-1)}' | sed 's/rep//')
+            awk -v E="$env" -v V="$variant" -v S="$stage" -v W="$wl" -v R="$rep" '
+                BEGIN { split("netp nets blk mbw llcmr llcocc cpu schedlat psi_mem membw_est psi_io schedthr steal", P, " ") }
+                /^netp/ { for (i=1;i<=NF;i++) col[$i]=i; hdr_nf=NF; haveh=1; next }
+                /^#/ || NF==0 { next }
+                /^[0-9]/ {
+                    if (!haveh) next
+                    off = NF - hdr_nf                    # 1 = leading ts present, 0 = none
+                    if (off < 0 || off > 1) next
+                    for (k=1;k<=13;k++) {
+                        ci = col[P[k]]
+                        if (ci == "") continue           # column absent (e.g. other variant)
+                        val = $(ci + off)
+                        if (val == "--" || val == "") continue
+                        s[k]+=val; c[k]++
+                    }
+                }
+                END {
+                    printf "%s\t%s\t%s\t%s\t%s",E,V,S,W,R
+                    for (k=1;k<=13;k++) {
+                        if (c[k]>0) printf "\t%.3f",s[k]/c[k]
+                        else        printf "\t--"
+                    }
+                    printf "\n"
+                }
+            ' "$f"
+        done
+    } > "$agg"
+    # 6-col portable view: keys (cols 1-5) + the 6 portable metrics (cols 13-18).
+    cut -f1-5,13-18 "$agg" > "$pagg"
+    log "  wrote $agg (13-metric) + $pagg (portable view)"
+    log ""
+    log "Aggregate means (head):"
+    head -20 "$agg" | column -t -s $'\t' | sed 's/^/  /'
+    log ""
+    log "Total portable.tsv files: $(find "$OUTPUT_DIR" -name portable.tsv | wc -l)"
+    log ""
+    log "To adjudicate / report:"
+    log "  python3 $SCRIPT_DIR/analyze-portable.py $OUTPUT_DIR            # portable-vs-GT + falsification"
+    log "  python3 $SCRIPT_DIR/analyze-cross-deployment.py $OUTPUT_DIR    # paired delta-vs-bare (13 metrics)"
+}
+
 # -----------------------------------------------------------------------------
 # 17. Driver
 # -----------------------------------------------------------------------------
@@ -3160,7 +3937,12 @@ main() {
     stage_enabled pairwise   && stage_pairwise
     stage_enabled overhead   && stage_overhead
     stage_enabled timeseries && stage_timeseries
-    stage_enabled report     && stage_report
+    # Portable benchmark (C26) is a SEPARATE capture (portable.tsv) with its own
+    # header-aware report; the canonical profiler.tsv aggregation is skipped in
+    # that mode since no profiler.tsv files are produced.
+    if stage_enabled report; then
+        if [ "$PORTABLE_METRICS" = "1" ]; then stage_report_portable; else stage_report; fi
+    fi
 
     log "done. results: $OUTPUT_DIR"
 }
