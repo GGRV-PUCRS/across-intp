@@ -55,11 +55,11 @@ VARIANT_LABELS = {
     "v1":   "stap-nohelper",
     "v1.1": "stap-modern",
     "v2":   "C-ABI",
-    "v2.1": "cgroup-native",
+    "v2.1": "c-abi-cgroup",
     "v3":   "ebpf-ring",
     "v3.1": "bpftrace",
     "v3.2": "eBPF-CORE",
-    "v3.3": "ebpf-cgroup",
+    "v3.3": "ebpf-core-cgroup",
 }
 
 

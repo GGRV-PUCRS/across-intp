@@ -1,5 +1,5 @@
 /*
- * intp_agg_args.h -- command-line arguments for intp-ebpf-cgroup (V3.3).
+ * intp_agg_args.h -- command-line arguments for intp-ebpf-core-cgroup (V3.3).
  *
  * Mostly identical to V3's intp_args.h with these deltas:
  *   - removed: --ringbuf-size (no ring buffer in V3.2)

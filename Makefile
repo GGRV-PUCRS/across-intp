@@ -4,10 +4,10 @@
 #   variants/v0.2-legacy-intp-baseline   — C helper for V0 stap script (target kernel 5.15 GA)
 #   variants/v1.1-stap-modern   — C helper for V1 stap module (target kernel 6.8+)
 #   variants/v2-c-abi    — hybrid procfs/perf_event_open/resctrl backends
-#   variants/v2.1-cgroup-native — cgroup-native per-cgroup attribution, no eBPF (kernel 5.8+)
+#   variants/v2.1-c-abi-cgroup — c-abi-cgroup per-cgroup attribution, no eBPF (kernel 5.8+)
 #   variants/v3-ebpf-ring     — libbpf+CO-RE BPF program (needs clang, libbpf-dev)
 #   variants/v3.2-ebpf-core— in-kernel-aggregating libbpf+CO-RE BPF program
-#   variants/v3.3-ebpf-cgroup — per-cgroup libbpf+CO-RE BPF program (cgroup v2; eBPF sibling of v3.2 / companion to v2.1)
+#   variants/v3.3-ebpf-core-cgroup — per-cgroup libbpf+CO-RE BPF program (cgroup v2; eBPF sibling of v3.2 / companion to v2.1)
 #
 # Validate-only variants (no compile, runtime interpreters):
 #   variants/v3.1-bpftrace      — bpftrace .bt scripts (deps + parse check)
@@ -34,11 +34,11 @@ ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 V02_DIR := $(ROOT)/variants/v0.2-legacy-intp-baseline
 V11_DIR := $(ROOT)/variants/v1.1-stap-modern
 V2_DIR  := $(ROOT)/variants/v2-c-abi
-V21_DIR := $(ROOT)/variants/v2.1-cgroup-native
+V21_DIR := $(ROOT)/variants/v2.1-c-abi-cgroup
 V3_DIR  := $(ROOT)/variants/v3-ebpf-ring
 V31_DIR := $(ROOT)/variants/v3.1-bpftrace
 V32_DIR := $(ROOT)/variants/v3.2-ebpf-core
-V33_DIR := $(ROOT)/variants/v3.3-ebpf-cgroup
+V33_DIR := $(ROOT)/variants/v3.3-ebpf-core-cgroup
 V0_STP  := $(ROOT)/variants/v0-stap-2022/intp.stp
 V01_STP := $(ROOT)/variants/v0.1-stap-nollc/intp-6.8.stp
 V1_STP  := $(ROOT)/variants/v1-stap-nohelper/intp-resctrl.stp
@@ -175,7 +175,7 @@ smoke-v3.2: v3.2
 	@$(V32_DIR)/intp-eBPF-CORE --interval 1 --duration 5 >/dev/null && echo "[v3.2] smoke OK"
 
 smoke-v3.3: v3.3
-	@$(V33_DIR)/intp-ebpf-cgroup --interval 1 --duration 5 >/dev/null && echo "[v3.3] smoke OK"
+	@$(V33_DIR)/intp-ebpf-core-cgroup --interval 1 --duration 5 >/dev/null && echo "[v3.3] smoke OK"
 
 # ---- per-cgroup attribution validation (v3.3 DESIGN sec.8.2 / sec.11) --------
 # Ground-truth check that the per-cgroup signals the IADA closed loop consumes

@@ -634,7 +634,7 @@ static void emit_tsv_header(FILE *out,
 {
     /* Per-metric backend map + nets PROXY provenance (C2). */
     fprintf(out,
-        "# v3.3 ebpf-cgroup -- netp:%s nets:cost-model[skb-share]PROXY"
+        "# v3.3 ebpf-core-cgroup -- netp:%s nets:cost-model[skb-share]PROXY"
         " blk:tracepoint[bio-blkcg] cpu:sched_switch[cgroup]"
         " llcmr:%s mbw:%s llcocc:%s\n",
         vm_mode ? "tap-iface[sysfs]" : "cgroup_skb",

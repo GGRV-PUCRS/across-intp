@@ -6,8 +6,8 @@ before the rename, in the original IntP paper, and in the `pre-rename-2026-05-05
 git tag) and the current naming (used everywhere else).
 
 The active profiler variants for the container + cross-deployment work are
-**v2.1 (cgroup-native)** (C, per-cgroup via stable kernel ABIs) and
-**v3.3 (ebpf-cgroup)** (eBPF/CO-RE, in-kernel aggregation); v0.x–v3.2 remain as
+**v2.1 (c-abi-cgroup)** (C, per-cgroup via stable kernel ABIs) and
+**v3.3 (ebpf-core-cgroup)** (eBPF/CO-RE, in-kernel aggregation); v0.x–v3.2 remain as
 comparison and structural evidence. All variants emit the same canonical
 7-metric contract — `netp nets blk mbw llcmr llcocc cpu` — as the leading
 columns; this ordering is ABI-invariant (the IADA classifier consumes it) and
@@ -26,7 +26,7 @@ implementations within the same paradigm.
 - **v2.x** -- userspace C using stable kernel ABIs (procfs, perf_event_open,
   resctrl). Active. v2 attributes system-wide / per-PID; **v2.1** (new) adds
   continuous per-cgroup attribution (cgroup v2 `cpu.stat`/`io.stat`, perf
-  cgroup mode) for the container / VM + IADA work -- the cgroup-native, no-eBPF
+  cgroup mode) for the container / VM + IADA work -- the c-abi-cgroup, no-eBPF
   analogue of v3.2's per-cgroup path. `nets` stays system-wide (softirq is
   host-global without eBPF).
 - **v3.x** -- eBPF-based implementations. Active. v3 streams events
@@ -55,11 +55,11 @@ to as the "2022 baseline".
 | v1      | stap-nohelper| v3*    | `variants/v1-stap-nohelper/`         | Stap-only, native probes (`probe perf.type(3).config(...).process(@1)`); no embedded C creating perf events; mbw and llcocc reported as 0 | Active |
 | v1.1    | stap-modern  | (new)  | `variants/v1.1-stap-modern/`       | New build: stap for software metrics + userspace helper for hardware metrics (uncore IMC via `perf_event_open` syscall, LLC occupancy via resctrl mon\_groups). Helper architecture isolates RCU-unsafe operations from probe context | Active |
 | v2      | C-ABI     | v4     | `variants/v2-c-abi/`        | Pure C (no framework): procfs polling, `perf_event_open` syscall, resctrl filesystem. Runtime-adaptive backend hierarchy | Active |
-| v2.1    | cgroup-native | (new)  | `variants/v2.1-cgroup-native/`    | v2's hybrid-C backends with **per-cgroup attribution**: cgroup v2 `cpu.stat`/`io.stat`, `perf_event_open` cgroup mode (LLC), resctrl mon\_groups; disk bandwidth self-detected. `nets` stays system-wide. One code path for bare co-located + container + VM-guest. Target kernel **5.8+** (cgroup v2). See `variants/v2.1-cgroup-native/DESIGN.md` | Active (container / IADA, paper #2) |
+| v2.1    | c-abi-cgroup | (new)  | `variants/v2.1-c-abi-cgroup/`    | v2's hybrid-C backends with **per-cgroup attribution**: cgroup v2 `cpu.stat`/`io.stat`, `perf_event_open` cgroup mode (LLC), resctrl mon\_groups; disk bandwidth self-detected. `nets` stays system-wide. One code path for bare co-located + container + VM-guest. Target kernel **5.8+** (cgroup v2). See `variants/v2.1-c-abi-cgroup/DESIGN.md` | Active (container / IADA, paper #2) |
 | v3      | ebpf-ring    | v6     | `variants/v3-ebpf-ring/`         | C + libbpf + CO-RE; software metrics through 16 MiB ring buffer (streaming pattern); hardware metrics through resctrl. **Predecessor of v3.2**; retained for overhead-evidence documentation. | Active (predecessor) |
 | v3.1    | bpftrace     | v5     | `variants/v3.1-bpftrace/`          | bpftrace DSL scripts + Python orchestrator + resctrl. SystemTap-script-style ergonomics on top of eBPF | Active (companion) |
 | v3.2    | eBPF-CORE     | (new)  | `variants/v3.2-ebpf-core/`    | C + libbpf + CO-RE with **in-kernel aggregation**: `BPF_MAP_TYPE_PERCPU_ARRAY` + `BPF_MAP_TYPE_HASH` counters polled once per interval (no ring buffer). Eliminates the 188-390x context-switch amplification documented for v3; emits both `mbw_pct` and `mbw_raw_mbps`. See `variants/v3.2-ebpf-core/DESIGN.md` and `docs/V3-OVERHEAD-FINDINGS.md`. | Active (measured eBPF endpoint) |
-| v3.3    | ebpf-cgroup   | (new)  | `variants/v3.3-ebpf-cgroup/`    | C + libbpf + CO-RE with **per-cgroup attribution**: the in-kernel-aggregation design of v3.2 (counter maps polled once per interval, no ring buffer) scoped to one cgroup via `cgroup_skb` (netp) and cgroup-id-keyed counter maps. The **eBPF-native sibling of v3.2** and the **companion to v2.1**: same per-cgroup question, eBPF mechanism instead of cgroup-native stable ABIs. `nets` is a per-cgroup **proxy** (byte-share cost model) that diverges by design from v2.1's system-wide `nets` (the v2.1-vs-v3.3 comparison axis). Binary `intp-ebpf-cgroup`. CLI adds `--cgroup`, `--target-container`, `--target-vm`, `--tap-iface`, `--exact`, `--no-diag-cols`. See `variants/v3.3-ebpf-cgroup/DESIGN.md`. | Active (container / IADA, paper #2) |
+| v3.3    | ebpf-core-cgroup   | (new)  | `variants/v3.3-ebpf-core-cgroup/`    | C + libbpf + CO-RE with **per-cgroup attribution**: the in-kernel-aggregation design of v3.2 (counter maps polled once per interval, no ring buffer) scoped to one cgroup via `cgroup_skb` (netp) and cgroup-id-keyed counter maps. The **eBPF-native sibling of v3.2** and the **companion to v2.1**: same per-cgroup question, eBPF mechanism instead of c-abi-cgroup stable ABIs. `nets` is a per-cgroup **proxy** (byte-share cost model) that diverges by design from v2.1's system-wide `nets` (the v2.1-vs-v3.3 comparison axis). Binary `intp-ebpf-core-cgroup`. CLI adds `--cgroup`, `--target-container`, `--target-vm`, `--tap-iface`, `--exact`, `--no-diag-cols`. See `variants/v3.3-ebpf-core-cgroup/DESIGN.md`. | Active (container / IADA, paper #2) |
 
 \* The v3 lineage was discontinued at the `pre-rename-2026-05-05` tag because
 its embedded-C `perf_event_create_kernel_counter()` calls triggered RCU
@@ -178,7 +178,7 @@ to avoid the RCU-unsafe pattern, recovering the full 7-metric coverage.
 
 ## Status after v2.1 introduction (2026-05-24)
 
-- v2.1 (`variants/v2.1-cgroup-native/`) was added as the cgroup-native
+- v2.1 (`variants/v2.1-c-abi-cgroup/`) was added as the c-abi-cgroup
   sibling of v2 for the paper-#2 container + IADA work: the same `intp-hybrid`
   CLI and backend-hierarchy design, but its cpu/blk/llcmr backends attribute
   **per-cgroup** (continuous, child-inclusive) when given `--cgroup`, via
@@ -199,16 +199,16 @@ to avoid the RCU-unsafe pattern, recovering the full 7-metric coverage.
 
 ## Status after v3.3 introduction (2026-06-02)
 
-- v3.3 (`variants/v3.3-ebpf-cgroup/`) was added as the **eBPF-native
+- v3.3 (`variants/v3.3-ebpf-core-cgroup/`) was added as the **eBPF-native
   sibling of v3.2** and the **companion to v2.1** for the paper-#2
   container + IADA work. It scopes v3.2's in-kernel-aggregation design
   (counter maps polled once per `--interval`, no ring buffer) to a
   single cgroup: netp via a `cgroup_skb` program attached to the
   target cgroup, and the remaining software metrics via cgroup-id-keyed
-  counter maps. Binary `intp-ebpf-cgroup`; target picked via `--cgroup`,
+  counter maps. Binary `intp-ebpf-core-cgroup`; target picked via `--cgroup`,
   `--target-container`, or `--target-vm` / `--tap-iface`.
 - The v2.1 vs v3.3 axis answers the same per-cgroup question with two
-  mechanisms: v2.1 uses cgroup-native stable ABIs (cgroup v2
+  mechanisms: v2.1 uses c-abi-cgroup stable ABIs (cgroup v2
   `cpu.stat`/`io.stat`, perf cgroup mode, resctrl) with no eBPF; v3.3
   uses eBPF. Six of the seven metrics (netp, blk, mbw, llcmr, llcocc,
   cpu) are expected to agree within tolerance.

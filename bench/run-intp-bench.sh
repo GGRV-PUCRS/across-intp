@@ -95,11 +95,11 @@ V1_STP="$REPO_ROOT/variants/v1-stap-nohelper/intp-resctrl.stp"
 V1_1_STP="$REPO_ROOT/variants/v1.1-stap-modern/intp-v1.1.stp"
 V1_1_HELPER="$REPO_ROOT/variants/v1.1-stap-modern/intp-helper"
 V2_BIN="$REPO_ROOT/variants/v2-c-abi/intp-hybrid"
-V2_1_BIN="$REPO_ROOT/variants/v2.1-cgroup-native/intp-hybrid"
+V2_1_BIN="$REPO_ROOT/variants/v2.1-c-abi-cgroup/intp-hybrid"
 V3_1_RUNNER="$REPO_ROOT/variants/v3.1-bpftrace/run-intp-bpftrace.sh"
 V3_BIN="$REPO_ROOT/variants/v3-ebpf-ring/intp-ebpf"
 V3_2_BIN="$REPO_ROOT/variants/v3.2-ebpf-core/intp-ebpf-agg"
-V3_3_BIN="$REPO_ROOT/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup"
+V3_3_BIN="$REPO_ROOT/variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup"
 
 DEFAULT_STAGES="detect,build,solo,pairwise,overhead,timeseries,report"
 DEFAULT_VARIANTS="v0,v0.1,v0.2,v1,v1.1,v2,v2.1,v3.1,v3,v3.2"
@@ -119,7 +119,7 @@ DEFAULT_VARIANTS="v0,v0.1,v0.2,v1,v1.1,v2,v2.1,v3.1,v3,v3.2"
 #                     PID via crictl; C17 self-resolves the deep cgroup. k3s is
 #                     opt-in heavy (setup-host.sh --with-k8s) and DAEMON-FUL.
 #   container-lxc     workload in an LXC/LXD (Incus) system container, profiler
-#                     on host attached to the container CGROUP (the cgroup-native
+#                     on host attached to the container CGROUP (the c-abi-cgroup
 #                     path v2.1 / future v3.3 are built for); HDFS+Spark on host
 #   container-guest   workload + profiler inside container (own PID namespace);
 #                     HDFS + Spark still on host
@@ -768,16 +768,16 @@ stage_build() {
         run_or_dry make -C "$REPO_ROOT/variants/v2-c-abi"
     fi
     if variant_selected v2.1 && [ ! -x "$V2_1_BIN" ]; then
-        log "Building v2.1 (cgroup-native)..."
-        run_or_dry make -C "$REPO_ROOT/variants/v2.1-cgroup-native"
+        log "Building v2.1 (c-abi-cgroup)..."
+        run_or_dry make -C "$REPO_ROOT/variants/v2.1-c-abi-cgroup"
     fi
     if variant_selected v3.2 && [ ! -x "$V3_2_BIN" ]; then
         log "Building v3.2 (eBPF in-kernel aggregating)…"
         run_or_dry make -C "$REPO_ROOT/variants/v3.2-ebpf-core"
     fi
     if variant_selected v3.3 && [ ! -x "$V3_3_BIN" ]; then
-        log "Building v3.3 (eBPF cgroup-native)…"
-        run_or_dry make -C "$REPO_ROOT/variants/v3.3-ebpf-cgroup"
+        log "Building v3.3 (eBPF c-abi-cgroup)…"
+        run_or_dry make -C "$REPO_ROOT/variants/v3.3-ebpf-core-cgroup"
     fi
     if variant_selected v3 && [ ! -x "$V3_BIN" ]; then
         log "Building v3..."
@@ -869,7 +869,7 @@ variant_kernel_ok() {
             if _kernel_lt 5 8;  then warn "v2 needs kernel ≥5.8 (CAP_PERFMON)"; return 1; fi
             ;;
         v2.1)
-            # V2 + continuous cgroup-native attribution (cpu.stat, io.stat,
+            # V2 + continuous c-abi-cgroup attribution (cpu.stat, io.stat,
             # perf cgroup mode). Same 5.8 floor as v2 (CAP_PERFMON), and needs
             # the cgroup v2 unified hierarchy for cpu.stat / io.stat.
             if _kernel_lt 5 8;  then warn "v2.1 needs kernel ≥5.8 (CAP_PERFMON + cgroup v2)"; return 1; fi
@@ -899,7 +899,7 @@ variant_kernel_ok() {
             fi
             ;;
         v3.3)
-            # eBPF cgroup-native. cgroup/skb + cgroup BPF attach is stable from
+            # eBPF c-abi-cgroup. cgroup/skb + cgroup BPF attach is stable from
             # 5.8 (matching the v2.1 cgroup-v2 floor); CO-RE needs BTF. The
             # per-cgroup netp tap attach wants CAP_NET_ADMIN, but that is a
             # soft requirement: without it netp degrades, so warn (don't fail).
@@ -926,7 +926,7 @@ variant_env_ok() {
         vm|container|container-podman|container-k8s|container-lxc)
             # Host-observer modes: profiler runs on host attached to qemu /
             # container PID or cgroup. Any variant works (container-lxc is
-            # cgroup-first: cgroup-native variants attach to the container
+            # cgroup-first: c-abi-cgroup variants attach to the container
             # cgroup, --pids-only variants to the container init PID).
             # container-podman is the docker analog on a daemonless, OCI runtime:
             # rootful podman puts the container in host-visible cgroups, so the
@@ -1648,7 +1648,7 @@ _lxc_instance_name() {
 }
 
 # Workload in an LXC/LXD (Incus) system container; the profiler stays on the
-# host and attaches to the container's CGROUP -- the cgroup-native attribution
+# host and attaches to the container's CGROUP -- the c-abi-cgroup attribution
 # path v2.1 (and future v3.3) are designed for ("a container is a cgroup").
 # CURRENT_WORKLOAD_CGROUP is set to the container's unified cgroup, resolved
 # from /proc/<initpid>/cgroup so we don't hardcode LXD's layout. Echoes the
@@ -2773,7 +2773,7 @@ run_profiler_v2() {
     awk '/^[0-9]/{n++}END{print n+0}' "$outfile" > "$outfile.samples"
 }
 
-# v2.1 is the cgroup-native sibling of v2: same intp-hybrid CLI, but its
+# v2.1 is the c-abi-cgroup sibling of v2: same intp-hybrid CLI, but its
 # cpu/blk/llcmr backends attribute per-cgroup (continuous) when --cgroup is
 # given, and blk self-detects disk bandwidth. Pass --disk-bw-max-bps here if a
 # measured per-host value is ever wired in (binary self-detects otherwise).
@@ -2977,7 +2977,7 @@ resolve_pid_cgroup() {
 }
 
 run_profiler_v3_3() {
-    # V3.3 (eBPF cgroup-native). Cloned verbatim from run_profiler_v3_2 but
+    # V3.3 (eBPF c-abi-cgroup). Cloned verbatim from run_profiler_v3_2 but
     # invokes V3_3_BIN and passes --no-diag-cols EXACTLY where v3.2 passes
     # --no-raw-mbw (C13). This keeps the captured TSV at leading-ts + EXACTLY
     # the 7 canonical columns; the v3.3 diagnostic columns (netp_dev, nets_sys,
@@ -3052,7 +3052,7 @@ run_profiler_v3_3() {
 # inside the VM, /home/intp/intp is assumed (scp'd by run_profiler_inguest_vm).
 _inguest_profiler_cmd() {
     # _inguest_profiler_cmd <variant> <pid> <duration> <interval> <prefix> [cgroup]
-    # For the cgroup-native variants (v2.1/v3.3) prefer --cgroup when the
+    # For the c-abi-cgroup variants (v2.1/v3.3) prefer --cgroup when the
     # in-guest workload was placed in a dedicated cgroup: --pids on the idle
     # stress-ng supervisor misses the worker children (cpu/llcmr ~0). T1.
     local variant="$1" pid="$2" duration="$3" interval="$4" prefix="$5" cgroup="${6:-}"
@@ -3064,17 +3064,17 @@ _inguest_profiler_cmd() {
     case "$variant" in
         v2)   echo "$prefix/variants/v2-c-abi/intp-hybrid --pid $pid --interval $interval --duration $duration --no-prom" ;;
         v2.1) if [ -n "$cgroup" ]; then
-                  echo "$prefix/variants/v2.1-cgroup-native/intp-hybrid --cgroup $cgroup --interval $interval --duration $duration$pm"
+                  echo "$prefix/variants/v2.1-c-abi-cgroup/intp-hybrid --cgroup $cgroup --interval $interval --duration $duration$pm"
               else
-                  echo "$prefix/variants/v2.1-cgroup-native/intp-hybrid --pids $pid --interval $interval --duration $duration$pm"
+                  echo "$prefix/variants/v2.1-c-abi-cgroup/intp-hybrid --pids $pid --interval $interval --duration $duration$pm"
               fi ;;
         v3)   echo "$prefix/variants/v3-ebpf-ring/intp-ebpf --pid $pid --interval $interval --duration $duration" ;;
         v3.1) echo "bash $prefix/variants/v3.1-bpftrace/run-intp-bpftrace.sh --pid $pid --interval $interval --duration $duration" ;;
         v3.2) echo "$prefix/variants/v3.2-ebpf-core/intp-ebpf-agg --pids $pid --interval $interval --duration $duration --no-raw-mbw" ;;
         v3.3) if [ -n "$cgroup" ]; then
-                  echo "$prefix/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup --cgroup $cgroup --interval $interval --duration $duration --no-diag-cols$pm"
+                  echo "$prefix/variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup --cgroup $cgroup --interval $interval --duration $duration --no-diag-cols$pm"
               else
-                  echo "$prefix/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup --pids $pid --interval $interval --duration $duration --no-diag-cols$pm"
+                  echo "$prefix/variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup --pids $pid --interval $interval --duration $duration --no-diag-cols$pm"
               fi ;;
         v1.1) echo "stap -DMAXACTION=8192 -DSTP_NO_OVERLOAD --suppress-handler-errors $prefix/variants/v1.1-stap-modern/intp-v1.1.stp -x $pid --target-pid=$pid -F" ;;
         v0|v0.1|v1) echo "stap -DMAXACTION=8192 --suppress-handler-errors $prefix/variants/v0.1-stap-nollc/intp-6.8.stp -x $pid -F" ;;

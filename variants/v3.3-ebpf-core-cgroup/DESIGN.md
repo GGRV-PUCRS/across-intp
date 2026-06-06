@@ -1,6 +1,6 @@
 # V3.3 Design -- eBPF-native per-cgroup
 
-> **Status: IMPLEMENTED (active variant).** The binary `intp-ebpf-cgroup` builds
+> **Status: IMPLEMENTED (active variant).** The binary `intp-ebpf-core-cgroup` builds
 > and runs: cgroup-identity gating, the `agg_per_cgroup` map, per-cgroup `netp`
 > (`cgroup_skb`), `blk` (bio blkcg), `cpu`/`llcmr` (cgroup-mode perf), the
 > system-wide `nets` numerator with loader-side byte-share split, and the
@@ -54,7 +54,7 @@ no cgroup-v2 file or resctrl group exposes per-cgroup.
 - The aggregation key. v3.2's per-target map `agg_per_pid` is keyed by TGID;
   v3.3's `agg_per_cgroup` is keyed by cgroup id (§6).
 
-**Relationship to v2.1** (`variants/v2.1-cgroup-native/`): same granularity
+**Relationship to v2.1** (`variants/v2.1-c-abi-cgroup/`): same granularity
 (per-cgroup), opposite mechanism (eBPF in-kernel vs stable-ABI polling). §7 is
 the metric-by-metric comparison and is deliberately honest about where v3.3 is
 parity, not advantage.
@@ -265,7 +265,7 @@ campaign shows it matters.
   case (>=5.8, cgroup v2, BTF), and a `stage_build` block. `container-lxc`
   already routes `--cgroup` to the launcher; `variant_env_ok` already allows it.
 - `run-big-batch.sh`: `_variant_requested v3.3 && ... make -C
-  variants/v3.3-ebpf-cgroup`.
+  variants/v3.3-ebpf-core-cgroup`.
 - `containerun24.sh`: already accepts `BENCH_VARIANTS=v2.1,v3.3`.
 - Root `Makefile` + `VERSIONS.md` + `METRICS-ALIGNMENT.md` + the variant tables:
   add v3.3 the way v2.1 was added this cycle.
@@ -334,7 +334,7 @@ canonical columns, so the ABI the IADA classifier consumes is unchanged.
 ## References
 
 - v3.2 in-kernel aggregation: `variants/v3.2-ebpf-core/DESIGN.md`
-- v2.1 cgroup-native (stable-ABI sibling): `variants/v2.1-cgroup-native/DESIGN.md`
+- v2.1 c-abi-cgroup (stable-ABI sibling): `variants/v2.1-c-abi-cgroup/DESIGN.md`
 - Paper-#1 v2-vs-v3.2 system-wide comparison: `METRICS-ALIGNMENT.md`,
   `docs/V3-OVERHEAD-FINDINGS.md`
 - cgroup-skb / `bpf_skb_cgroup_id` / `bpf_get_current_ancestor_cgroup_id`:

@@ -71,9 +71,9 @@ direct.
 | V3.1 (bpftrace) | bpftrace + Python orchestrator + resctrl | Stable, BTF-driven | DSL-level eBPF baseline |
 | V3 (ebpf-ring) | C/libbpf + CO-RE eBPF | Stable, single binary | Canonical eBPF endpoint |
 
-For the container and cross-deployment work, two cgroup-native
-descendants are the active profilers: **v2.1-cgroup-native** (C/cgroup,
-descends from V2 (C-ABI)) and **v3.3-ebpf-cgroup** (eBPF/CO-RE with
+For the container and cross-deployment work, two c-abi-cgroup
+descendants are the active profilers: **v2.1-c-abi-cgroup** (C/cgroup,
+descends from V2 (C-ABI)) and **v3.3-ebpf-core-cgroup** (eBPF/CO-RE with
 in-kernel aggregation, descends from V3 (ebpf-ring)/V3.2 (eBPF-CORE)).
 The V0-V3.2 rows above remain as comparison and structural evidence.
 Every variant emits the same 7-metric contract, so cross-variant and

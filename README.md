@@ -11,7 +11,7 @@ across kernel eras (V0 (stap-2022) / V0.1 (stap-nollc) / V0.2 (legacy-intp-basel
 and modern instrumentation approaches (procfs polling — V2 (C-ABI); bpftrace — V3.1 (bpftrace);
 eBPF/CO-RE — V3 (ebpf-ring) ring-buffer-streaming; eBPF/CO-RE — V3.2 (eBPF-CORE) in-kernel-aggregating)
 to evaluate portability, safety, and measurement-fidelity trade-offs. Two
-per-cgroup variants — V2.1 (cgroup-native C) and V3.3 (ebpf-cgroup, eBPF/CO-RE with
+per-cgroup variants — V2.1 (c-abi-cgroup C) and V3.3 (ebpf-core-cgroup, eBPF/CO-RE with
 in-kernel aggregation) — are the active profilers for the cross-deployment
 work (Paper 2); the older V0.x–V3.2 remain as comparison and structural
 evidence.
@@ -52,11 +52,11 @@ the original SystemTap approach across kernel versions and hardware architecture
 | V1 (stap-nohelper) -- Stap-native (SystemTap, 6.8+, mbw/llcocc disabled) | Complete |
 | V1.1 (stap-modern) -- Stap + userspace helper (SystemTap, 6.8+, full metrics, RCU-safe) | Complete (helper, `.stp`, and bench integration done; HiBench distributed-mode limitation documented in METRICS-ALIGNMENT.md) |
 | V2 (C-ABI) -- C / procfs / perf_event / resctrl | Complete; validated on Hetzner Sapphire Rapids for Phase 3 experiments |
-| V2.1 (cgroup-native) -- C / cgroup-native, per-cgroup attribution | Active (Paper 2 cross-deployment profiler); validated on Hetzner Sapphire Rapids |
+| V2.1 (c-abi-cgroup) -- C / c-abi-cgroup, per-cgroup attribution | Active (Paper 2 cross-deployment profiler); validated on Hetzner Sapphire Rapids |
 | V3.1 (bpftrace) -- bpftrace + Python orchestrator | Complete; validated on Hetzner Sapphire Rapids for Phase 3 experiments |
 | V3 (ebpf-ring) -- eBPF/CO-RE (libbpf, ring-buffer-streaming) | Complete; validated on Hetzner Sapphire Rapids for Phase 3 experiments |
 | V3.2 (eBPF-CORE) -- eBPF/CO-RE (libbpf, in-kernel-aggregating, paper section VIII) | Complete; validated on Hetzner Sapphire Rapids for Phase 3 experiments |
-| V3.3 (ebpf-cgroup) -- eBPF/CO-RE (libbpf, per-cgroup, in-kernel-aggregating) | Active (Paper 2 cross-deployment profiler); validated on Hetzner Sapphire Rapids |
+| V3.3 (ebpf-core-cgroup) -- eBPF/CO-RE (libbpf, per-cgroup, in-kernel-aggregating) | Active (Paper 2 cross-deployment profiler); validated on Hetzner Sapphire Rapids |
 
 ### Citation
 
@@ -66,7 +66,7 @@ If you use this software in your research, please cite it using the metadata in
 
 ## Variant Comparison
 
-| Feature                  | V0 classic | V0.1 k68 | V0.2 helper | V1 native | V1.1 helper | V2 stable-abi | V2.1 cgroup | V3.1 bpftrace | V3 ebpf-core | V3.2 eBPF-CORE | V3.3 ebpf-cgroup |
+| Feature                  | V0 classic | V0.1 k68 | V0.2 helper | V1 native | V1.1 helper | V2 stable-abi | V2.1 cgroup | V3.1 bpftrace | V3 ebpf-core | V3.2 eBPF-CORE | V3.3 ebpf-core-cgroup |
 |--------------------------|:----------:|:--------:|:-----------:|:---------:|:-----------:|:-------------:|:-----------:|:-------------:|:------------:|:--------------:|:----------------:|
 | Kernel module required   |    Yes     |   Yes    |     Yes     |    Yes    |     Yes     |      No       |     No      |     No        |      No      |      No        |       No         |
 | Userspace helper         |    No      |   No     |     Yes     |    No     |     Yes     |      n/a      |     n/a     |     Yes       |     Yes      |      Yes       |       Yes        |
@@ -138,11 +138,11 @@ fingerprint above and its on-disk schema are left untouched. Design + status:
 |   |-- v1-stap-nohelper/          Kernel 6.8+, stap-native probes (mbw/llcocc disabled)
 |   |-- v1.1-stap-modern/      Kernel 6.8+, stap + userspace helper (full 7 metrics, RCU-safe)
 |   |-- v2-c-abi/           Pure C: procfs / perf_event_open / resctrl
-|   |-- v2.1-cgroup-native/    Pure C, per-cgroup attribution (cgroup v2 + perf cgroup mode, no eBPF)
+|   |-- v2.1-c-abi-cgroup/    Pure C, per-cgroup attribution (cgroup v2 + perf cgroup mode, no eBPF)
 |   |-- v3-ebpf-ring/       Full eBPF/CO-RE with libbpf (ring-buffer-streaming)
 |   |-- v3.1-bpftrace/         bpftrace scripts + Python orchestrator + resctrl
 |   |-- v3.2-ebpf-core/         Full eBPF/CO-RE with libbpf (in-kernel-aggregating, paper section VIII)
-|   |-- v3.3-ebpf-cgroup/      eBPF/CO-RE with libbpf, per-cgroup targeting + in-kernel aggregation (paper #2 cross-deployment path)
+|   |-- v3.3-ebpf-core-cgroup/      eBPF/CO-RE with libbpf, per-cgroup targeting + in-kernel aggregation (paper #2 cross-deployment path)
 |-- VERSIONS.md                Variant-naming map (current vs legacy pre-2026-05-05)
 ```
 
@@ -222,10 +222,10 @@ sudo ./intp-hybrid -p <PID> -i <interval_ms>
 
 No framework dependencies. Requires: resctrl for mbw/llcocc.
 
-### V2.1 (cgroup-native) -- C: cgroup-native per-cgroup attribution
+### V2.1 (c-abi-cgroup) -- C: c-abi-cgroup per-cgroup attribution
 
 ```bash
-cd variants/v2.1-cgroup-native
+cd variants/v2.1-c-abi-cgroup
 make
 # system-wide / per-PID (like v2):
 sudo ./intp-hybrid --pids <PID> --interval <seconds>
@@ -238,7 +238,7 @@ cgroup v2 `cpu.stat`/`io.stat` and `perf_event_open` cgroup mode when `--cgroup`
 is given; disk bandwidth self-detects. `nets` stays system-wide (softirq is
 host-global without eBPF). One code path serves bare co-located processes,
 containers, and VM guests -- the paper-#2 container / IADA path; see
-`variants/v2.1-cgroup-native/DESIGN.md`. Requires kernel 5.8+ (cgroup v2);
+`variants/v2.1-c-abi-cgroup/DESIGN.md`. Requires kernel 5.8+ (cgroup v2);
 resctrl for mbw/llcocc.
 
 ```bash
@@ -289,21 +289,21 @@ ebpf-ring). Adds a trailing `mbw_raw_mbps` diagnostic column to the TSV
 output (suppressible via `--no-raw-mbw`); the first 7 columns stay
 byte-compatible with ebpf-ring.
 
-### V3.3 (ebpf-cgroup) -- eBPF/CO-RE per-cgroup
+### V3.3 (ebpf-core-cgroup) -- eBPF/CO-RE per-cgroup
 
 ```bash
-cd variants/v3.3-ebpf-cgroup
+cd variants/v3.3-ebpf-core-cgroup
 make
 # system-wide / per-PID (like v3.2):
-sudo ./intp-ebpf-cgroup --pids <PID> --interval <seconds>
+sudo ./intp-ebpf-core-cgroup --pids <PID> --interval <seconds>
 # per-cgroup (child-inclusive) -- e.g. a container's cgroup:
-sudo ./intp-ebpf-cgroup --cgroup /sys/fs/cgroup/<path> --interval <seconds>
+sudo ./intp-ebpf-core-cgroup --cgroup /sys/fs/cgroup/<path> --interval <seconds>
 # container alias / VM guest:
-sudo ./intp-ebpf-cgroup --target-container /sys/fs/cgroup/<path> --interval <seconds>
-sudo ./intp-ebpf-cgroup --target-vm <nic> --cgroup /sys/fs/cgroup/<qemu-scope> --interval <seconds>
+sudo ./intp-ebpf-core-cgroup --target-container /sys/fs/cgroup/<path> --interval <seconds>
+sudo ./intp-ebpf-core-cgroup --target-vm <nic> --cgroup /sys/fs/cgroup/<qemu-scope> --interval <seconds>
 ```
 
-ebpf-cgroup is the eBPF/CO-RE counterpart of cgroup-native: it keeps eBPF-CORE's
+ebpf-core-cgroup is the eBPF/CO-RE counterpart of c-abi-cgroup: it keeps eBPF-CORE's
 in-kernel aggregation but adds per-cgroup targeting, attributing the canonical 7
 metrics to one container or VM-guest cgroup instead of system-wide.
 `--cgroup` (or its alias `--target-container`) scopes a cgroup;
@@ -312,7 +312,7 @@ host tap/vnet interface while the other six metrics are scoped via
 `--cgroup` over the QEMU scope. `--no-diag-cols` suppresses the
 trailing diagnostic columns. This is the active eBPF profiler for the
 Paper 2 cross-deployment suite; see
-`variants/v3.3-ebpf-cgroup/DESIGN.md`.
+`variants/v3.3-ebpf-core-cgroup/DESIGN.md`.
 
 Requires: libbpf, clang, kernel BTF, kernel 5.8+ (cgroup v2), resctrl
 for mbw/llcocc.
@@ -332,7 +332,7 @@ sudo bash ub24run.sh --dry-run   # preview every step, run nothing
 ```
 
 `ub24run.sh`/`ub22run.sh` wrap `bench/run-os-campaign.sh` (`--help` for all
-knobs and the `SKIP_*` resume flags); `containerun24.sh` is the cgroup-native
+knobs and the `SKIP_*` resume flags); `containerun24.sh` is the c-abi-cgroup
 container counterpart -- it pins the `container-lxc` env and drives
 `run-big-batch.sh` (stress-ng leg; HiBench off until a container HiBench
 launcher exists). See
@@ -343,7 +343,7 @@ launcher exists). See
 Paper 2 runs the SAME application across six deployment legs --
 bare → docker (container) → podman (container-podman) → incus
 (container-lxc) → k3s (container-k8s) → vm-guest -- and profiles each
-with the per-cgroup variants V2.1 (cgroup-native) and V3.3 (ebpf-cgroup),
+with the per-cgroup variants V2.1 (c-abi-cgroup) and V3.3 (ebpf-core-cgroup),
 reporting paired deltas against the `bare` baseline. Each metric carries a
 claim class wired to the W4 faithfulness verdicts: `cpu` is absolute, `llcmr`
 is directional, and the remaining metrics are descriptive. The parity contract

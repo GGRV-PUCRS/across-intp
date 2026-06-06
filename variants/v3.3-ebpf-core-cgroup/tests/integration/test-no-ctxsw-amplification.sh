@@ -15,7 +15,7 @@
 #      This gives the BASELINE (workload only).
 #   4. Tear down + restart the workload (clean slate).
 #   5. Repeat step 2.
-#   6. Start intp-ebpf-cgroup in the background.
+#   6. Start intp-ebpf-core-cgroup in the background.
 #   7. Sample 'vmstat 1' for DUR seconds and sum the ctxt column.
 #      This gives the WITH measurement (workload + profiler).
 #   8. ratio = WITH / BASELINE. Pass if ratio <= MAX_RATIO (default 1.10).
@@ -24,7 +24,7 @@
 
 set -eu
 
-BIN=${BIN:-./intp-ebpf-cgroup}
+BIN=${BIN:-./intp-ebpf-core-cgroup}
 DUR=${DUR:-90}
 WARMUP=${WARMUP:-15}
 MAX_RATIO=${MAX_RATIO:-1.10}

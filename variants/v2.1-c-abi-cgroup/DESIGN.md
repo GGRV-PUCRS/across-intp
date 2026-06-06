@@ -6,7 +6,7 @@ backend at the head of the chain for every metric that has a stable
 per-cgroup kernel interface, so attribution follows the cgroup's current *and*
 future tasks with no PID re-scan:
 
-| metric | cgroup-native source              | continuous?  |
+| metric | c-abi-cgroup source              | continuous?  |
 |--------|-----------------------------------|:------------:|
 | cpu    | cgroup v2 `cpu.stat usage_usec`   | yes          |
 | blk    | cgroup v2 `io.stat` rbytes+wbytes | yes          |
@@ -173,10 +173,10 @@ hard resource (32-256 per system on Intel). See section 5.
 
 ## 4. Per-cgroup attribution strategy (V2.1)
 
-V2.1 prefers a continuous cgroup-native source over the V2 PID-set approach
+V2.1 prefers a continuous c-abi-cgroup source over the V2 PID-set approach
 wherever one exists:
 
-| metric  | cgroup-native (preferred)                             | fallback                                  |
+| metric  | c-abi-cgroup (preferred)                             | fallback                                  |
 |---------|-------------------------------------------------------|-------------------------------------------|
 | cpu     | cgroup v2 `cpu.stat usage_usec` (continuous)          | `/proc/<pid>/stat` -> `/proc/stat`        |
 | blk     | cgroup v2 `io.stat` rbytes+wbytes (continuous)        | `/proc/diskstats` io_ticks (device %util) |

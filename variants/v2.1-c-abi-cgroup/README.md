@@ -119,7 +119,7 @@ by construction it runs two experiments: apps as sub-cgroups in **one**
 container (per-app `cpu/blk/llcmr/mbw/llcocc`), and **two** sibling containers
 interfering on the host (per-container `netp`, plus conservation across the
 pair). Per-app `netp`/`nets` inside one netns are reported `LIMIT[v3.3]`/
-`SKIP[v3.3]` -- they need v3.3. See `variants/v3.3-ebpf-cgroup/DESIGN.md` §8.2.
+`SKIP[v3.3]` -- they need v3.3. See `variants/v3.3-ebpf-core-cgroup/DESIGN.md` §8.2.
 
     make validate-attribution VALIDATE_ARGS="--dry-run"   # structure only
     sudo make validate-attribution                        # live (needs lxd)

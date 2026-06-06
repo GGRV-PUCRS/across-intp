@@ -34,9 +34,9 @@
 set -eu
 
 # Sibling variant under variants/; this test is run with CWD = the v3.3
-# variant root (where ./intp-ebpf-cgroup sits), so the sibling is one level up.
-V21_BIN=${V21_BIN:-../v2.1-cgroup-native/intp-hybrid}
-V33_BIN=${V33_BIN:-./intp-ebpf-cgroup}
+# variant root (where ./intp-ebpf-core-cgroup sits), so the sibling is one level up.
+V21_BIN=${V21_BIN:-../v2.1-c-abi-cgroup/intp-hybrid}
+V33_BIN=${V33_BIN:-./intp-ebpf-core-cgroup}
 DUR=${DUR:-30}
 REL_TOL=${REL_TOL:-0.15}    # 15% fractional tolerance
 ABS_TOL=${ABS_TOL:-5}       # 5 percentage points when median is near zero
@@ -51,7 +51,7 @@ if [ ! -x "$V33_BIN" ]; then
     exit 1
 fi
 if [ ! -x "$V21_BIN" ]; then
-    echo "SKIP: $V21_BIN not built (run 'make' in variants/v2.1-cgroup-native first)"
+    echo "SKIP: $V21_BIN not built (run 'make' in variants/v2.1-c-abi-cgroup first)"
     exit 77
 fi
 if [ "$(id -u)" -ne 0 ]; then

@@ -1,7 +1,7 @@
 # V3.3 — eBPF/cgroup per-tenant IntP
 
 Per-cgroup interference profiler: the eBPF/CO-RE companion to
-**v2.1-cgroup-native**, extending the in-kernel-aggregating design of
+**v2.1-c-abi-cgroup**, extending the in-kernel-aggregating design of
 [v3.2-ebpf-core](../v3.2-ebpf-core/) from per-PID to **per-cgroup** attribution so
 interference can be charged to a single container or VM tenant.
 
@@ -11,7 +11,7 @@ artifact-contract decisions.
 
 ## Status
 
-Active profiler variant. Binary `intp-ebpf-cgroup` (resctrl group `intp-v3.3`,
+Active profiler variant. Binary `intp-ebpf-core-cgroup` (resctrl group `intp-v3.3`,
 Prometheus label `intp_v3_3`) builds and runs. The eBPF object implements:
 
 - **Cgroup-identity gating** — `bpf_get_current_cgroup_id()` (exact) or
@@ -70,7 +70,7 @@ contract intact on every environment.
 ## Build
 
 ```sh
-make            # build intp-ebpf-cgroup (needs clang, libbpf-dev, bpftool, BTF)
+make            # build intp-ebpf-core-cgroup (needs clang, libbpf-dev, bpftool, BTF)
 make test-unit  # host-side counter-snapshot test (no kernel)
 ```
 

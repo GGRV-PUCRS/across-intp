@@ -139,7 +139,7 @@ logged in [DECISIONS-container.md](DECISIONS-container.md) C25.
   podman(container-podman) → incus(container-lxc) → k3s(container-k8s) →
   vm-guest`. The `bare` row is the paired baseline; every delta is reported
   vs bare, in deployment-axis order (not alphabetical).
-- **Variants:** `v2.1-cgroup-native`, `v3.3-ebpf-cgroup`.
+- **Variants:** `v2.1-c-abi-cgroup`, `v3.3-ebpf-core-cgroup`.
 - **Metrics:** `netp nets blk mbw llcmr llcocc cpu` (7).
 - **Scope:** solo deltas are the headline result; the W5 colocation campaign
   and the IADA closed loop (above) are in-paper. The cpu absolute claim is
@@ -164,7 +164,7 @@ all six envs:
 W4 spine only reached mbw≈17). The network class uses the real veth/iperf3
 workload `app11b_tcp_veth` extended to run across the whole axis (TAP in the
 VM, per VM semantics) — not the loopback `app11_sort_net`, which reads netp=0
-on v2.1-cgroup-native and a cgroup_skb=100 loopback artifact on v3.3-ebpf-cgroup. `app05`'s 16 GB
+on v2.1-c-abi-cgroup and a cgroup_skb=100 loopback artifact on v3.3-ebpf-core-cgroup. `app05`'s 16 GB
 working set must fit under `--bench-mem` (ample at the 2/3-host default on the
 testbed).
 
@@ -225,16 +225,16 @@ with a TAP NIC bridged to the host so `netp`/`nets` see a real device. `mbw`
 and `llcocc` are structurally unavailable in a stock KVM guest (resctrl is
 host-only; no vRDT pass-through) — they are recorded with an `unsupported`
 availability status, distinct from `missing`, and are never emitted as 0 (the
-v3.3-ebpf-cgroup silent-zero → `--` correction that makes this hold is a Phase-1
+v3.3-ebpf-core-cgroup silent-zero → `--` correction that makes this hold is a Phase-1
 prerequisite, verified at the T1 smoke). Host-observer `vm` is not used for
 paper rows.
 
-### v2.1 (cgroup-native) LLC-occupancy in containers
+### v2.1 (c-abi-cgroup) LLC-occupancy in containers
 
-cgroup-native's in-container `llcocc` inflation (≈97 vs ≈2 on bare) is corrected at the
-harness level — v2.1-cgroup-native is given a cgroup-scoped mon_group for the PID-launched
-container envs (docker/podman), mirroring v3.3-ebpf-cgroup — and the occupancy cells are
-re-run; the v2.1-cgroup-native `llcocc` claim class is provisional until the re-run confirms
+c-abi-cgroup's in-container `llcocc` inflation (≈97 vs ≈2 on bare) is corrected at the
+harness level — v2.1-c-abi-cgroup is given a cgroup-scoped mon_group for the PID-launched
+container envs (docker/podman), mirroring v3.3-ebpf-core-cgroup — and the occupancy cells are
+re-run; the v2.1-c-abi-cgroup `llcocc` claim class is provisional until the re-run confirms
 the expected drop to ≈2 on docker/podman. The residual incus(lxc)
 whole-container-cgroup scope difference is a
 documented caveat (the harness fix cannot remove it, and `llcocc` has no

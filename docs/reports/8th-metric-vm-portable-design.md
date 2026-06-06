@@ -240,7 +240,7 @@ The local build of the separate `--portable-metrics` benchmark is **complete and
 compiles clean** (steps 1–4 below); remote validation (step 5) and the v2/v3.2
 back-port (step 6) remain. See DECISIONS-container.md **C27**.
 
-1. **v3.3 loader (`variants/v3.3-ebpf-cgroup/src/intp_agg.c`) — DONE.** schedlat
+1. **v3.3 loader (`variants/v3.3-ebpf-core-cgroup/src/intp_agg.c`) — DONE.** schedlat
    (eBPF, already in the BPF object + counter) was moved out of the diagnostic
    block into the portable block. Added file-read helpers (`read_psi_some_total_us`,
    `read_cpu_stat_throttled_us`, `read_proc_stat_steal`), per-interval `psi_mem`,
@@ -248,7 +248,7 @@ back-port (step 6) remain. See DECISIONS-container.md **C27**.
    counter × 64 B / interval → MB/s, so it survives the vPMU gap in-guest). The 6
    are emitted as a trailing block (TSV/JSON/Prometheus) only under
    `--portable-metrics`; the canonical 7 + 4 diagnostic columns are unchanged.
-2. **v2.1 backends (`variants/v2.1-cgroup-native/src/portable.c`) — DONE.** Six
+2. **v2.1 backends (`variants/v2.1-c-abi-cgroup/src/portable.c`) — DONE.** Six
    `metric_t` chains in the existing backend-registry pattern: schedlat
    (`cpu.pressure` → per-PID `schedstat` → `/proc/pressure/cpu`), psi_mem/psi_io
    (cgroup pressure → `/proc/pressure/*`), schedthr (`cpu.stat`, cgroup-only),

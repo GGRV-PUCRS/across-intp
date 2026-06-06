@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
 # validate-attribution.sh -- ground-truth validation of per-cgroup attribution
-# for the cgroup-native profiler, the signal the IADA closed loop consumes.
+# for the c-abi-cgroup profiler, the signal the IADA closed loop consumes.
 #
 # This is the runnable-now (v2.1) realization of v3.3 DESIGN.md sec.8.2/sec.11.
 # It does NOT validate the scheduler -- scheduling efficacy is the separate
@@ -55,7 +55,7 @@ set -euo pipefail
 # --- locations ---------------------------------------------------------------
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
-V21_BIN="${INTP_V21_BIN:-$REPO_ROOT/variants/v2.1-cgroup-native/intp-hybrid}"
+V21_BIN="${INTP_V21_BIN:-$REPO_ROOT/variants/v2.1-c-abi-cgroup/intp-hybrid}"
 LXC_BIN="${INTP_BENCH_LXC_BIN:-lxc}"
 LXC_IMAGE="${INTP_BENCH_LXC_IMAGE:-ubuntu:24.04}"
 
@@ -511,7 +511,7 @@ print_report() {
 main() {
     trap cleanup EXIT INT TERM
     need_root
-    [ -x "$V21_BIN" ] || [ "$DRY_RUN" -eq 1 ] || die "v2.1 binary not built: $V21_BIN (make -C variants/v2.1-cgroup-native all)"
+    [ -x "$V21_BIN" ] || [ "$DRY_RUN" -eq 1 ] || die "v2.1 binary not built: $V21_BIN (make -C variants/v2.1-c-abi-cgroup all)"
     if [ "$DRY_RUN" -eq 0 ]; then
         command -v jq >/dev/null 2>&1 || die "jq required for JSON parsing"
         command -v stress-ng >/dev/null 2>&1 || die "stress-ng required"

@@ -10,7 +10,7 @@ cross-deployment Paper 2 suite (its normative axis, variant set, and claim
 classes) is defined in EXPERIMENT-STRATEGY.md § "Paper 2 — cross-deployment
 benchmark suite"; this guide is the pipeline that runs it. The active
 profiler variants for the container + cross-deployment work are
-`v2.1-cgroup-native` and `v3.3-ebpf-cgroup`; the older v0.x–v3.2 variants
+`v2.1-c-abi-cgroup` and `v3.3-ebpf-core-cgroup`; the older v0.x–v3.2 variants
 remain as comparison/structural evidence.
 
 ## Goal

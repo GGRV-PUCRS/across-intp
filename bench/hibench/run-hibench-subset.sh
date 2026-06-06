@@ -44,11 +44,11 @@ V0_2_GENERATOR="$REPO_ROOT/variants/v0.2-legacy-intp-baseline/generate-stp.sh"
 V0_2_RECAL_STP="$REPO_ROOT/variants/v0.2-legacy-intp-baseline/intp.recal.stp"
 V0_2_HELPER="$REPO_ROOT/variants/v0.2-legacy-intp-baseline/intp-helper"
 V2_BIN="$REPO_ROOT/variants/v2-c-abi/intp-hybrid"
-V2_1_BIN="$REPO_ROOT/variants/v2.1-cgroup-native/intp-hybrid"
+V2_1_BIN="$REPO_ROOT/variants/v2.1-c-abi-cgroup/intp-hybrid"
 V3_1_RUNNER="$REPO_ROOT/variants/v3.1-bpftrace/run-intp-bpftrace.sh"
 V3_BIN="$REPO_ROOT/variants/v3-ebpf-ring/intp-ebpf"
 V3_2_BIN="$REPO_ROOT/variants/v3.2-ebpf-core/intp-eBPF-CORE"
-V3_3_BIN="$REPO_ROOT/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup"
+V3_3_BIN="$REPO_ROOT/variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup"
 
 # Defaults
 SIZE="${SIZE:-medium}"
@@ -444,7 +444,7 @@ stop_profiler() {
         pre_kids=$(pgrep -P "$PROFILER_PID" 2>/dev/null | tr '\n' ' ')
         log "  [stop_profiler] PROFILER_PID=$PROFILER_PID children='${pre_kids}'"
         _kill_tree KILL "$PROFILER_PID"
-        pkill -KILL -f 'intp-hybrid|intp-ebpf|intp-eBPF-CORE|intp-ebpf-cgroup|run-intp-bpftrace|orchestrator/aggregator\.py' 2>/dev/null
+        pkill -KILL -f 'intp-hybrid|intp-ebpf|intp-eBPF-CORE|intp-ebpf-core-cgroup|run-intp-bpftrace|orchestrator/aggregator\.py' 2>/dev/null
         pkill -KILL -f 'bpftrace -q' 2>/dev/null
         local k=0
         while [ $k -lt 8 ] && kill -0 "$PROFILER_PID" 2>/dev/null; do
@@ -815,7 +815,7 @@ _start_binary_profiler() {
     # so the captured TSV keeps the canonical 7-column shape the rest
     # of the hibench pipeline expects.
     [ "$variant" = "v3.2" ] && args+=(--no-raw-mbw)
-    # V3.3 (eBPF cgroup-native) emits diagnostic columns (netp_dev, nets_sys,
+    # V3.3 (eBPF c-abi-cgroup) emits diagnostic columns (netp_dev, nets_sys,
     # mbw_raw_mbps, blk_MBps) trailing the 7 canonical metrics by default;
     # --no-diag-cols suppresses them so the captured TSV stays leading-ts +
     # EXACTLY the 7 canonical columns (C13). This mirrors v3.2's --no-raw-mbw.
@@ -1550,7 +1550,7 @@ cleanup_stale_orphans() {
     # eating RAM and signals get throttled, causing the next run to hang.
     [ "$DRY_RUN" -eq 1 ] && return 0
     local victims
-    victims=$(pgrep -f 'intp-hybrid|intp-ebpf|intp-ebpf-cgroup|run-intp-bpftrace|orchestrator/aggregator\.py|bench/hibench/run-hibench-subset|stress-ng' 2>/dev/null \
+    victims=$(pgrep -f 'intp-hybrid|intp-ebpf|intp-ebpf-core-cgroup|run-intp-bpftrace|orchestrator/aggregator\.py|bench/hibench/run-hibench-subset|stress-ng' 2>/dev/null \
               | grep -v "^$$\$" || true)
     if [ -n "$victims" ]; then
         warn "[preflight] killing stale processes: $(echo $victims | tr '\n' ' ')"
@@ -1594,11 +1594,11 @@ preflight() {
                 [ -x "$V0_2_HELPER" ] || die "V0.2 helper not built: $V0_2_HELPER (run 'make -C $REPO_ROOT/variants/v0.2-legacy-intp-baseline')"
                 ;;
             v2) [ -x "$V2_BIN" ] || [ "$DRY_RUN" -eq 1 ] || die "v2 binary not found: $V2_BIN" ;;
-            v2.1) [ -x "$V2_1_BIN" ] || [ "$DRY_RUN" -eq 1 ] || die "v2.1 binary not found: $V2_1_BIN (run 'make -C $REPO_ROOT/variants/v2.1-cgroup-native')" ;;
+            v2.1) [ -x "$V2_1_BIN" ] || [ "$DRY_RUN" -eq 1 ] || die "v2.1 binary not found: $V2_1_BIN (run 'make -C $REPO_ROOT/variants/v2.1-c-abi-cgroup')" ;;
             v3.1) [ -x "$V3_1_RUNNER" ] || [ "$DRY_RUN" -eq 1 ] || die "v3.1 runner not found: $V3_1_RUNNER" ;;
             v3) [ -x "$V3_BIN" ] || [ "$DRY_RUN" -eq 1 ] || die "v3 binary not found: $V3_BIN" ;;
             v3.2) [ -x "$V3_2_BIN" ] || [ "$DRY_RUN" -eq 1 ] || die "v3.2 binary not found: $V3_2_BIN (run 'make -C $REPO_ROOT/variants/v3.2-ebpf-core')" ;;
-            v3.3) [ -x "$V3_3_BIN" ] || [ "$DRY_RUN" -eq 1 ] || die "v3.3 binary not found: $V3_3_BIN (run 'make -C $REPO_ROOT/variants/v3.3-ebpf-cgroup')" ;;
+            v3.3) [ -x "$V3_3_BIN" ] || [ "$DRY_RUN" -eq 1 ] || die "v3.3 binary not found: $V3_3_BIN (run 'make -C $REPO_ROOT/variants/v3.3-ebpf-core-cgroup')" ;;
             *)  die "unknown variant: $v" ;;
         esac
     done
@@ -1626,7 +1626,7 @@ _on_exit() {
         _kill_tree KILL "$STAP_PID" 2>/dev/null || true
     fi
     # Belt-and-suspenders for any profiler binary that escaped tracking
-    pkill -KILL -f 'intp-hybrid|intp-ebpf|intp-ebpf-cgroup|run-intp-bpftrace|orchestrator/aggregator\.py' 2>/dev/null || true
+    pkill -KILL -f 'intp-hybrid|intp-ebpf|intp-ebpf-core-cgroup|run-intp-bpftrace|orchestrator/aggregator\.py' 2>/dev/null || true
     pkill -KILL -f 'bpftrace -q' 2>/dev/null || true
     # Stressor last (lower data-integrity priority; clean up RAM)
     stop_stressor

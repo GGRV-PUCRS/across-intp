@@ -1,5 +1,5 @@
 /*
- * cpu.c -- CPU utilization, three backends (v2.1: cgroup-native first).
+ * cpu.c -- CPU utilization, three backends (v2.1: c-abi-cgroup first).
  *
  *   cpu_cgroup         native per-cgroup CPU via cgroup v2 cpu.stat usage_usec.
  *                      Selected when --cgroup names a cgroup v2 path. Counts

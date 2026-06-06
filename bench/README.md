@@ -9,7 +9,7 @@ variant on measurement fidelity, runtime overhead, and availability of
 each metric across environments.
 
 The active profiler variants for the container and cross-deployment work
-are **v2.1 (cgroup-native)** (C / cgroup) and **v3.3 (ebpf-cgroup)** (eBPF /
+are **v2.1 (c-abi-cgroup)** (C / cgroup) and **v3.3 (ebpf-core-cgroup)** (eBPF /
 CO-RE with in-kernel aggregation); the earlier v0.x..v3.2 variants remain
 as comparison and structural evidence. All variants emit the same
 canonical 7-metric contract (`netp nets blk mbw llcmr llcocc cpu`), which
@@ -58,7 +58,7 @@ sudo ./run-intp-bench.sh
 # focus on the modern variants only
 sudo ./run-intp-bench.sh --variants v1,v2,v3.1,v3
 
-# focus on the cgroup-native container/cross-deployment variants
+# focus on the c-abi-cgroup container/cross-deployment variants
 sudo ./run-intp-bench.sh --variants v2.1,v3.3
 
 # enable a container env (docker / podman / lxc / k8s share the same launcher)

@@ -5,7 +5,7 @@ architectures, and deployment environments.
 
 ## 1. Variant Summary
 
-| Aspect | V2 hybrid-procfs | V2.1 cgroup-native | V3.1 bpftrace | V3 eBPF/CO-RE | V3.2 eBPF in-kernel agg |
+| Aspect | V2 hybrid-procfs | V2.1 c-abi-cgroup | V3.1 bpftrace | V3 eBPF/CO-RE | V3.2 eBPF in-kernel agg |
 |--------|:-----------------:|:------------------:|:-----------:|:-------------:|:----------------:|
 | Language | C11 | C11 | bpftrace DSL + Python 3 | C11 + eBPF C | C11 + eBPF C |
 | Framework | None (procfs/sysfs/perf_event) | None (+ cgroup v2 + perf cgroup mode) | bpftrace runtime | libbpf + CO-RE | libbpf + CO-RE |
@@ -206,10 +206,10 @@ sudo ./intp-hybrid --cgroup /sys/fs/cgroup/lxc.payload.<name> --interval 1
 6/7 metrics then attribute per-cgroup (continuous, child-inclusive); `nets`
 stays system-wide (host-global softirq). The bench harness automates this as
 the `container-lxc` env and the `containerun24.sh` campaign launcher (LXC/LXD);
-see the repo root and `variants/v2.1-cgroup-native/DESIGN.md`. This is the
+see the repo root and `variants/v2.1-c-abi-cgroup/DESIGN.md`. This is the
 Paper 2 container + IADA path. Its eBPF-native per-cgroup sibling,
-v3.3-ebpf-cgroup (eBPF/CO-RE with in-kernel aggregation), is now an active
-profiler variant alongside v2.1-cgroup-native; the two share the canonical
+v3.3-ebpf-core-cgroup (eBPF/CO-RE with in-kernel aggregation), is now an active
+profiler variant alongside v2.1-c-abi-cgroup; the two share the canonical
 7-metric contract and are the profilers used across the cross-deployment
 suite (§5.5). The older v0.x–v3.2 variants remain as comparison and
 structural evidence.
@@ -264,7 +264,7 @@ silent substitution.
 ## 5.5 Cross-Deployment Suite (Paper 2)
 
 Paper 2 runs the **same application** across the deployment ladder and
-profiles each rung with v2.1-cgroup-native and v3.3-ebpf-cgroup, taking
+profiles each rung with v2.1-c-abi-cgroup and v3.3-ebpf-core-cgroup, taking
 paired deltas against the bare-metal reference:
 
 ```text

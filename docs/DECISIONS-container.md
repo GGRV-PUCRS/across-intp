@@ -1,7 +1,7 @@
 # DECISIONS-container.md — v2.1 / v3.3 container-based interference
 
 Implementation notes / deviations for the container-axis packet: finalizing
-**v2.1-cgroup-native** (C/cgroup) and building **v3.3-ebpf-cgroup** (eBPF/cgroup)
+**v2.1-c-abi-cgroup** (C/cgroup) and building **v3.3-ebpf-core-cgroup** (eBPF/cgroup)
 to measure per-tenant interference for container and VM targets. Scope is the
 local `[FAN-OUT]` zone (codegen, build, schema, analysis) plus the gated remote
 `[SINGLE-FLIGHT]` zone. Kept separate from the root
@@ -160,7 +160,7 @@ Keep `intp_agg.{bpf.c,bpf.h,c,_args.c,_args.h}` and the skeleton symbol prefix
 `intp_agg_bpf__*`. Renaming would force matching churn in `gen-vmlinux.sh`,
 `test-core-portability.sh`, the Makefile `BPF_*` vars, and every
 `intp_agg_bpf__open/load/attach/destroy` call site for no benefit. P0 renamed only
-the **binary** (`intp-ebpf-cgroup`), `GROUP_NAME`, and the Prometheus label.
+the **binary** (`intp-ebpf-core-cgroup`), `GROUP_NAME`, and the Prometheus label.
 
 ### C13 — `--no-diag-cols` is load-bearing for the harness (H3)
 
@@ -184,7 +184,7 @@ explicitly requested for analysis.
   SLIRP user-net with no host tap).
 - H1 must add the v3.3 arm to BOTH the `stage_build` build step AND the
   per-variant binary-existence GUARD block (`variant_selected vX && [ ! -x $VX_BIN ]`),
-  or `stage_build` won't warn on a missing `intp-ebpf-cgroup`.
+  or `stage_build` won't warn on a missing `intp-ebpf-core-cgroup`.
 - Test scripts (`BIN=./intp-eBPF-CORE` defaults, `PIN_ROOT=…intp-v3.2-core-test`)
   still carry v3.2 strings after P0; P6 owns those edits. (The args `--help`
   `V3.2-specific:` text was fixed in P4.)
@@ -587,7 +587,7 @@ advisor frame ("measure the same application on bare metal, then on container")
 as paired per-`(workload, metric, variant)` deltas against the bare baseline,
 across the full deployment axis `bare → docker(container) →
 podman(container-podman) → incus(container-lxc) → k3s(container-k8s) →
-vm-guest`, profiled by {v2.1-cgroup-native, v3.3-ebpf-cgroup}, 7 metrics each.
+vm-guest`, profiled by {v2.1-c-abi-cgroup, v3.3-ebpf-core-cgroup}, 7 metrics each.
 No code this phase; the durable suite definition + parity contract land in
 [EXPERIMENT-STRATEGY.md](EXPERIMENT-STRATEGY.md) ("Paper 2 — cross-deployment
 benchmark suite").
@@ -908,3 +908,26 @@ victim's 13 metrics):
   real pairwise data).
 - **Shape:** reps/duration per the solo campaign; single-flight, run after the solo
   6-env campaign.
+
+### C30 — v2.1/v3.3 descriptive rename to match the paper labels (2026-06-06)
+
+Extends main's descriptive-variant rename (76bcf59: v2→C-ABI, v3.2→eBPF-CORE, …)
+to the two per-cgroup container variants so the paper label, the directory slug,
+and every in-repo name agree:
+
+- **v2.1**: dir `variants/v2.1-cgroup-native` → `variants/v2.1-c-abi-cgroup`;
+  label `cgroup-native` → **c-abi-cgroup** (the C-ABI approach, per-cgroup). Binary
+  stays `intp-hybrid` (shared with v2/C-ABI; not a stale per-variant name).
+- **v3.3**: dir `variants/v3.3-ebpf-cgroup` → `variants/v3.3-ebpf-core-cgroup`;
+  label `ebpf-cgroup` → **ebpf-core-cgroup** (the eBPF-CORE approach, per-cgroup);
+  binary `intp-ebpf-cgroup` → **intp-ebpf-core-cgroup**.
+
+Applied across folders, all path references (Makefiles, orchestrator, hibench,
+preflight, validate, tests), the `VARIANT_LABELS` maps in every `bench/plot/*.py`
+(+ iada), `VERSIONS.md`, and the docs. **Supersedes C12** ("do not rename the v3.3
+binary"): C12 avoided churn during the build; the paper-consistency rename is worth
+it. KEPT (ID-based, not the stale approach name): variant IDs `v2.1`/`v3.3`, the
+resctrl GROUP_NAME `intp-v3.3`, the Prometheus label `intp_v3_3`, and the BPF source
+basenames `intp_agg.*`. Verified: 0 old slugs / 0 `intp-ebpf-cgroup` / 0 `ebpf-cgroup`
+remaining; all variants build at the new paths; v2.1 unit tests pass (7 metrics/21
+backends); analyzers/plotters compile; all scripts bash -n clean.

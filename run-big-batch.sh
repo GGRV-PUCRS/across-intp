@@ -23,7 +23,7 @@
 #                                                   host (--pid=host); host-visible cgroups => attributed
 #                                                   like the docker env, but no daemon to start or quiesce
 #                                 container-lxc     workload in LXC/LXD (Incus), profiler on host on the
-#                                                   container cgroup (cgroup-native v2.1 / per-cgroup eBPF v3.3)
+#                                                   container cgroup (c-abi-cgroup v2.1 / per-cgroup eBPF v3.3)
 #                                 container-k8s     workload in a Kubernetes pod (k3s), profiler on host; the
 #                                                   DEEPEST cgroup nesting (kubepods.slice/.../cri-containerd-
 #                                                   <id>.scope) -- the per-cgroup attribution stress test. Needs
@@ -171,15 +171,15 @@ BENCH_ENVS="${BENCH_ENVS:-bare}"
 #   v0   classic stap baseline — only builds on very old kernels; add with
 #        BENCH_VARIANTS="v0,v0.2,v1.1,v2,v3".
 #   v1   stap-native (pre-helper) — BENCH_VARIANTS="...,v1".
-#   v2.1 cgroup-native C-ABI — per-cgroup attribution without eBPF
+#   v2.1 c-abi-cgroup C-ABI — per-cgroup attribution without eBPF
 #        (container/VM + IADA loop, paper #2); see
-#        variants/v2.1-cgroup-native/DESIGN.md — BENCH_VARIANTS="...,v2.1".
+#        variants/v2.1-c-abi-cgroup/DESIGN.md — BENCH_VARIANTS="...,v2.1".
 #   v3.1 bpftrace alternative — BENCH_VARIANTS="...,v3.1".
 #   v3.2 in-kernel-aggregating variant (addresses the V-D amplification);
 #        see variants/v3.2-ebpf-core/DESIGN.md — BENCH_VARIANTS="...,v3.2".
 #   v3.3 per-cgroup eBPF variant — eBPF-native sibling of v3.2 / companion to
 #        v2.1 (container/VM + IADA loop, paper #2); see
-#        variants/v3.3-ebpf-cgroup/DESIGN.md — BENCH_VARIANTS="...,v3.3".
+#        variants/v3.3-ebpf-core-cgroup/DESIGN.md — BENCH_VARIANTS="...,v3.3".
 BENCH_VARIANTS="${BENCH_VARIANTS:-v0.2,v1.1,v2,v3}"
 # HIBENCH_VARIANTS defaults to BENCH_VARIANTS, EXCEPT that the classic V0
 # (exact token "v0", not v0.2) is excluded from HiBench by default.
@@ -310,10 +310,10 @@ fi
 _variant_requested v0.2 && run_step "build v0.2" make -C variants/v0.2-legacy-intp-baseline all
 _variant_requested v1.1 && run_step "build v1.1" make -C variants/v1.1-stap-modern all
 _variant_requested v2   && run_step "build v2"   make -C variants/v2-c-abi all
-_variant_requested v2.1 && run_step "build v2.1" make -C variants/v2.1-cgroup-native all
+_variant_requested v2.1 && run_step "build v2.1" make -C variants/v2.1-c-abi-cgroup all
 _variant_requested v3   && run_step "build v3"   make -C variants/v3-ebpf-ring all
 _variant_requested v3.2 && run_step "build v3.2" make -C variants/v3.2-ebpf-core all
-_variant_requested v3.3 && run_step "build v3.3" make -C variants/v3.3-ebpf-cgroup all
+_variant_requested v3.3 && run_step "build v3.3" make -C variants/v3.3-ebpf-core-cgroup all
 _variant_requested v3.1 && run_step "v3.1 deps check" make -C variants/v3.1-bpftrace deps
 true   # keep exit status clean after the short-circuit && chains above
 run_step "python benchmark deps" bash -c '

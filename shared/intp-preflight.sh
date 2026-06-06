@@ -18,7 +18,7 @@
 #   ./intp-preflight.sh --quiet            # only the final summary
 #
 # Variant selectors: v0 v0.1 v0.2 v1 v1.1 v2 v2.1 v3.1 v3 v3.2 v3.3 bench
-# (harness deps). v2.1/v3.3 are the cgroup-native (container/VM) endpoints.
+# (harness deps). v2.1/v3.3 are the c-abi-cgroup (container/VM) endpoints.
 # -----------------------------------------------------------------------------
 
 set -u
@@ -337,7 +337,7 @@ check_perf_uncore() {
 # -----------------------------------------------------------------------------
 # D2. Container / VM / cgroup attribution (V2.1, V3.3)
 #
-# v2.1 (cgroup-native hybrid-C) and v3.3 (eBPF cgroup-native) attribute the
+# v2.1 (c-abi-cgroup hybrid-C) and v3.3 (eBPF c-abi-cgroup) attribute the
 # canonical metrics per-cgroup so a container or VM can be measured as "a
 # cgroup". That path needs: cgroup v2 unified hierarchy mounted at
 # /sys/fs/cgroup, perf_event cgroup-mode (PERF_FLAG_PID_CGROUP; kernel >= 5.8),
@@ -818,7 +818,7 @@ if want_variant v2; then
         priv:root:required
 fi
 
-# v2.1 -- C / cgroup-native hybrid (intp-hybrid, same as v2) + cgroup v2 unified
+# v2.1 -- C / c-abi-cgroup hybrid (intp-hybrid, same as v2) + cgroup v2 unified
 # + perf cgroup-mode for per-cgroup attribution. Kernel >= 5.8 (cgroup v2 +
 # PERF_FLAG_PID_CGROUP baseline). Same toolchain as v2 (gcc/make); 6/7 metrics
 # per-cgroup, nets stays system-wide.
@@ -916,7 +916,7 @@ if want_variant v3.2; then
         priv:root:required
 fi
 
-# v3.3 -- eBPF cgroup-native (intp-ebpf-cgroup, sibling of v3.2). Same toolchain
+# v3.3 -- eBPF c-abi-cgroup (intp-ebpf-core-cgroup, sibling of v3.2). Same toolchain
 # as v3.2 (clang/libbpf/bpftool/BTF/libelf/zlib) PLUS cgroup v2 unified +
 # cgroup_skb attach (CAP_NET_ADMIN) + perf cgroup-mode + bio-owner blk. Kernel
 # >= 5.8 (cgroup-BPF + cgroup v2 floor). per-cgroup counter maps; nets is a

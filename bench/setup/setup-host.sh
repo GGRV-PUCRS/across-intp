@@ -19,13 +19,13 @@
 #       * clang / llvm / libbpf-dev / libelf-dev / zlib1g-dev / pahole (V3, V3.2,
 #         V3.3 eBPF build deps)
 #       * BTF availability check + kernel >= 5.8 check (cgroup v2 + cgroup_skb
-#         for the cgroup-native endpoints V2.1 / V3.3)
+#         for the c-abi-cgroup endpoints V2.1 / V3.3)
 #       * everything from the common set above
 #
 # In both profiles:
 #       * mounts resctrl and persists it in /etc/fstab
 #       * sets perf_event_paranoid=-1 and kptr_restrict=0 via sysctl.d
-#       * builds v2 + v2.1 (cgroup-native) and, on 24.04, v3 + v3.2 + v3.3
+#       * builds v2 + v2.1 (c-abi-cgroup) and, on 24.04, v3 + v3.2 + v3.3
 #       * runs a smoke test for each installed profiler
 #       * installs the analysis stack (numpy / scipy / pandas / matplotlib /
 #         scikit-learn) for the post-campaign W4 stats and bench/plot/*
@@ -234,7 +234,7 @@ install_matching_kernel_compiler() {
         || warn "failed to install $compiler_pkg -- SystemTap builds may fail"
 }
 
-# Warn (do not fail) if the running kernel is older than the cgroup-native floor
+# Warn (do not fail) if the running kernel is older than the c-abi-cgroup floor
 # the v2.1 / v3.3 endpoints need: 5.8 for cgroup v2 unified, perf cgroup-mode
 # (PERF_FLAG_PID_CGROUP) and cgroup_skb / cgroup-BPF attach.
 check_kernel_version() {
@@ -274,7 +274,7 @@ install_optional() {
     [ "$INSTALL_OPTIONAL" -eq 1 ] || { log "skipping optional packages per --no-optional"; return 0; }
 
     # Container runtimes: docker.io for env=container; lxc/incus for
-    # env=container-lxc (the cgroup-native v2.1/v3.3 path); podman (+ crun, its
+    # env=container-lxc (the c-abi-cgroup v2.1/v3.3 path); podman (+ crun, its
     # OCI runtime) for env=container-podman -- daemonless and OCI-compatible, so
     # rootful 'podman run' places containers in host-visible cgroup v2 cgroups
     # the host-side profiler attributes exactly like docker. incus is the modern
@@ -448,7 +448,7 @@ install_systemtap_52() {
 install_modern_stack() {
     log "installing V0.1..V3.3 stack (SystemTap + bpftrace + libbpf/CO-RE)"
     # clang/llvm/libbpf-dev/libelf-dev/zlib1g-dev/pkg-config are the eBPF build
-    # deps shared by V3, V3.2 and the cgroup-native V3.3; pahole feeds BTF.
+    # deps shared by V3, V3.2 and the c-abi-cgroup V3.3; pahole feeds BTF.
     DEBIAN_FRONTEND=noninteractive apt-get install -y \
         systemtap systemtap-runtime libdw-dev gettext intel-cmt-cat \
         bpftrace python3 python3-pip python3-venv \
@@ -468,10 +468,10 @@ install_modern_stack() {
         log "BTF present at /sys/kernel/btf/vmlinux"
     fi
 
-    # cgroup-native endpoints (V2.1 / V3.3) need kernel >= 5.8 for cgroup v2
+    # c-abi-cgroup endpoints (V2.1 / V3.3) need kernel >= 5.8 for cgroup v2
     # unified + perf cgroup-mode + cgroup_skb attach.
     check_kernel_version 5 8 \
-        "V2.1/V3.3 cgroup-native attribution needs cgroup v2 unified + perf cgroup-mode + cgroup_skb" \
+        "V2.1/V3.3 c-abi-cgroup attribution needs cgroup v2 unified + perf cgroup-mode + cgroup_skb" \
         || true
     if grep -q '^cgroup2 /sys/fs/cgroup ' /proc/mounts 2>/dev/null \
             || [ -r /sys/fs/cgroup/cgroup.controllers ]; then
@@ -521,15 +521,15 @@ build_variants() {
     [ "$DO_BUILD" -eq 1 ] || { log "skipping build per --no-build"; return 0; }
 
     # v2 + v2.1 are C/procfs builds (gcc/make) available in both profiles. v2.1
-    # is the cgroup-native sibling of v2 (same intp-hybrid CLI, kernel >= 5.8).
+    # is the c-abi-cgroup sibling of v2 (same intp-hybrid CLI, kernel >= 5.8).
     if [ -d "$REPO_ROOT/variants/v2-c-abi" ]; then
         log "building v2 (hybrid procfs)"
         make -C "$REPO_ROOT/variants/v2-c-abi" || warn "v2 build failed"
     fi
 
-    if [ -d "$REPO_ROOT/variants/v2.1-cgroup-native" ]; then
-        log "building v2.1 (cgroup-native hybrid-C)"
-        make -C "$REPO_ROOT/variants/v2.1-cgroup-native" || warn "v2.1 build failed"
+    if [ -d "$REPO_ROOT/variants/v2.1-c-abi-cgroup" ]; then
+        log "building v2.1 (c-abi-cgroup hybrid-C)"
+        make -C "$REPO_ROOT/variants/v2.1-c-abi-cgroup" || warn "v2.1 build failed"
     fi
 
     # eBPF/CO-RE builds (clang/libbpf) -- modern profile only.
@@ -543,9 +543,9 @@ build_variants() {
         make -C "$REPO_ROOT/variants/v3.2-ebpf-core" || warn "v3.2 build failed"
     fi
 
-    if [ "$PROFILE" = "modern" ] && [ -d "$REPO_ROOT/variants/v3.3-ebpf-cgroup" ]; then
-        log "building v3.3 (eBPF cgroup-native)"
-        make -C "$REPO_ROOT/variants/v3.3-ebpf-cgroup" || warn "v3.3 build failed"
+    if [ "$PROFILE" = "modern" ] && [ -d "$REPO_ROOT/variants/v3.3-ebpf-core-cgroup" ]; then
+        log "building v3.3 (eBPF c-abi-cgroup)"
+        make -C "$REPO_ROOT/variants/v3.3-ebpf-core-cgroup" || warn "v3.3 build failed"
     fi
 }
 
@@ -573,10 +573,10 @@ selftest() {
         fi
     fi
 
-    # v2.1 (cgroup-native, intp-hybrid CLI like v2) -- both profiles.
-    if [ -x "$REPO_ROOT/variants/v2.1-cgroup-native/intp-hybrid" ]; then
-        if "$REPO_ROOT/variants/v2.1-cgroup-native/intp-hybrid" --list-backends >/dev/null 2>&1; then
-            log "  v2.1        OK ($("${REPO_ROOT}"/variants/v2.1-cgroup-native/intp-hybrid --list-backends 2>&1 | head -1))"
+    # v2.1 (c-abi-cgroup, intp-hybrid CLI like v2) -- both profiles.
+    if [ -x "$REPO_ROOT/variants/v2.1-c-abi-cgroup/intp-hybrid" ]; then
+        if "$REPO_ROOT/variants/v2.1-c-abi-cgroup/intp-hybrid" --list-backends >/dev/null 2>&1; then
+            log "  v2.1        OK ($("${REPO_ROOT}"/variants/v2.1-c-abi-cgroup/intp-hybrid --list-backends 2>&1 | head -1))"
         else
             warn "  v2.1        FAIL (--list-backends returned non-zero)"
         fi
@@ -602,8 +602,8 @@ selftest() {
                 warn "  v3.2        FAIL"
             fi
         fi
-        if [ -x "$REPO_ROOT/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup" ]; then
-            if "$REPO_ROOT/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup" --list-capabilities >/dev/null 2>&1; then
+        if [ -x "$REPO_ROOT/variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup" ]; then
+            if "$REPO_ROOT/variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup" --list-capabilities >/dev/null 2>&1; then
                 log "  v3.3        OK"
             else
                 warn "  v3.3        FAIL"
@@ -676,7 +676,7 @@ main() {
     log "Setup complete. Next:"
     log "    sudo $REPO_ROOT/bench/run-intp-bench.sh --variants $([ "$PROFILE" = "legacy" ] && echo "v0" || echo "v0.1,v1,v2,v2.1,v3.1,v3,v3.2,v3.3")"
     if [ "$PROFILE" = "modern" ]; then
-        log "    # container (cgroup-native v2.1/v3.3):  sudo bash $REPO_ROOT/containerun24.sh --variants v2.1,v3.3"
+        log "    # container (c-abi-cgroup v2.1/v3.3):  sudo bash $REPO_ROOT/containerun24.sh --variants v2.1,v3.3"
         log "    # VM tenant (env=vm):  see bench/run-intp-bench.sh --env vm / run-big-batch.sh BENCH_ENVS=vm"
     fi
 }

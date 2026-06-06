@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# containerun24.sh -- one-shot container campaign for the cgroup-native variants.
+# containerun24.sh -- one-shot container campaign for the c-abi-cgroup variants.
 #
 # The paper-#2 counterpart of ub24run.sh: instead of the bare-metal SBAC-PAD
 # legs (ub24run.sh -> v1.1,v2,v3.2 ; ub22run.sh -> v0.2), this launcher runs the
@@ -17,13 +17,13 @@
 #
 # The "24" denotes the Ubuntu 24.04 host and the default ubuntu:24.04 LXD image.
 #
-# Variants (both are first-class measured cgroup-native endpoints, paper #2):
-#   v2.1   cgroup-native hybrid-C (no eBPF) -- per-cgroup via cpu.stat/io.stat
+# Variants (both are first-class measured c-abi-cgroup endpoints, paper #2):
+#   v2.1   c-abi-cgroup hybrid-C (no eBPF) -- per-cgroup via cpu.stat/io.stat
 #          + perf cgroup-mode
 #   v3.3   eBPF-native per-cgroup -- cgroup_skb netp + cgroup-id counter maps
 # Both run by default. To measure just one, pass --variants:
-#   sudo bash containerun24.sh --variants v2.1        # cgroup-native only
-#   sudo bash containerun24.sh --variants v3.3        # eBPF cgroup-native only
+#   sudo bash containerun24.sh --variants v2.1        # c-abi-cgroup only
+#   sudo bash containerun24.sh --variants v3.3        # eBPF c-abi-cgroup only
 #
 # Usage:
 #   sudo bash containerun24.sh                      # full container stress-ng campaign (v2.1,v3.3)
@@ -72,7 +72,7 @@ BIG_BATCH="$SCRIPT_DIR/run-big-batch.sh"
 [ -f "$BIG_BATCH" ] || { echo "containerun24.sh: run-big-batch.sh not found at $BIG_BATCH" >&2; exit 1; }
 
 echo "==================================================================="
-echo " IntP container campaign (cgroup-native)"
+echo " IntP container campaign (c-abi-cgroup)"
 echo "   env           = $BENCH_ENVS"
 echo "   variants      = $BENCH_VARIANTS"
 echo "   lxc engine    = $INTP_BENCH_LXC_BIN   image = $INTP_BENCH_LXC_IMAGE"

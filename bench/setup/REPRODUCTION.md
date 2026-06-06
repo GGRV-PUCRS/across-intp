@@ -2,7 +2,7 @@
 
 End-to-end recipe to reproduce the IntP campaign host. Everything in
 **Sections 1-7** is whole-machine setup that applies to **stress-ng,
-profilers (stap-modern/C-ABI/cgroup-native/ebpf-ring/bpftrace/eBPF-CORE/ebpf-cgroup),
+profilers (stap-modern/C-ABI/c-abi-cgroup/ebpf-ring/bpftrace/eBPF-CORE/ebpf-core-cgroup),
 CloudSim/IADA, and any other workload**.
 Section 8 is HiBench/Hadoop-specific and is the only piece that doesn't
 apply if you only need stress-ng + profilers.
@@ -98,7 +98,7 @@ the noble 6.8 line automatically and nothing kernel-related is baked in. A
 **VM has its own kernel**, so the VM image installs its own HWE kernel to
 track the host. See [bench/setup/README.md](README.md) §2 for the full
 per-env build/run recipes. The per-cgroup attribution path these tenants
-exercise is served by cgroup-native (v2.1) and ebpf-cgroup (v3.3).
+exercise is served by c-abi-cgroup (v2.1) and ebpf-core-cgroup (v3.3).
 
 ---
 
@@ -127,10 +127,10 @@ It auto-detects jammy vs noble and does, in order:
    - **jammy**: SystemTap 5.2 from source, intel-cmt-cat, kernel debuginfo via ddebs, `stap-prep`
    - **noble**: systemtap + systemtap-runtime (apt), bpftrace, clang/llvm/libbpf-dev/libelf-dev/pahole, kernel-headers, kernel debuginfo
 6. **Builds the C and eBPF endpoints**: C-ABI (`make -C variants/v2-c-abi`)
-   and cgroup-native (`make -C variants/v2.1-cgroup-native`), plus on noble
+   and c-abi-cgroup (`make -C variants/v2.1-c-abi-cgroup`), plus on noble
    ebpf-ring (`make -C variants/v3-ebpf-ring`), eBPF-CORE
-   (`make -C variants/v3.2-ebpf-core`), and ebpf-cgroup
-   (`make -C variants/v3.3-ebpf-cgroup`). cgroup-native and ebpf-cgroup are
+   (`make -C variants/v3.2-ebpf-core`), and ebpf-core-cgroup
+   (`make -C variants/v3.3-ebpf-core-cgroup`). c-abi-cgroup and ebpf-core-cgroup are
    the per-cgroup attribution endpoints used by the container/VM envs.
 7. **Self-tests** for each profiler.
 
@@ -334,8 +334,8 @@ which stap && stap -V
 # V2 (C-ABI)
 variants/v2-c-abi/intp-hybrid --list-backends
 
-# V2.1 (cgroup-native) — per-cgroup attribution endpoint for container/VM envs
-variants/v2.1-cgroup-native/intp-hybrid --list-backends
+# V2.1 (c-abi-cgroup) — per-cgroup attribution endpoint for container/VM envs
+variants/v2.1-c-abi-cgroup/intp-hybrid --list-backends
 
 # V3 (ebpf-ring, eBPF/libbpf)
 variants/v3-ebpf-ring/intp-ebpf --list-capabilities
@@ -345,10 +345,10 @@ ls /sys/kernel/btf/vmlinux   # must exist
 bpftrace -V
 bash variants/v3.1-bpftrace/run-intp-bpftrace.sh --help
 
-# V3.2 (eBPF-CORE) and V3.3 (ebpf-cgroup) — eBPF endpoints; v3.3 gates on
+# V3.2 (eBPF-CORE) and V3.3 (ebpf-core-cgroup) — eBPF endpoints; v3.3 gates on
 # ancestor cgid for per-cgroup attribution in the container/VM envs
 variants/v3.2-ebpf-core/intp-eBPF-CORE --list-capabilities
-variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup --list-capabilities
+variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup --list-capabilities
 
 # resctrl
 mount | grep resctrl
