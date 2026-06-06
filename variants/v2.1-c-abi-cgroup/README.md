@@ -123,3 +123,9 @@ pair). Per-app `netp`/`nets` inside one netns are reported `LIMIT[v3.3]`/
 
     make validate-attribution VALIDATE_ARGS="--dry-run"   # structure only
     sudo make validate-attribution                        # live (needs lxd)
+
+## Standalone use (packaging)
+
+This folder is self-contained: copy it into your own project and use it on its own —
+no other folder from this repository is required. `make` in this directory builds the
+profiler binary; run it per the section(s) above.

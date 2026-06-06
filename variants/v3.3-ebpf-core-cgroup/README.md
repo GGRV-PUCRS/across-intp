@@ -76,3 +76,9 @@ make test-unit  # host-side counter-snapshot test (no kernel)
 
 Load/attach, RDT, and per-cgroup smoke validation require a kernel ≥5.8 host with
 BTF, cgroup v2, and resctrl (W3 remote validation).
+
+## Standalone use (packaging)
+
+This folder is self-contained: copy it into your own project and use it on its own —
+no other folder from this repository is required. `make` in this directory builds the
+profiler binary; run it per the section(s) above.
