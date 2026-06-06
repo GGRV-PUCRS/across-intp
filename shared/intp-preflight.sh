@@ -818,7 +818,7 @@ if want_variant v2; then
         priv:root:required
 fi
 
-# v2.1 -- C / c-abi-cgroup hybrid (intp-hybrid, same as v2) + cgroup v2 unified
+# v2.1 -- C / c-abi-cgroup hybrid (intp-c-abi, same as v2) + cgroup v2 unified
 # + perf cgroup-mode for per-cgroup attribution. Kernel >= 5.8 (cgroup v2 +
 # PERF_FLAG_PID_CGROUP baseline). Same toolchain as v2 (gcc/make); 6/7 metrics
 # per-cgroup, nets stays system-wide.

@@ -35,7 +35,7 @@ set -eu
 
 # Sibling variant under variants/; this test is run with CWD = the v3.3
 # variant root (where ./intp-ebpf-core-cgroup sits), so the sibling is one level up.
-V21_BIN=${V21_BIN:-../v2.1-c-abi-cgroup/intp-hybrid}
+V21_BIN=${V21_BIN:-../v2.1-c-abi-cgroup/intp-c-abi-cgroup}
 V33_BIN=${V33_BIN:-./intp-ebpf-core-cgroup}
 DUR=${DUR:-30}
 REL_TOL=${REL_TOL:-0.15}    # 15% fractional tolerance
@@ -71,7 +71,7 @@ trap 'rm -f "$V21_OUT" "$V33_OUT" "$STRESS_LOG"' EXIT
 # run_once LABEL BIN OUT EXTRA_ARGS...
 #   V3.3 takes --no-resctrl and --no-diag-cols (C13: keep the captured TSV to
 #   leading-ts + the 7 canonical columns, mirroring how v3.2 is run with
-#   --no-raw-mbw). V2.1 (intp-hybrid) supports neither flag and has no
+#   --no-raw-mbw). V2.1 (intp-c-abi) supports neither flag and has no
 #   diagnostic columns, so it is invoked with the canonical flags only.
 run_once() {
     local label="$1"; local bin="$2"; local out="$3"; shift 3

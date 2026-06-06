@@ -327,7 +327,7 @@ data point.
 ### V2 (C-ABI) -- Hybrid procfs/perf_event/resctrl (no framework)
 
 **Architecture summary.** C-ABI is a single C99 binary
-(`variants/v2-c-abi/intp-hybrid`) with no kernel module, no debuginfo
+(`variants/v2-c-abi/intp-c-abi`) with no kernel module, no debuginfo
 dependency, and no compile-time selection of a collection path. Each of
 the seven metrics (netp, nets, blk, mbw, llcmr, llcocc, cpu) carries an
 ordered list of backends. At startup the binary runs a capability
@@ -416,7 +416,7 @@ through tracepoints.
 
 ### V2.1 (c-abi-cgroup) -- Cgroup-native per-cgroup attribution (no eBPF)
 
-**Architecture summary.** c-abi-cgroup is C-ABI's sibling: the same C99 `intp-hybrid`
+**Architecture summary.** c-abi-cgroup is C-ABI's sibling: the same C99 `intp-c-abi`
 binary structure, the same backend-hierarchy contract, the same 7-column TSV /
 JSON / Prometheus output, and the same `status`/`note` per-sample envelope. The
 one difference is *attribution scope*. C-ABI reads system-wide or per-PID counters;

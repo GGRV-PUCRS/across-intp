@@ -94,11 +94,11 @@ V0_2_HELPER="$REPO_ROOT/variants/v0.2-legacy-intp-baseline/intp-helper"
 V1_STP="$REPO_ROOT/variants/v1-stap-nohelper/intp-resctrl.stp"
 V1_1_STP="$REPO_ROOT/variants/v1.1-stap-modern/intp-v1.1.stp"
 V1_1_HELPER="$REPO_ROOT/variants/v1.1-stap-modern/intp-helper"
-V2_BIN="$REPO_ROOT/variants/v2-c-abi/intp-hybrid"
-V2_1_BIN="$REPO_ROOT/variants/v2.1-c-abi-cgroup/intp-hybrid"
+V2_BIN="$REPO_ROOT/variants/v2-c-abi/intp-c-abi"
+V2_1_BIN="$REPO_ROOT/variants/v2.1-c-abi-cgroup/intp-c-abi-cgroup"
 V3_1_RUNNER="$REPO_ROOT/variants/v3.1-bpftrace/run-intp-bpftrace.sh"
-V3_BIN="$REPO_ROOT/variants/v3-ebpf-ring/intp-ebpf"
-V3_2_BIN="$REPO_ROOT/variants/v3.2-ebpf-core/intp-ebpf-agg"
+V3_BIN="$REPO_ROOT/variants/v3-ebpf-ring/intp-ebpf-ring"
+V3_2_BIN="$REPO_ROOT/variants/v3.2-ebpf-core/intp-ebpf-core"
 V3_3_BIN="$REPO_ROOT/variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup"
 
 DEFAULT_STAGES="detect,build,solo,pairwise,overhead,timeseries,report"
@@ -2773,7 +2773,7 @@ run_profiler_v2() {
     awk '/^[0-9]/{n++}END{print n+0}' "$outfile" > "$outfile.samples"
 }
 
-# v2.1 is the c-abi-cgroup sibling of v2: same intp-hybrid CLI, but its
+# v2.1 is the c-abi-cgroup sibling of v2: same intp-c-abi CLI, but its
 # cpu/blk/llcmr backends attribute per-cgroup (continuous) when --cgroup is
 # given, and blk self-detects disk bandwidth. Pass --disk-bw-max-bps here if a
 # measured per-host value is ever wired in (binary self-detects otherwise).
@@ -3062,15 +3062,15 @@ _inguest_profiler_cmd() {
     local pm=""
     [ "$PORTABLE_METRICS" = "1" ] && pm=" --portable-metrics"
     case "$variant" in
-        v2)   echo "$prefix/variants/v2-c-abi/intp-hybrid --pid $pid --interval $interval --duration $duration --no-prom" ;;
+        v2)   echo "$prefix/variants/v2-c-abi/intp-c-abi --pid $pid --interval $interval --duration $duration --no-prom" ;;
         v2.1) if [ -n "$cgroup" ]; then
-                  echo "$prefix/variants/v2.1-c-abi-cgroup/intp-hybrid --cgroup $cgroup --interval $interval --duration $duration$pm"
+                  echo "$prefix/variants/v2.1-c-abi-cgroup/intp-c-abi-cgroup --cgroup $cgroup --interval $interval --duration $duration$pm"
               else
-                  echo "$prefix/variants/v2.1-c-abi-cgroup/intp-hybrid --pids $pid --interval $interval --duration $duration$pm"
+                  echo "$prefix/variants/v2.1-c-abi-cgroup/intp-c-abi-cgroup --pids $pid --interval $interval --duration $duration$pm"
               fi ;;
-        v3)   echo "$prefix/variants/v3-ebpf-ring/intp-ebpf --pid $pid --interval $interval --duration $duration" ;;
+        v3)   echo "$prefix/variants/v3-ebpf-ring/intp-ebpf-ring --pid $pid --interval $interval --duration $duration" ;;
         v3.1) echo "bash $prefix/variants/v3.1-bpftrace/run-intp-bpftrace.sh --pid $pid --interval $interval --duration $duration" ;;
-        v3.2) echo "$prefix/variants/v3.2-ebpf-core/intp-ebpf-agg --pids $pid --interval $interval --duration $duration --no-raw-mbw" ;;
+        v3.2) echo "$prefix/variants/v3.2-ebpf-core/intp-ebpf-core --pids $pid --interval $interval --duration $duration --no-raw-mbw" ;;
         v3.3) if [ -n "$cgroup" ]; then
                   echo "$prefix/variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup --cgroup $cgroup --interval $interval --duration $duration --no-diag-cols$pm"
               else

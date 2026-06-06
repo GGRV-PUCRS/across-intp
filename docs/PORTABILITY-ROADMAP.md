@@ -189,7 +189,7 @@ docker run --rm -it --privileged --pid=host \
   -v /sys/fs/resctrl:/sys/fs/resctrl \
   -v /sys/kernel/btf:/sys/kernel/btf:ro \
   intp:latest \
-  /app/intp-hybrid --interval 1 --duration 30
+  /app/intp-c-abi --interval 1 --duration 30
 ```
 
 **Per-cgroup (per-container) attribution — v2.1.** The example above runs the
@@ -199,7 +199,7 @@ by its cgroup — "a container is a cgroup":
 
 ```bash
 # host-side profiler scoped to one container's cgroup (LXC/LXD shown):
-sudo ./intp-hybrid --cgroup /sys/fs/cgroup/lxc.payload.<name> --interval 1
+sudo ./intp-c-abi --cgroup /sys/fs/cgroup/lxc.payload.<name> --interval 1
 # Docker:  --cgroup /sys/fs/cgroup/system.slice/docker-<id>.scope
 ```
 
@@ -298,7 +298,7 @@ that resctrl and the hardware PMU can no longer cover.
 | Generate vmlinux.h | — | — | `make vmlinux` |
 | Install runtime deps | 0 | 2 pkgs | 0 (static binary) |
 | Mount resctrl | Manual | Manual | Manual |
-| Run | `sudo ./intp-hybrid` | `sudo ./run-intp-bpftrace.sh` | `sudo ./intp-ebpf` |
+| Run | `sudo ./intp-c-abi` | `sudo ./run-intp-bpftrace.sh` | `sudo ./intp-ebpf-ring` |
 | Total time to first output | ~1 min | ~2 min | ~3 min |
 
 ---

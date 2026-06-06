@@ -136,9 +136,9 @@ to avoid the RCU-unsafe pattern, recovering the full 7-metric coverage.
   remain the discriminative axes (`cpu` noise floor: 1 % ± 0;
   `llcmr` p95 ≈ 6).
 - v3 composite-mechanism reruns (#5: pidstat + `perf stat -p` on the
-  intp-ebpf consumer) had two issues in the first run, both fixed in
+  intp-ebpf-ring consumer) had two issues in the first run, both fixed in
   `shared/intp-ebpf-checkout.sh`:
-  1. `pgrep -nf intp-ebpf` was matching the `sudo` wrapper PID, so
+  1. `pgrep -nf intp-ebpf-ring` was matching the `sudo` wrapper PID, so
      all 9 with-profiler reps lost consumer-side ctx-sw and CPU%
      ("Problems finding threads of monitor"). Replaced with
      `pgrep -nx` (exact comm match) + a 5-second poll loop.
@@ -179,7 +179,7 @@ to avoid the RCU-unsafe pattern, recovering the full 7-metric coverage.
 ## Status after v2.1 introduction (2026-05-24)
 
 - v2.1 (`variants/v2.1-c-abi-cgroup/`) was added as the c-abi-cgroup
-  sibling of v2 for the paper-#2 container + IADA work: the same `intp-hybrid`
+  sibling of v2 for the paper-#2 container + IADA work: the same `intp-c-abi`
   CLI and backend-hierarchy design, but its cpu/blk/llcmr backends attribute
   **per-cgroup** (continuous, child-inclusive) when given `--cgroup`, via
   cgroup v2 `cpu.stat` (usage_usec), `io.stat` (rbytes+wbytes, normalized by a

@@ -521,7 +521,7 @@ build_variants() {
     [ "$DO_BUILD" -eq 1 ] || { log "skipping build per --no-build"; return 0; }
 
     # v2 + v2.1 are C/procfs builds (gcc/make) available in both profiles. v2.1
-    # is the c-abi-cgroup sibling of v2 (same intp-hybrid CLI, kernel >= 5.8).
+    # is the c-abi-cgroup sibling of v2 (same intp-c-abi CLI, kernel >= 5.8).
     if [ -d "$REPO_ROOT/variants/v2-c-abi" ]; then
         log "building v2 (hybrid procfs)"
         make -C "$REPO_ROOT/variants/v2-c-abi" || warn "v2 build failed"
@@ -565,18 +565,18 @@ selftest() {
         fi
     fi
 
-    if [ -x "$REPO_ROOT/variants/v2-c-abi/intp-hybrid" ]; then
-        if "$REPO_ROOT/variants/v2-c-abi/intp-hybrid" --list-backends >/dev/null 2>&1; then
-            log "  v2          OK ($(${REPO_ROOT}/variants/v2-c-abi/intp-hybrid --list-backends 2>&1 | head -1))"
+    if [ -x "$REPO_ROOT/variants/v2-c-abi/intp-c-abi" ]; then
+        if "$REPO_ROOT/variants/v2-c-abi/intp-c-abi" --list-backends >/dev/null 2>&1; then
+            log "  v2          OK ($(${REPO_ROOT}/variants/v2-c-abi/intp-c-abi --list-backends 2>&1 | head -1))"
         else
             warn "  v2          FAIL (--list-backends returned non-zero)"
         fi
     fi
 
-    # v2.1 (c-abi-cgroup, intp-hybrid CLI like v2) -- both profiles.
-    if [ -x "$REPO_ROOT/variants/v2.1-c-abi-cgroup/intp-hybrid" ]; then
-        if "$REPO_ROOT/variants/v2.1-c-abi-cgroup/intp-hybrid" --list-backends >/dev/null 2>&1; then
-            log "  v2.1        OK ($("${REPO_ROOT}"/variants/v2.1-c-abi-cgroup/intp-hybrid --list-backends 2>&1 | head -1))"
+    # v2.1 (c-abi-cgroup, intp-c-abi CLI like v2) -- both profiles.
+    if [ -x "$REPO_ROOT/variants/v2.1-c-abi-cgroup/intp-c-abi-cgroup" ]; then
+        if "$REPO_ROOT/variants/v2.1-c-abi-cgroup/intp-c-abi-cgroup" --list-backends >/dev/null 2>&1; then
+            log "  v2.1        OK ($("${REPO_ROOT}"/variants/v2.1-c-abi-cgroup/intp-c-abi-cgroup --list-backends 2>&1 | head -1))"
         else
             warn "  v2.1        FAIL (--list-backends returned non-zero)"
         fi
@@ -588,15 +588,15 @@ selftest() {
         else
             warn "  bpftrace    missing"
         fi
-        if [ -x "$REPO_ROOT/variants/v3-ebpf-ring/intp-ebpf" ]; then
-            if "$REPO_ROOT/variants/v3-ebpf-ring/intp-ebpf" --list-capabilities >/dev/null 2>&1; then
+        if [ -x "$REPO_ROOT/variants/v3-ebpf-ring/intp-ebpf-ring" ]; then
+            if "$REPO_ROOT/variants/v3-ebpf-ring/intp-ebpf-ring" --list-capabilities >/dev/null 2>&1; then
                 log "  v3          OK"
             else
                 warn "  v3          FAIL"
             fi
         fi
-        if [ -x "$REPO_ROOT/variants/v3.2-ebpf-core/intp-eBPF-CORE" ]; then
-            if "$REPO_ROOT/variants/v3.2-ebpf-core/intp-eBPF-CORE" --list-capabilities >/dev/null 2>&1; then
+        if [ -x "$REPO_ROOT/variants/v3.2-ebpf-core/intp-ebpf-core" ]; then
+            if "$REPO_ROOT/variants/v3.2-ebpf-core/intp-ebpf-core" --list-capabilities >/dev/null 2>&1; then
                 log "  v3.2        OK"
             else
                 warn "  v3.2        FAIL"

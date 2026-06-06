@@ -24,11 +24,11 @@
 #   --duration SECONDS    Collection duration (default: 10)
 #   --tolerance PCT       Max allowed column divergence in % points (default: 15)
 #   --output-dir DIR      Directory for captured outputs (default: /tmp/intp-xval-*)
-#   --v2-bin PATH         Path to V2 binary (default: ../variants/v2-c-abi/intp-hybrid)
-#   --v2.1-bin PATH       Path to V2.1 binary (default: ../variants/v2.1-c-abi-cgroup/intp-hybrid)
+#   --v2-bin PATH         Path to V2 binary (default: ../variants/v2-c-abi/intp-c-abi)
+#   --v2.1-bin PATH       Path to V2.1 binary (default: ../variants/v2.1-c-abi-cgroup/intp-c-abi-cgroup)
 #   --v3.1-script PATH    Path to V3.1 launcher (default: ../variants/v3.1-bpftrace/run-intp-bpftrace.sh)
-#   --v3-bin PATH         Path to V3 binary (default: ../variants/v3-ebpf-ring/intp-ebpf)
-#   --v3.2-bin PATH       Path to V3.2 binary (default: ../variants/v3.2-ebpf-core/intp-eBPF-CORE)
+#   --v3-bin PATH         Path to V3 binary (default: ../variants/v3-ebpf-ring/intp-ebpf-ring)
+#   --v3.2-bin PATH       Path to V3.2 binary (default: ../variants/v3.2-ebpf-core/intp-ebpf-core)
 #   --v3.3-bin PATH       Path to V3.3 binary (default: ../variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup)
 #   --nic-speed-bps N    Force NIC speed (bytes/sec) for all variants
 #   --mem-bw-max-bps N   Force memory bandwidth ceiling (bytes/sec) for all variants
@@ -55,11 +55,11 @@ NIC_SPEED_BPS=""
 MEM_BW_MAX_BPS=""
 LLC_SIZE_BYTES=""
 
-V2_BIN="${REPO_ROOT}/variants/v2-c-abi/intp-hybrid"
-V2_1_BIN="${REPO_ROOT}/variants/v2.1-c-abi-cgroup/intp-hybrid"
+V2_BIN="${REPO_ROOT}/variants/v2-c-abi/intp-c-abi"
+V2_1_BIN="${REPO_ROOT}/variants/v2.1-c-abi-cgroup/intp-c-abi-cgroup"
 V3_1_SCRIPT="${REPO_ROOT}/variants/v3.1-bpftrace/run-intp-bpftrace.sh"
-V3_BIN="${REPO_ROOT}/variants/v3-ebpf-ring/intp-ebpf"
-V3_2_BIN="${REPO_ROOT}/variants/v3.2-ebpf-core/intp-eBPF-CORE"
+V3_BIN="${REPO_ROOT}/variants/v3-ebpf-ring/intp-ebpf-ring"
+V3_2_BIN="${REPO_ROOT}/variants/v3.2-ebpf-core/intp-ebpf-core"
 V3_3_BIN="${REPO_ROOT}/variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup"
 
 METRICS=("netp" "nets" "blk" "mbw" "llcmr" "llcocc" "cpu")
@@ -172,7 +172,7 @@ run_variant() {
                 > "$outfile" 2>"${outfile}.err" || true
             ;;
         v2.1)
-            # V2.1 = c-abi-cgroup sibling of V2; identical intp-hybrid CLI,
+            # V2.1 = c-abi-cgroup sibling of V2; identical intp-c-abi CLI,
             # so it captures the same leading-7 columns without diag flags.
             timeout "$((DURATION + 5))" "$V2_1_BIN" \
                 "${pid_args[@]}" \

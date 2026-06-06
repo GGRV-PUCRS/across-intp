@@ -332,13 +332,13 @@ After `setup-host.sh`, validate each variant:
 which stap && stap -V
 
 # V2 (C-ABI)
-variants/v2-c-abi/intp-hybrid --list-backends
+variants/v2-c-abi/intp-c-abi --list-backends
 
 # V2.1 (c-abi-cgroup) — per-cgroup attribution endpoint for container/VM envs
-variants/v2.1-c-abi-cgroup/intp-hybrid --list-backends
+variants/v2.1-c-abi-cgroup/intp-c-abi-cgroup --list-backends
 
 # V3 (ebpf-ring, eBPF/libbpf)
-variants/v3-ebpf-ring/intp-ebpf --list-capabilities
+variants/v3-ebpf-ring/intp-ebpf-ring --list-capabilities
 ls /sys/kernel/btf/vmlinux   # must exist
 
 # V3.1 (bpftrace)
@@ -347,7 +347,7 @@ bash variants/v3.1-bpftrace/run-intp-bpftrace.sh --help
 
 # V3.2 (eBPF-CORE) and V3.3 (ebpf-core-cgroup) — eBPF endpoints; v3.3 gates on
 # ancestor cgid for per-cgroup attribution in the container/VM envs
-variants/v3.2-ebpf-core/intp-eBPF-CORE --list-capabilities
+variants/v3.2-ebpf-core/intp-ebpf-core --list-capabilities
 variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup --list-capabilities
 
 # resctrl

@@ -185,7 +185,7 @@ explicitly requested for analysis.
 - H1 must add the v3.3 arm to BOTH the `stage_build` build step AND the
   per-variant binary-existence GUARD block (`variant_selected vX && [ ! -x $VX_BIN ]`),
   or `stage_build` won't warn on a missing `intp-ebpf-core-cgroup`.
-- Test scripts (`BIN=./intp-eBPF-CORE` defaults, `PIN_ROOT=…intp-v3.2-core-test`)
+- Test scripts (`BIN=./intp-ebpf-core` defaults, `PIN_ROOT=…intp-v3.2-core-test`)
   still carry v3.2 strings after P0; P6 owns those edits. (The args `--help`
   `V3.2-specific:` text was fixed in P4.)
 
@@ -916,11 +916,19 @@ to the two per-cgroup container variants so the paper label, the directory slug,
 and every in-repo name agree:
 
 - **v2.1**: dir `variants/v2.1-cgroup-native` → `variants/v2.1-c-abi-cgroup`;
-  label `cgroup-native` → **c-abi-cgroup** (the C-ABI approach, per-cgroup). Binary
-  stays `intp-hybrid` (shared with v2/C-ABI; not a stale per-variant name).
+  label `cgroup-native` → **c-abi-cgroup** (the C-ABI approach, per-cgroup);
+  binary `intp-hybrid` → **intp-c-abi-cgroup**.
 - **v3.3**: dir `variants/v3.3-ebpf-cgroup` → `variants/v3.3-ebpf-core-cgroup`;
   label `ebpf-cgroup` → **ebpf-core-cgroup** (the eBPF-CORE approach, per-cgroup);
   binary `intp-ebpf-cgroup` → **intp-ebpf-core-cgroup**.
+
+**Profiler binaries now match their variant** (every compiled profiler is
+`intp-<dir-slug-suffix>`, so a packaged single-variant folder ships a clearly-named
+binary): v2 `intp-hybrid` → **intp-c-abi**, v3 `intp-ebpf` → **intp-ebpf-ring**,
+v3.2 `intp-eBPF-CORE` → **intp-ebpf-core**, plus the two above. KEPT: the C *source*
+basenames (`intp-hybrid.c`, `intp_agg.*` — a package's internal module names), the
+shared userspace helper binary `intp-helper` (v0.2/v1.1 RDT helper, same artifact in
+both), the stap scripts, and the IDs/GROUP_NAME/Prometheus labels.
 
 Applied across folders, all path references (Makefiles, orchestrator, hibench,
 preflight, validate, tests), the `VARIANT_LABELS` maps in every `bench/plot/*.py`

@@ -217,7 +217,7 @@ if hardware is unavailable.
 ```bash
 cd variants/v2-c-abi
 make
-sudo ./intp-hybrid -p <PID> -i <interval_ms>
+sudo ./intp-c-abi -p <PID> -i <interval_ms>
 ```
 
 No framework dependencies. Requires: resctrl for mbw/llcocc.
@@ -228,9 +228,9 @@ No framework dependencies. Requires: resctrl for mbw/llcocc.
 cd variants/v2.1-c-abi-cgroup
 make
 # system-wide / per-PID (like v2):
-sudo ./intp-hybrid --pids <PID> --interval <seconds>
+sudo ./intp-c-abi --pids <PID> --interval <seconds>
 # per-cgroup (continuous, child-inclusive) -- e.g. a container's cgroup:
-sudo ./intp-hybrid --cgroup /sys/fs/cgroup/<path> --interval <seconds>
+sudo ./intp-c-abi --cgroup /sys/fs/cgroup/<path> --interval <seconds>
 ```
 
 C-ABI's hybrid-C sibling with continuous per-cgroup attribution: cpu/blk/llcmr read
@@ -244,7 +244,7 @@ resctrl for mbw/llcocc.
 ```bash
 # VM-portable benchmark: append the 6 portable columns (separate, canonical 7
 # untouched). Same flag on v3.3. Analyze with bench/analyze-portable.py.
-sudo ./intp-hybrid --cgroup /sys/fs/cgroup/<path> --portable-metrics --interval 1
+sudo ./intp-c-abi --cgroup /sys/fs/cgroup/<path> --portable-metrics --interval 1
 ```
 
 ### V3.1 (bpftrace) -- bpftrace
@@ -261,7 +261,7 @@ Requires: bpftrace, kernel BTF, resctrl for mbw/llcocc.
 ```bash
 cd variants/v3-ebpf-ring
 make
-sudo ./intp-ebpf -p <PID> -i <interval_ms>
+sudo ./intp-ebpf-ring -p <PID> -i <interval_ms>
 ```
 
 Requires: libbpf, clang, kernel BTF, resctrl for mbw/llcocc.
@@ -271,7 +271,7 @@ Requires: libbpf, clang, kernel BTF, resctrl for mbw/llcocc.
 ```bash
 cd variants/v3.2-ebpf-core
 make
-sudo ./intp-eBPF-CORE --pids <PID> --interval <seconds>
+sudo ./intp-ebpf-core --pids <PID> --interval <seconds>
 
 # Critical acceptance gate before campaign inclusion:
 sudo make test-amplification

@@ -38,7 +38,7 @@
 #                                      [--duration SEC] [--no-lxc]
 #
 # Env knobs (all optional):
-#   INTP_V21_BIN        path to the v2.1 intp-hybrid binary
+#   INTP_V21_BIN        path to the v2.1 intp-c-abi binary
 #   INTP_BENCH_LXC_BIN  LXD/Incus client (default: lxc)
 #   INTP_BENCH_LXC_IMAGE container image alias (default: ubuntu:24.04)
 #   VAL_DURATION        profiler window seconds      (default 30)
@@ -55,7 +55,7 @@ set -euo pipefail
 # --- locations ---------------------------------------------------------------
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
-V21_BIN="${INTP_V21_BIN:-$REPO_ROOT/variants/v2.1-c-abi-cgroup/intp-hybrid}"
+V21_BIN="${INTP_V21_BIN:-$REPO_ROOT/variants/v2.1-c-abi-cgroup/intp-c-abi-cgroup}"
 LXC_BIN="${INTP_BENCH_LXC_BIN:-lxc}"
 LXC_IMAGE="${INTP_BENCH_LXC_IMAGE:-ubuntu:24.04}"
 
