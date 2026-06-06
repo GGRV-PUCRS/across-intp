@@ -170,6 +170,7 @@ OUTPUT_DIR=""
 # only v2.1 and v3.3 implement --portable-metrics, so pair this with
 # `--variants v2.1,v3.3`. Analyze with bench/analyze-portable.py.
 PORTABLE_METRICS=0
+W5=0
 
 CONTAINER_IMAGE="${INTP_BENCH_CONTAINER:-ubuntu:24.04}"
 # Podman (rootful, daemonless) engine for the container-podman env. PODMAN_BIN
@@ -334,6 +335,21 @@ PAIRWISE=(
     "tcp_v_tcp_veth|VETH:tcp:23440:-P 8|VETH:tcp:23441:-P 16|netp"
 )
 
+# W5 colocation matrix (C29, --w5). Each spine VICTIM is co-located with the
+# app05_streaming MEM-BANDWIDTH aggressor (the universal noisy neighbour). The
+# pair id is `<victim_wl>__vs__<aggressor>` and the victim_args are IDENTICAL to
+# that victim's solo WORKLOADS entry, so analyze-cross-deployment.py --w5 pairs
+# pairwise/<id> against solo/<victim_wl> and reports victim-delta = pairwise-solo
+# per metric (schedlat/psi_*/membw_est = primary contention signals). Run with
+# `--w5 --stages pairwise --env bare,container,vm-guest` (portable metrics auto-on).
+W5_PAIRWISE=(
+    "app01_ml_llc__vs__app05_membw|--cache 24 --cache-level 3|--stream 8 --vm 4 --vm-bytes 16G|mbw"
+    "app07_ordering__vs__app05_membw|--malloc 8 --malloc-bytes 16G|--stream 8 --vm 4 --vm-bytes 16G|mbw"
+    "app10_search__vs__app05_membw|--cpu 24 --cpu-method matrixprod|--stream 8 --vm 4 --vm-bytes 16G|mbw"
+    "app11_sort_net__vs__app05_membw|--sock 16 --sock-port 23420|--stream 8 --vm 4 --vm-bytes 16G|mbw"
+    "app13_query_scan__vs__app05_membw|--hdd 8 --hdd-bytes 4G --hdd-write-size 1M|--stream 8 --vm 4 --vm-bytes 16G|mbw"
+)
+
 # Reference workloads for overhead measurement. These are deterministic, time-
 # bounded, and produce a "throughput" number (op rate or MB/s) we can compare
 # with vs. without the profiler attached.
@@ -455,6 +471,13 @@ Other:
                            means.tsv. Canonical 7-metric capture untouched. Only
                            v2.1 / v3.3 implement it -> use --variants v2.1,v3.3.
                            Analyze with bench/analyze-portable.py.
+  --w5                     W5 colocation campaign (C29): replace the pairwise matrix
+                           with each spine victim co-located against the app05_streaming
+                           mem-bandwidth aggressor (pairs <victim>__vs__app05_membw);
+                           implies --portable-metrics. Run into the SOLO campaign dir
+                           with `--w5 --stages pairwise --env bare,container,vm-guest
+                           --variants v2.1,v3.3`. Analyze with
+                           bench/analyze-cross-deployment.py --w5 (victim-delta vs solo).
   --dry-run                Print actions without executing
   -h, --help               Show this help
 
@@ -515,11 +538,17 @@ parse_args() {
             --skip-build)            SKIP_BUILD=1; shift ;;
             --allow-v0)              ALLOW_V0_ON_NEW_KERNEL=1; shift ;;
             --portable-metrics)      PORTABLE_METRICS=1; shift ;;
+            --w5)                    W5=1; PORTABLE_METRICS=1; shift ;;
             --dry-run)               DRY_RUN=1; shift ;;
             -h|--help)               usage; exit 0 ;;
             *) die "Unknown option: $1" ;;
         esac
     done
+
+    if [ "$W5" = "1" ]; then
+        PAIRWISE=( "${W5_PAIRWISE[@]}" )
+        log "W5 colocation mode: ${#PAIRWISE[@]} victim-vs-aggressor pairs (mem-bandwidth neighbour), portable metrics ON"
+    fi
 
     validate_positive_int duration "$DURATION"
     validate_positive_int warmup "$WARMUP"

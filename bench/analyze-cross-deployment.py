@@ -80,17 +80,148 @@ def _bootstrap_ratio_ci(env, bare, n=2000, seed=0):
     return (ratios[int(0.025 * len(ratios))], ratios[min(len(ratios) - 1, int(0.975 * len(ratios)))])
 
 
+# Primary colocation contention signals (C29): these are the VM-portable metrics
+# expected to RISE when a noisy neighbour is co-located. schedthr/steal are confound
+# guards (own-quota throttling / hypervisor steal), not contention signals.
+W5_PRIMARY = ["schedlat", "psi_mem", "psi_io", "membw_est"]
+W5_GUARD = ["schedthr", "steal"]
+
+
+def w5_report(base, variants, stage_pair="pairwise", stage_solo="solo"):
+    """W5 colocation victim-delta (C29): per (env, variant, victim) report the
+    pairwise-minus-solo delta on all 13 metrics, with the VM-portable signals
+    (schedlat/psi_*/membw_est) as the PRIMARY contention evidence. Pairs are named
+    `<victim_wl>__vs__<aggressor>`; the solo baseline is the victim's own solo cell
+    in the SAME campaign (so run W5 into the solo campaign dir). Under colocation
+    `cpu` drops absolute->directional (cgroup profiler vs system-wide GT; C29)."""
+    pair_cell = defaultdict(list)   # (env,var,pair) -> [rep_summary]
+    solo_cell = defaultdict(list)   # (env,var,victim_wl) -> [rep_summary]
+    pairs, envs_seen = set(), set()
+    for env in M.ENVS:
+        for var in variants:
+            for pp in sorted(glob.glob(f"{base}/{env}/{var}/{stage_pair}/*__vs__*")):
+                name = os.path.basename(pp)
+                reps = sorted(glob.glob(f"{pp}/rep*"))
+                if not reps:
+                    continue
+                pairs.add(name); envs_seen.add(env)
+                for rep in reps:
+                    pair_cell[(env, var, name)].append(M.rep_summary(rep))
+    victims = sorted({p.split("__vs__")[0] for p in pairs})
+    for env in M.ENVS:
+        for var in variants:
+            for wl in victims:
+                for rep in sorted(glob.glob(f"{base}/{env}/{var}/{stage_solo}/{wl}/rep*")):
+                    solo_cell[(env, var, wl)].append(M.rep_summary(rep))
+
+    L = []
+    def em(s=""):
+        L.append(s)
+    em(f"# W5 colocation victim-delta (pairwise − solo) — {base}")
+    em("")
+    if not pairs:
+        em(f"**no W5 pairwise data under {base}/<env>/<variant>/{stage_pair}/<victim>__vs__<aggressor>/rep***")
+        return "\n".join(L) + "\n", [("variant", "env", "pair", "metric", "class",
+                                      "solo_median", "pair_median", "delta", "cliffs_delta",
+                                      "mw_p", "mw_q_bh", "signif", "role")]
+    envs_present = M.order_envs(envs_seen)
+    em(f"Envs: {', '.join(envs_present)}. Variants: {', '.join(variants)}. "
+       f"Pairs: {len(pairs)}. scipy: {'yes' if HAVE_SCIPY else 'NO'}.")
+    em("")
+    em(f"**Victim-delta = median(pairwise victim) − median(solo victim)** per metric. PRIMARY "
+       f"contention signals (should RISE under a noisy neighbour): `{', '.join(W5_PRIMARY)}`. "
+       f"GUARDS (own-quota/steal, not contention): `{', '.join(W5_GUARD)}`. Significance = "
+       "Mann-Whitney U (pairwise vs solo) + Cliff's δ, BH-FDR across the metric family per "
+       "(env,variant,pair). Under colocation `cpu` is DIRECTIONAL not absolute (cgroup profiler "
+       "vs system-wide GT — C29).")
+    em("")
+
+    def cls_of(m):
+        return "directional" if m == "cpu" else M.CLAIM_CLASS.get(m, "descriptive")
+
+    tsv = [("variant", "env", "pair", "metric", "class", "solo_median", "pair_median",
+            "delta", "cliffs_delta", "mw_p", "mw_q_bh", "signif", "role")]
+    cols = W5_PRIMARY + ["cpu"]   # the headline columns
+    for var in variants:
+        for env in envs_present:
+            env_pairs = [p for p in sorted(pairs) if pair_cell[(env, var, p)]]
+            if not env_pairs:
+                continue
+            em(f"### {var} — {env}  *(primary contention signals; Δ = pairwise − solo)*")
+            em("")
+            em("| victim — vs aggressor | " + " | ".join(f"{c} Δ (q,δ)" for c in cols) + " | contention |")
+            em("|" + "---|" * (len(cols) + 2))
+            for p in env_pairs:
+                vwl = p.split("__vs__")[0]
+                prs = pair_cell[(env, var, p)]
+                # BH across the full 13-metric family for this cell
+                raw = {}
+                for m in M.METRICS_ALL:
+                    pv = [s.get(m) for s in prs if s.get(m) is not None]
+                    sv = [s.get(m) for s in solo_cell[(env, var, vwl)] if s.get(m) is not None]
+                    raw[m] = (_mw_p(pv, sv), pv, sv)
+                keys = [m for m in M.METRICS_ALL if raw[m][0] is not None]
+                q = M.bh_adjust([raw[m][0] for m in keys])
+                qmap = dict(zip(keys, q))
+                fired = []
+                row = [p.replace("__vs__", " — vs ")]
+                for m in cols:
+                    pmd = M._median(raw[m][1]); smd = M._median(raw[m][2])
+                    if pmd is None or smd is None:
+                        row.append("-"); continue
+                    d = pmd - smd
+                    cd = M.cliffs_delta(raw[m][1], raw[m][2])
+                    qv = qmap.get(m)
+                    mark = M.signif_marker(qv) if qv is not None else "n/a"
+                    row.append(f"{M._fmt(d)} ({mark},{M._fmt(cd)})")
+                    if m in W5_PRIMARY and d > 0 and qv is not None and mark not in ("n.s.", "n/a"):
+                        fired.append(m)
+                # full 13 -> TSV
+                for m in M.METRICS_ALL:
+                    pmd = M._median(raw[m][1]); smd = M._median(raw[m][2])
+                    if pmd is None or smd is None:
+                        continue
+                    cd = M.cliffs_delta(raw[m][1], raw[m][2])
+                    qv = qmap.get(m)
+                    role = "primary" if m in W5_PRIMARY else ("guard" if m in W5_GUARD else cls_of(m))
+                    tsv.append((var, env, p, m, cls_of(m), M._fmt(smd), M._fmt(pmd),
+                                M._fmt(pmd - smd), M._fmt(cd), M._fmt_p(raw[m][0]),
+                                M._fmt_p(qv), M.signif_marker(qv) if qv is not None else "n/a", role))
+                row.append("**" + "+".join(fired) + "** ↑" if fired else "—")
+                em("| " + " | ".join(row) + " |")
+            em("")
+    return "\n".join(L) + "\n", tsv
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("campaign_dir")
     ap.add_argument("--out", default=None)
     ap.add_argument("--tsv", default=None, help="machine-readable rows (default <campaign>/cross-deployment.tsv)")
     ap.add_argument("--stage", default="solo")
+    ap.add_argument("--w5", action="store_true",
+                    help="W5 colocation victim-delta mode: pairwise−solo per metric (C29), "
+                         "reads <campaign>/<env>/<var>/pairwise/<victim>__vs__<aggressor>/rep*")
     ap.add_argument("--variants", default=None, help="CSV; default v2.1,v3.3")
     args = ap.parse_args()
     base = args.campaign_dir.rstrip("/")
     variants = args.variants.split(",") if args.variants else list(M.VARIANTS)
     tsv_path = args.tsv or os.path.join(base, "cross-deployment.tsv")
+
+    if args.w5:
+        tsv_path = args.tsv or os.path.join(base, "w5-victim-delta.tsv")
+        report, tsv_rows = w5_report(base, variants)
+        with open(tsv_path, "w") as fh:
+            for r in tsv_rows:
+                fh.write("\t".join(str(x) for x in r) + "\n")
+        report += f"\n_Machine-readable rows: {tsv_path} ({len(tsv_rows) - 1} victim-delta cells)._\n"
+        if args.out:
+            open(args.out, "w").write(report)
+            sys.stderr.write(f"[wrote {args.out} + {tsv_path}]\n")
+        else:
+            print(report)
+            sys.stderr.write(f"[wrote {tsv_path}]\n")
+        return
 
     # cell[(env,var,wl)] -> [rep_summary, ...]
     cell = defaultdict(list)
