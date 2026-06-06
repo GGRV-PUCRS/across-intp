@@ -1,0 +1,193 @@
+/*
+ * intp_agg_args.c -- argument parser for intp-ebpf-cgroup (V3.3).
+ *
+ * Differs from V3 only in the deltas listed in intp_agg_args.h.
+ */
+
+#include "intp_agg_args.h"
+
+#include <getopt.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static int parse_pid_list(const char *spec, pid_t *out, int max)
+{
+    if (!spec || !out || max <= 0) return 0;
+    int n = 0;
+    const char *p = spec;
+    while (*p && n < max) {
+        char *end;
+        long v = strtol(p, &end, 10);
+        if (end == p || v <= 0) break;
+        out[n++] = (pid_t)v;
+        if (*end == ',') p = end + 1;
+        else             p = end;
+    }
+    return n;
+}
+
+void intp_args_usage(const char *prog, FILE *out)
+{
+    fprintf(out,
+        "Usage: %s [options]\n"
+        "\n"
+        "Target selection:\n"
+        "  --pids PID[,PID...]     monitor specific PIDs (default: system-wide)\n"
+        "  --cgroup PATH           monitor PIDs listed in <PATH>/cgroup.procs\n"
+        "  --target-container PATH container cgroup (alias of --cgroup)\n"
+        "  --target-vm IFACE       VM netp from host tap/vnet iface (tc/XDP); scope the\n"
+        "                          other 6 metrics via --cgroup <qemu scope>\n"
+        "  --tap-iface NAME        explicit host tap/vnet iface for VM netp\n"
+        "\n"
+        "Sampling:\n"
+        "  --interval SECONDS      sampling interval (default 1.0)\n"
+        "  --duration SECONDS      total run time (default infinite)\n"
+        "  --output FORMAT         tsv (default) | json | prometheus\n"
+        "  --no-header             suppress TSV column header\n"
+        "\n"
+        "eBPF configuration:\n"
+        "  --no-perf-events        disable llcmr perf_event programs\n"
+        "  --no-resctrl            disable resctrl (skip mbw, llcocc)\n"
+        "  --list-capabilities     print detected capabilities and exit\n"
+        "\n"
+        "V3.3-specific:\n"
+        "  --exact                 gate on the leaf cgroup id only (default: ancestor,\n"
+        "                          child-inclusive)\n"
+        "  --clip-mbw              cap mbw_pct at 99 (default: emit raw %% even if > 100)\n"
+        "  --no-raw-mbw            suppress the mbw_raw_mbps trailing column\n"
+        "  --no-diag-cols          suppress ALL trailing diagnostic columns\n"
+        "                          (netp_dev, nets_sys, mbw_raw_mbps)\n"
+        "  --portable-metrics      emit VM-portable block (schedlat psi_mem membw_est\n"
+        "                          psi_io schedthr steal) -- separate benchmark (C26)\n"
+        "  --per-pid-output PATH   stream per-TGID TSV samples to PATH (optional)\n"
+        "\n"
+        "Hardware overrides:\n"
+        "  --nic-speed-bps N       NIC speed in bytes/sec (default: autodetect)\n"
+        "  --mem-bw-max-bps N      max memory bandwidth in bytes/sec (default: autodetect)\n"
+        "  --llc-size-bytes N      total LLC size in bytes (default: autodetect)\n"
+        "\n"
+        "Verbosity:\n"
+        "  --verbose               enable libbpf verifier log\n"
+        "\n"
+        "  -h, --help              show this help\n",
+        prog);
+}
+
+int intp_args_parse(int argc, char **argv, intp_args_t *out)
+{
+    if (!out) return -1;
+    memset(out, 0, sizeof(*out));
+
+    out->interval_sec = 1.0;
+    out->duration_sec = -1.0;
+    out->output_fmt   = "tsv";
+    out->want_header  = 1;
+
+    enum {
+        O_PIDS = 1000, O_CGROUP, O_INTERVAL, O_DURATION, O_OUTPUT,
+        O_NO_HEADER, O_NO_PERF, O_NO_RES, O_LIST_CAPS,
+        O_VERBOSE, O_NIC_SPEED, O_MEM_BW, O_LLC_SIZE,
+        O_CLIP_MBW, O_NO_RAW_MBW, O_PER_PID_OUT,
+        O_TARGET_CONTAINER, O_TARGET_VM, O_TAP_IFACE, O_EXACT, O_NO_DIAG_COLS,
+        O_PORTABLE_METRICS
+    };
+
+    static struct option long_opts[] = {
+        { "pids",              required_argument, NULL, O_PIDS },
+        { "cgroup",            required_argument, NULL, O_CGROUP },
+        { "target-container",  required_argument, NULL, O_TARGET_CONTAINER },
+        { "target-vm",         required_argument, NULL, O_TARGET_VM },
+        { "tap-iface",         required_argument, NULL, O_TAP_IFACE },
+        { "exact",             no_argument,       NULL, O_EXACT },
+        { "no-diag-cols",      no_argument,       NULL, O_NO_DIAG_COLS },
+        { "portable-metrics",  no_argument,       NULL, O_PORTABLE_METRICS },
+        { "interval",          required_argument, NULL, O_INTERVAL },
+        { "duration",          required_argument, NULL, O_DURATION },
+        { "output",            required_argument, NULL, O_OUTPUT },
+        { "no-header",         no_argument,       NULL, O_NO_HEADER },
+        { "no-perf-events",    no_argument,       NULL, O_NO_PERF },
+        { "no-resctrl",        no_argument,       NULL, O_NO_RES },
+        { "list-capabilities", no_argument,       NULL, O_LIST_CAPS },
+        { "verbose",           no_argument,       NULL, O_VERBOSE },
+        { "nic-speed-bps",     required_argument, NULL, O_NIC_SPEED },
+        { "mem-bw-max-bps",    required_argument, NULL, O_MEM_BW },
+        { "llc-size-bytes",    required_argument, NULL, O_LLC_SIZE },
+        { "clip-mbw",          no_argument,       NULL, O_CLIP_MBW },
+        { "no-raw-mbw",        no_argument,       NULL, O_NO_RAW_MBW },
+        { "per-pid-output",    required_argument, NULL, O_PER_PID_OUT },
+        { "help",              no_argument,       NULL, 'h' },
+        { 0, 0, 0, 0 }
+    };
+
+    int c;
+    while ((c = getopt_long(argc, argv, "h", long_opts, NULL)) != -1) {
+        switch (c) {
+        case O_PIDS:
+            out->num_pids = parse_pid_list(optarg, out->pids, INTP_MAX_PIDS);
+            if (out->num_pids == 0) {
+                fprintf(stderr, "invalid --pids '%s'\n", optarg);
+                return -1;
+            }
+            break;
+        case O_CGROUP:
+            out->cgroup = optarg;
+            break;
+        case O_TARGET_CONTAINER:
+            out->cgroup = optarg;       /* alias of --cgroup */
+            break;
+        case O_TARGET_VM:
+            out->tap_iface = optarg;    /* VM netp source; scope rest via --cgroup */
+            break;
+        case O_TAP_IFACE:
+            out->tap_iface = optarg;
+            break;
+        case O_EXACT:
+            out->exact_match = 1;
+            break;
+        case O_NO_DIAG_COLS:
+            out->no_diag_cols = 1;
+            out->no_raw_mbw   = 1;      /* --no-diag-cols also suppresses mbw_raw_mbps */
+            break;
+        case O_INTERVAL:
+            out->interval_sec = atof(optarg);
+            if (out->interval_sec <= 0.0) {
+                fprintf(stderr, "--interval must be > 0\n");
+                return -1;
+            }
+            break;
+        case O_DURATION:
+            out->duration_sec = atof(optarg);
+            break;
+        case O_OUTPUT:
+            out->output_fmt = optarg;
+            break;
+        case O_NO_HEADER:    out->want_header       = 0; break;
+        case O_NO_PERF:      out->no_perf_events    = 1; break;
+        case O_NO_RES:       out->no_resctrl        = 1; break;
+        case O_LIST_CAPS:    out->list_capabilities = 1; break;
+        case O_VERBOSE:      out->verbose           = 1; break;
+        case O_CLIP_MBW:     out->clip_mbw          = 1; break;
+        case O_NO_RAW_MBW:   out->no_raw_mbw        = 1; break;
+        case O_PORTABLE_METRICS: out->portable_metrics = 1; break;
+        case O_PER_PID_OUT:  out->per_pid_output    = optarg; break;
+        case O_NIC_SPEED:    out->nic_speed_bps_override  = atol(optarg); break;
+        case O_MEM_BW:       out->mem_bw_max_bps_override = atol(optarg); break;
+        case O_LLC_SIZE:     out->llc_size_bytes_override = atol(optarg); break;
+        case 'h':
+            intp_args_usage(argv[0], stdout);
+            return 1;
+        default:
+            intp_args_usage(argv[0], stderr);
+            return -1;
+        }
+    }
+
+    if (strcmp(out->output_fmt, "tsv") != 0 &&
+        strcmp(out->output_fmt, "json") != 0 &&
+        strcmp(out->output_fmt, "prometheus") != 0) {
+        fprintf(stderr, "--output must be tsv | json | prometheus\n");
+        return -1;
+    }
+    return 0;
+}

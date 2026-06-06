@@ -2,7 +2,9 @@
 
 Reference variant: **V0 (stap-2022)** (`variants/v0-stap-2022/intp.stp`) — the original IntP design from Xavier & De Rose (SBAC-PAD 2022).
 
-This document tracks how each metric is computed across the 9 variants and which divergences have been corrected.
+This document tracks how each metric is computed across the 11 variants and which divergences have been corrected.
+
+> **Scope:** this matrix covers the **canonical 7 metrics** (`netp nets blk mbw llcmr llcocc cpu`). The six VM-portable metrics (`schedlat psi_mem membw_est psi_io schedthr steal`) are a SEPARATE, opt-in `--portable-metrics` benchmark on v2.1-cgroup-native/v3.3-ebpf-cgroup — they do not alter this alignment and are documented in [docs/reports/8th-metric-vm-portable-design.md](docs/reports/8th-metric-vm-portable-design.md) (C26/C27).
 
 ## Variant index
 
@@ -14,9 +16,11 @@ This document tracks how each metric is computed across the 9 variants and which
 | V1 (stap-nohelper)   | `variants/v1-stap-nohelper/intp-resctrl.stp` | SystemTap + resctrl               | ≤6.7 |
 | V1.1 (stap-modern) | `variants/v1.1-stap-modern/intp-v1.1.stp`  | SystemTap + userspace helper      | ≥4.19 (incl. 6.8) |
 | V2 (C-ABI)   | `variants/v2-c-abi/src/*.c`         | C, /proc + perf + resctrl         | any |
+| V2.1 (cgroup-native) | `variants/v2.1-cgroup-native/src/*.c`  | C, per-cgroup (cgroup v2 cpu.stat/io.stat + perf cgroup mode) + resctrl | ≥5.8 (cgroup v2) |
 | V3 (ebpf-ring)   | `variants/v3-ebpf-ring/src/intp.{c,bpf.c}` | libbpf + tracepoints + kprobes  | ≥5.5 |
 | V3.1 (bpftrace) | `variants/v3.1-bpftrace/scripts/*.bt`      | bpftrace + Python aggregator      | ≥4.19 |
 | V3.2 (eBPF-CORE) | `variants/v3.2-ebpf-core/src/intp_agg.{c,bpf.c}` | libbpf + in-kernel counter map aggregation (no ring buffer) | ≥5.5 |
+| V3.3 (ebpf-cgroup) | `variants/v3.3-ebpf-cgroup/src/intp_agg.{c,bpf.c}` | libbpf + **per-cgroup** in-kernel aggregation (`cgroup_skb` + cgroup-id counter maps, no ring buffer) | ≥5.8 (cgroup v2) |
 
 ## Metric formulas
 
@@ -57,6 +61,65 @@ constants ebpf-ring uses.
 The trailing `mbw_raw_mbps` column is diagnostic, not metric. The
 first 7 TSV columns remain the canonical IntP fingerprint and are
 byte-compatible with ebpf-ring.
+
+### V2.1 (cgroup-native) — variant-specific notes
+
+cgroup-native reuses C-ABI's per-metric formulas and backend hierarchy; the only change is
+the *attribution scope*. When run with `--cgroup <path>` it attributes a single
+cgroup: cpu/blk/llcmr continuously (child-inclusive), mbw/llcocc via a resctrl
+mon_group re-scanned from `cgroup.procs` on a cadence, and netp via the
+container's network namespace. Without `--cgroup` it is byte-for-byte C-ABI.
+
+| Metric  | V2.1 (cgroup-native) vs V2 (C-ABI)                                         |
+|---------|----------------------------------------------------------------------------|
+| netp    | per-cgroup via the container's netns (`/proc/<pid>/net/dev` for a cgroup PID), normalized by the **host** NIC speed = the cgroup's share of the physical link. Falls back to system-wide sysfs/procfs when the target shares the profiler's netns (`--net=host`, bare colocation) — that case needs eBPF (ebpf-cgroup). |
+| **nets**| ≡ C-ABI, **always system-wide** — softirq CPU time (`/proc/stat`, `/proc/softirqs`) is host-global; no per-cgroup softirq counter exists without eBPF. The one metric the ebpf-cgroup variant (eBPF, per-cgroup) attributes that cgroup-native cannot. |
+| **blk** | per-cgroup via cgroup v2 `io.stat` (rbytes+wbytes) ÷ self-detected disk-bandwidth ceiling, vs C-ABI's system-wide `io_ticks`. Falls back to C-ABI's diskstats/sysfs when no `--cgroup`. |
+| mbw     | per-cgroup via a resctrl **MBM mon_group** re-scanned from `cgroup.procs` on a cadence (tight at startup, then periodic — so late-spawned workers are picked up), vs C-ABI's socket-wide uncore IMC. System-wide when no `--cgroup`. |
+| llcmr   | per-cgroup via `perf_event_open` cgroup mode (`PERF_FLAG_PID_CGROUP`, one LL$ loads/misses pair per online CPU), vs C-ABI's per-PID/system-wide perf. Falls back to C-ABI's HW_CACHE/raw counters when no `--cgroup`. |
+| llcocc  | per-cgroup via a resctrl **occupancy mon_group** re-scanned from `cgroup.procs` on a cadence, vs C-ABI's system-wide group. System-wide when no `--cgroup`. |
+| **cpu** | per-cgroup via cgroup v2 `cpu.stat` (usage_usec, hierarchical), vs C-ABI's `/proc/stat`. Falls back to per-PID/system procfs when no `--cgroup`. |
+
+So 6/7 metrics gain per-cgroup attribution (cpu/blk/llcmr continuous,
+mbw/llcocc resctrl-mon_group re-scanned on a cadence, netp via netns); `nets` stays
+system-wide by construction (host-global softirq, no per-cgroup counter without
+eBPF). The first 7 TSV columns remain the canonical IntP fingerprint.
+
+### V3.3 (per-cgroup eBPF) — variant-specific notes
+
+ebpf-cgroup is the **eBPF-native sibling of eBPF-CORE** and the **companion to cgroup-native**: it
+re-asks cgroup-native's per-cgroup question (`--cgroup <path>`, or `--target-container` /
+`--target-vm`+`--tap-iface`) using eBPF instead of cgroup-native stable ABIs. It
+reuses eBPF-CORE's in-kernel-aggregation pattern (counter maps polled once per
+`--interval`, no ring buffer) but scopes attribution to one cgroup: a
+`cgroup_skb` program attached to the target cgroup for `netp`, and cgroup-id-keyed
+counter slots for the software metrics. Provenance per metric:
+
+| Metric  | V3.3 (ebpf-cgroup) provenance                                             |
+|---------|----------------------------------------------------------------------------|
+| **netp**| per-cgroup via a `cgroup_skb` program attached to the target cgroup, normalized by the host NIC speed = the cgroup's share of the physical link. Diagnostic `netp_dev` (per-device byte counter) is appended only without `--no-diag-cols`. (C1) |
+| **nets**| per-cgroup **PROXY** — a byte-share cost model that attributes a fraction of net-softirq cost to the cgroup. **DIVERGENT BY DESIGN from cgroup-native's system-wide `nets`** (host-global softirq CPU time): the two answer different questions, so any cgroup-native<->ebpf-cgroup equivalence check must **EXEMPT `nets`**. Whether the proxy is more faithful to true per-cgroup softirq cost is a *hypothesis* pending measurement, not an asserted advantage. Diagnostic `nets_sys` (the system-wide softirq figure, for cross-check) is appended only without `--no-diag-cols`. (C2) |
+| **blk** | `svctm` busy-fraction % canonical (per-cgroup), matching the physical disk-busy-fraction model used by stap-modern / ebpf-ring / eBPF-CORE. Diagnostic `blk_MBps` (bio-owner per-cgroup throughput) is appended only without `--no-diag-cols`. (C15) |
+| mbw     | per-cgroup, same scope as cgroup-native (resctrl MBM for the cgroup); diagnostic `mbw_raw_mbps` (raw MB/s) appended only without `--no-diag-cols`. |
+| llcmr   | per-cgroup, same scope as cgroup-native (`perf_event_open` cgroup mode / cgroup-scoped LLC counters). |
+| llcocc  | per-cgroup, same scope as cgroup-native (resctrl occupancy mon_group for the cgroup). |
+| cpu     | per-cgroup, same scope as cgroup-native (cgroup v2 `cpu.stat` usage / cgroup-scoped on-CPU time). |
+
+**VM `nets` = N/A** (C8): when the target is a VM (`--target-vm` / `--tap-iface`),
+the guest's net-softirq cost is not observable as a per-cgroup signal on the host,
+so `nets` is reported as N/A for the VM case (the byte-share proxy applies to the
+container-cgroup case only).
+
+**Column shape (C13).** With `--no-diag-cols` — the mode the bench harness and
+`validate-cross-variant.sh` use at every ebpf-cgroup capture site, exactly mirroring how
+eBPF-CORE is captured with `--no-raw-mbw` — ebpf-cgroup emits leading-ts + EXACTLY the 7
+canonical columns (`netp nets blk mbw llcmr llcocc cpu`), byte-compatible with the
+other variants. Without the flag it appends four **diagnostic** (not metric)
+columns trailing the 7, in order: `netp_dev`, `nets_sys`, `mbw_raw_mbps`,
+`blk_MBps`. `stage_report` reads the last 7 columns (`off = n-7`), so a leaked
+diagnostic column would be mis-read as a metric — hence `--no-diag-cols` is
+load-bearing at capture time. The first 7 TSV columns remain the canonical IntP
+fingerprint.
 
 ## Patches applied (this campaign)
 

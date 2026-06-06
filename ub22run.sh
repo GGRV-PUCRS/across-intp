@@ -69,8 +69,17 @@ export HIBENCH_MVN_EXTRA_ARGS="${HIBENCH_MVN_EXTRA_ARGS:-}"
 export HIBENCH_SIZE="${HIBENCH_SIZE:-large}"
 export HIBENCH_PROFILE="${HIBENCH_PROFILE:-all-stress}"
 
+# UB22 variant set. Defaults to the single legacy endpoint v0.2. Overridable
+# with UB22_VARIANTS for the rare case of measuring a cgroup-native endpoint on
+# this leg's HWE 6.5 kernel (v2.1 / cgroup-native builds with gcc/make and
+# 6.5 >= 5.8), e.g.
+#   sudo UB22_VARIANTS=v0.2,v2.1 bash ub22run.sh
+# (v3.3 / ebpf-cgroup needs the modern eBPF toolchain -- use the UB24 /
+#  container leg instead.)
+UB22_VARIANTS="${UB22_VARIANTS:-v0.2}"
+
 exec bash "$SCRIPT_DIR/bench/run-os-campaign.sh" \
     --host-tag ub22 \
-    --variants v0.2 \
+    --variants "$UB22_VARIANTS" \
     --legacy-mvn \
     "$@"

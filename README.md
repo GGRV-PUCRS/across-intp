@@ -2,7 +2,7 @@
 
 <img src="docs/images/across-intp.png" alt="Across-IntP — Linux interference profiler with multi-variant comparison of SystemTap, procfs, bpftrace, and eBPF/CO-RE instrumentation." width="720">
 
-This repository contains nine implementation variants of IntP, an interference
+This repository contains eleven implementation variants of IntP, an interference
 profiler that collects 7 metrics from the Linux kernel. The variants are
 organized for systematic comparison as part of a Master's dissertation on
 kernel instrumentation for interference profiling (PPGCC/PUCRS, advisor
@@ -10,7 +10,11 @@ Prof. Cesar De Rose). The research compares the original SystemTap-based IntP
 across kernel eras (V0 (stap-2022) / V0.1 (stap-nollc) / V0.2 (legacy-intp-baseline)), an RCU-safe stap+helper hybrid (V1.1 (stap-modern)),
 and modern instrumentation approaches (procfs polling — V2 (C-ABI); bpftrace — V3.1 (bpftrace);
 eBPF/CO-RE — V3 (ebpf-ring) ring-buffer-streaming; eBPF/CO-RE — V3.2 (eBPF-CORE) in-kernel-aggregating)
-to evaluate portability, safety, and measurement-fidelity trade-offs.
+to evaluate portability, safety, and measurement-fidelity trade-offs. Two
+per-cgroup variants — V2.1 (cgroup-native C) and V3.3 (ebpf-cgroup, eBPF/CO-RE with
+in-kernel aggregation) — are the active profilers for the cross-deployment
+work (Paper 2); the older V0.x–V3.2 remain as comparison and structural
+evidence.
 
 ## About
 
@@ -36,7 +40,7 @@ the original SystemTap approach across kernel versions and hardware architecture
 1. Reproduce the original IntP baseline (stap-2022) and document breakage on kernel 6.8+.
 2. Develop minimal patches to restore functionality on current kernels (stap-nollc, stap-nohelper) and stap+helper hybrids that recover full metric coverage without RCU-unsafe operations: legacy-intp-baseline on kernel 5.15 GA (Ubuntu 22.04, paper-faithful stap-2022 semantics) and stap-modern on kernel 6.8+.
 3. Implement kernel-module-free alternatives using procfs/perf_event (C-ABI), bpftrace, and eBPF/CO-RE (ebpf-ring).
-4. Compare all nine variants across portability, safety, deployment complexity, and measurement fidelity dimensions.
+4. Compare all eleven variants across portability, safety, deployment complexity, and measurement fidelity dimensions.
 
 ### Status
 
@@ -48,9 +52,11 @@ the original SystemTap approach across kernel versions and hardware architecture
 | V1 (stap-nohelper) -- Stap-native (SystemTap, 6.8+, mbw/llcocc disabled) | Complete |
 | V1.1 (stap-modern) -- Stap + userspace helper (SystemTap, 6.8+, full metrics, RCU-safe) | Complete (helper, `.stp`, and bench integration done; HiBench distributed-mode limitation documented in METRICS-ALIGNMENT.md) |
 | V2 (C-ABI) -- C / procfs / perf_event / resctrl | Complete; validated on Hetzner Sapphire Rapids for Phase 3 experiments |
+| V2.1 (cgroup-native) -- C / cgroup-native, per-cgroup attribution | Active (Paper 2 cross-deployment profiler); validated on Hetzner Sapphire Rapids |
 | V3.1 (bpftrace) -- bpftrace + Python orchestrator | Complete; validated on Hetzner Sapphire Rapids for Phase 3 experiments |
 | V3 (ebpf-ring) -- eBPF/CO-RE (libbpf, ring-buffer-streaming) | Complete; validated on Hetzner Sapphire Rapids for Phase 3 experiments |
 | V3.2 (eBPF-CORE) -- eBPF/CO-RE (libbpf, in-kernel-aggregating, paper section VIII) | Complete; validated on Hetzner Sapphire Rapids for Phase 3 experiments |
+| V3.3 (ebpf-cgroup) -- eBPF/CO-RE (libbpf, per-cgroup, in-kernel-aggregating) | Active (Paper 2 cross-deployment profiler); validated on Hetzner Sapphire Rapids |
 
 ### Citation
 
@@ -60,24 +66,25 @@ If you use this software in your research, please cite it using the metadata in
 
 ## Variant Comparison
 
-| Feature                  | V0 classic | V0.1 k68 | V0.2 helper | V1 native | V1.1 helper | V2 stable-abi | V3.1 bpftrace | V3 ebpf-core | V3.2 eBPF-CORE |
-|--------------------------|:----------:|:--------:|:-----------:|:---------:|:-----------:|:-------------:|:-------------:|:------------:|:-------------:|
-| Kernel module required   |    Yes     |   Yes    |     Yes     |    Yes    |     Yes     |      No       |     No        |      No      |      No       |
-| Userspace helper         |    No      |   No     |     Yes     |    No     |     Yes     |      n/a      |     Yes       |     Yes      |      Yes      |
-| Debuginfo required       |    Yes     |   Yes    |     Yes     |    Yes    |     Yes     |      No       |   No (BTF)    |   No (BTF)   |   No (BTF)    |
-| Kernel crash risk        |    High    |   High   |     Low     |    Low    |     Low     |     None      |    None       |     None     |     None      |
-| Min kernel version       |   <=6.6    |   6.8+   |  5.15 GA    |    6.8+   |     6.8+    |     4.10+     |    5.8+       |     5.8+     |     5.8+      |
-| netp                     |     x      |    x     |      x      |     x     |      x      |       x       |       x       |       x      |       x       |
-| nets (service-time)      |     x      |    x     |      x      |     x     |      x      |       ~       |       x       |       x      |       x       |
-| blk                      |     x      |    x     |      x      |     x     |      x      |       x       |       x       |       x      |       x       |
-| mbw                      |     x      |    x     |      x      |     -     |      x      |       x       |       x       |       x      | x + raw MB/s  |
-| llcmr                    |     x      |    x     |      x      |     x     |      x      |       x       |       x       |       x      |       x       |
-| llcocc                   |     x      |    -     |      x      |     -     |      x      |       x       |       x       |       x      |       x       |
-| cpu                      |     x      |    x     |      x      |     x     |      x      |       x       |       x       |       x      |       x       |
-| Framework                | SystemTap  | SystemTap| SystemTap+C | SystemTap | SystemTap+C |     None      |   bpftrace    |    libbpf    |    libbpf     |
-| Per-event introspection  |    Yes     |   Yes    |     Yes     |    Yes    |     Yes     |      No       |     Yes       |     Yes      |      No       |
-| AMD EPYC compatible      |  Partial   |  Partial |   Partial   |  Partial  |   Partial   |      Yes      |     Yes       |      Yes     |      Yes      |
-| ARM server compatible    |    No      |   No     |     No      |    No     |     No      |    Partial    |   Partial     |    Partial   |    Partial    |
+| Feature                  | V0 classic | V0.1 k68 | V0.2 helper | V1 native | V1.1 helper | V2 stable-abi | V2.1 cgroup | V3.1 bpftrace | V3 ebpf-core | V3.2 eBPF-CORE | V3.3 ebpf-cgroup |
+|--------------------------|:----------:|:--------:|:-----------:|:---------:|:-----------:|:-------------:|:-----------:|:-------------:|:------------:|:--------------:|:----------------:|
+| Kernel module required   |    Yes     |   Yes    |     Yes     |    Yes    |     Yes     |      No       |     No      |     No        |      No      |      No        |       No         |
+| Userspace helper         |    No      |   No     |     Yes     |    No     |     Yes     |      n/a      |     n/a     |     Yes       |     Yes      |      Yes       |       Yes        |
+| Debuginfo required       |    Yes     |   Yes    |     Yes     |    Yes    |     Yes     |      No       |     No      |   No (BTF)    |   No (BTF)   |   No (BTF)     |     No (BTF)      |
+| Kernel crash risk        |    High    |   High   |     Low     |    Low    |     Low     |     None      |    None     |    None       |     None     |     None       |      None        |
+| Min kernel version       |   <=6.6    |   6.8+   |  5.15 GA    |    6.8+   |     6.8+    |     4.10+     |    5.8+     |    5.8+       |     5.8+     |    5.8+        |      5.8+         |
+| Per-cgroup attribution   |     No     |    No    |     No      |     No    |     No      |      No       |     Yes     |     No        |      No      |      No        |      Yes         |
+| netp                     |     x      |    x     |      x      |     x     |      x      |       x       |      x      |       x       |       x      |       x        |       x          |
+| nets (service-time)      |     x      |    x     |      x      |     x     |      x      |       ~       |      ~      |       x       |       x      |       x        |       x          |
+| blk                      |     x      |    x     |      x      |     x     |      x      |       x       |      x      |       x       |       x      |       x        |       x          |
+| mbw                      |     x      |    x     |      x      |     -     |      x      |       x       |      x      |       x       |       x      | x + raw MB/s   |   x + raw MB/s   |
+| llcmr                    |     x      |    x     |      x      |     x     |      x      |       x       |      x      |       x       |       x      |       x        |       x          |
+| llcocc                   |     x      |    -     |      x      |     -     |      x      |       x       |      x      |       x       |       x      |       x        |       x          |
+| cpu                      |     x      |    x     |      x      |     x     |      x      |       x       |      x      |       x       |       x      |       x        |       x          |
+| Framework                | SystemTap  | SystemTap| SystemTap+C | SystemTap | SystemTap+C |     None      |    None     |   bpftrace    |    libbpf    |    libbpf      |     libbpf       |
+| Per-event introspection  |    Yes     |   Yes    |     Yes     |    Yes    |     Yes     |      No       |     No      |     Yes       |     Yes      |      No        |      No          |
+| AMD EPYC compatible      |  Partial   |  Partial |   Partial   |  Partial  |   Partial   |      Yes      |     Yes     |     Yes       |      Yes     |      Yes       |      Yes         |
+| ARM server compatible    |    No      |   No     |     No      |    No     |     No      |    Partial    |   Partial   |   Partial     |    Partial   |    Partial     |    Partial       |
 
 x = supported, ~ = polling approximation, - = disabled in this build
 
@@ -90,6 +97,24 @@ x = supported, ~ = polling approximation, - = disabled in this build
 - **llcmr** -- LLC miss ratio (cache misses / cache references)
 - **llcocc** -- LLC occupancy (bytes of last-level cache occupied)
 - **cpu** -- CPU utilization (user + system time percentage)
+
+### VM-portable metrics (separate `--portable-metrics` benchmark)
+
+A stock KVM guest cannot measure `mbw`/`llcocc` (resctrl is host-only) or a
+comparable `llcmr` (the LL-read PMU events are not virtualized). `v2.1` and `v3.3`
+therefore offer six additional metrics computed by the **guest's own kernel** as a
+SEPARATE, flag-gated benchmark (`--portable-metrics`) — the canonical 7-metric
+fingerprint above and its on-disk schema are left untouched. Design + status:
+[docs/reports/8th-metric-vm-portable-design.md](docs/reports/8th-metric-vm-portable-design.md).
+
+- **schedlat** -- run-queue / scheduling latency (eBPF `sched_wakeup`→`sched_switch`
+  in v3.3; PSI `cpu.pressure` / `schedstat` in v2.1) — *directional*
+- **psi_mem** -- PSI `memory.pressure` (memory-capacity contention) — *descriptive*
+- **membw_est** -- DRAM-bandwidth estimate (LLC misses × 64 B / interval, MB/s; the
+  bandwidth complement `psi_mem` is blind to, and the metric that survives in-guest) — *descriptive*
+- **psi_io** -- PSI `io.pressure` (`blk`'s contention companion) — *descriptive*
+- **schedthr** -- CFS throttling (`cpu.stat`, a confound guard) — *descriptive*
+- **steal** -- hypervisor-stolen vCPU time (`/proc/stat`; VM-global) — *descriptive*
 
 ## Directory Layout
 
@@ -113,9 +138,11 @@ x = supported, ~ = polling approximation, - = disabled in this build
 |   |-- v1-stap-nohelper/          Kernel 6.8+, stap-native probes (mbw/llcocc disabled)
 |   |-- v1.1-stap-modern/      Kernel 6.8+, stap + userspace helper (full 7 metrics, RCU-safe)
 |   |-- v2-c-abi/           Pure C: procfs / perf_event_open / resctrl
+|   |-- v2.1-cgroup-native/    Pure C, per-cgroup attribution (cgroup v2 + perf cgroup mode, no eBPF)
 |   |-- v3-ebpf-ring/       Full eBPF/CO-RE with libbpf (ring-buffer-streaming)
 |   |-- v3.1-bpftrace/         bpftrace scripts + Python orchestrator + resctrl
 |   |-- v3.2-ebpf-core/         Full eBPF/CO-RE with libbpf (in-kernel-aggregating, paper section VIII)
+|   |-- v3.3-ebpf-cgroup/      eBPF/CO-RE with libbpf, per-cgroup targeting + in-kernel aggregation (paper #2 cross-deployment path)
 |-- VERSIONS.md                Variant-naming map (current vs legacy pre-2026-05-05)
 ```
 
@@ -195,6 +222,31 @@ sudo ./intp-hybrid -p <PID> -i <interval_ms>
 
 No framework dependencies. Requires: resctrl for mbw/llcocc.
 
+### V2.1 (cgroup-native) -- C: cgroup-native per-cgroup attribution
+
+```bash
+cd variants/v2.1-cgroup-native
+make
+# system-wide / per-PID (like v2):
+sudo ./intp-hybrid --pids <PID> --interval <seconds>
+# per-cgroup (continuous, child-inclusive) -- e.g. a container's cgroup:
+sudo ./intp-hybrid --cgroup /sys/fs/cgroup/<path> --interval <seconds>
+```
+
+C-ABI's hybrid-C sibling with continuous per-cgroup attribution: cpu/blk/llcmr read
+cgroup v2 `cpu.stat`/`io.stat` and `perf_event_open` cgroup mode when `--cgroup`
+is given; disk bandwidth self-detects. `nets` stays system-wide (softirq is
+host-global without eBPF). One code path serves bare co-located processes,
+containers, and VM guests -- the paper-#2 container / IADA path; see
+`variants/v2.1-cgroup-native/DESIGN.md`. Requires kernel 5.8+ (cgroup v2);
+resctrl for mbw/llcocc.
+
+```bash
+# VM-portable benchmark: append the 6 portable columns (separate, canonical 7
+# untouched). Same flag on v3.3. Analyze with bench/analyze-portable.py.
+sudo ./intp-hybrid --cgroup /sys/fs/cgroup/<path> --portable-metrics --interval 1
+```
+
 ### V3.1 (bpftrace) -- bpftrace
 
 ```bash
@@ -237,6 +289,34 @@ ebpf-ring). Adds a trailing `mbw_raw_mbps` diagnostic column to the TSV
 output (suppressible via `--no-raw-mbw`); the first 7 columns stay
 byte-compatible with ebpf-ring.
 
+### V3.3 (ebpf-cgroup) -- eBPF/CO-RE per-cgroup
+
+```bash
+cd variants/v3.3-ebpf-cgroup
+make
+# system-wide / per-PID (like v3.2):
+sudo ./intp-ebpf-cgroup --pids <PID> --interval <seconds>
+# per-cgroup (child-inclusive) -- e.g. a container's cgroup:
+sudo ./intp-ebpf-cgroup --cgroup /sys/fs/cgroup/<path> --interval <seconds>
+# container alias / VM guest:
+sudo ./intp-ebpf-cgroup --target-container /sys/fs/cgroup/<path> --interval <seconds>
+sudo ./intp-ebpf-cgroup --target-vm <nic> --cgroup /sys/fs/cgroup/<qemu-scope> --interval <seconds>
+```
+
+ebpf-cgroup is the eBPF/CO-RE counterpart of cgroup-native: it keeps eBPF-CORE's
+in-kernel aggregation but adds per-cgroup targeting, attributing the canonical 7
+metrics to one container or VM-guest cgroup instead of system-wide.
+`--cgroup` (or its alias `--target-container`) scopes a cgroup;
+`--target-vm <nic>` / `--tap-iface <nic>` source VM `netp` from the
+host tap/vnet interface while the other six metrics are scoped via
+`--cgroup` over the QEMU scope. `--no-diag-cols` suppresses the
+trailing diagnostic columns. This is the active eBPF profiler for the
+Paper 2 cross-deployment suite; see
+`variants/v3.3-ebpf-cgroup/DESIGN.md`.
+
+Requires: libbpf, clang, kernel BTF, kernel 5.8+ (cgroup v2), resctrl
+for mbw/llcocc.
+
 ### Full per-OS campaign (one command)
 
 `ub24run.sh` and `ub22run.sh` (repo root) run the entire SBAC-PAD
@@ -245,14 +325,41 @@ down) -> bring Hadoop/Spark/HiBench up -> HiBench (cluster up) -> tear
 down -> publish into `sbac-results/`.
 
 ```bash
-sudo bash ub24run.sh             # Ubuntu 24.04 leg -- v1.1, v2, v3.2
-sudo bash ub22run.sh             # Ubuntu 22.04 leg -- v0.2
+sudo bash ub24run.sh             # Ubuntu 24.04 leg -- v1.1, v2, v3.2 (bare metal)
+sudo bash ub22run.sh             # Ubuntu 22.04 leg -- v0.2 (bare metal)
+sudo bash containerun24.sh       # container leg -- v2.1 in LXC/LXD (paper #2)
 sudo bash ub24run.sh --dry-run   # preview every step, run nothing
 ```
 
-Both wrap `bench/run-os-campaign.sh` (`--help` for all knobs and the
-`SKIP_*` resume flags). See
+`ub24run.sh`/`ub22run.sh` wrap `bench/run-os-campaign.sh` (`--help` for all
+knobs and the `SKIP_*` resume flags); `containerun24.sh` is the cgroup-native
+container counterpart -- it pins the `container-lxc` env and drives
+`run-big-batch.sh` (stress-ng leg; HiBench off until a container HiBench
+launcher exists). See
 [bench/setup/REPRODUCTION.md](bench/setup/REPRODUCTION.md) section 9b.
+
+## Paper 2 -- cross-deployment suite
+
+Paper 2 runs the SAME application across six deployment legs --
+bare → docker (container) → podman (container-podman) → incus
+(container-lxc) → k3s (container-k8s) → vm-guest -- and profiles each
+with the per-cgroup variants V2.1 (cgroup-native) and V3.3 (ebpf-cgroup),
+reporting paired deltas against the `bare` baseline. Each metric carries a
+claim class wired to the W4 faithfulness verdicts: `cpu` is absolute, `llcmr`
+is directional, and the remaining metrics are descriptive. The parity contract
+treats network mode and storage backend as the only treatment variables, with a
+per-run `caps_applied` audit so the legs stay comparable.
+
+The `vm-guest` leg yields valid per-cgroup `cpu`, but the RDT/PMU metrics
+(`mbw`, `llcocc`, `llcmr`) are structurally gapped under KVM -- resctrl is
+host-only and last-level-cache perf events are not virtualized. The VM
+path therefore uses a separate, flag-gated benchmark
+(`--portable-metrics`: `schedlat`, `psi_mem`, `membw_est`, `psi_io`,
+`schedthr`, `steal`) so the canonical 7-metric contract (netp nets blk mbw
+llcmr llcocc cpu) stays intact. See
+[docs/CROSS-ENV-CAMPAIGN.md](docs/CROSS-ENV-CAMPAIGN.md),
+[docs/DECISIONS-container.md](docs/DECISIONS-container.md), and
+[docs/reports/8th-metric-vm-portable-design.md](docs/reports/8th-metric-vm-portable-design.md).
 
 ## Documentation
 

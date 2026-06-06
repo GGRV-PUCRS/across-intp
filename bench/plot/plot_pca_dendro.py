@@ -201,7 +201,7 @@ def main(csv_path, outdir, variants=None):
     ax_pca.tick_params(labelsize=8)
 
     # Add top headroom so the in-panel legends sit in an empty band above the
-    # scatter. The descriptive variant names (legacy-intp-baseline, eBPF-CORE, ...) are
+    # scatter. The descriptive variant names (intp-baseline, eBPF-CORE, ...) are
     # wider/taller than the old vN tags, so without this the upper-left
     # "variant" legend overlaps the top points.
     y0, y1 = ax_pca.get_ylim()

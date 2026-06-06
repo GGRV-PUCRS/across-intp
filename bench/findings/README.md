@@ -21,7 +21,7 @@ benchmark campaign.
     `netp=0` is a genuine (likely production-relevant) probe gap, with a host
     diagnostic to confirm it.
 - [UB22 campaign -- Metric validity notes (v0.2 (legacy-intp-baseline))](ub22-campaign-metric-validity.md)
-  - The single-variant legacy-intp-baseline (legacy-bridge) leg on kernel 5.15. Keeps the two
+  - The single-variant legacy-intp-baseline leg on kernel 5.15. Keeps the two
     senses of "ground truth" apart (legacy-intp-baseline as the most reproducible V0 vs physical
     fidelity); documents two published-table defects fixed in-tree (blank
     throughput-overhead from a stress-ng log-tag mismatch; the fidelity figure's

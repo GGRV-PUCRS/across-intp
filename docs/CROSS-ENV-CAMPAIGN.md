@@ -1,11 +1,17 @@
 # Cross-environment campaign (bare / container / vm)
 
 This document is the operational guide for comparing IntP variants under
-the *same* workload across three execution regimes — bare metal, container,
-and VM — and quantifying the overhead each regime imposes on every
-metric the profiler reports. It complements
-[EXPERIMENT-STRATEGY.md](EXPERIMENT-STRATEGY.md) (per-variant operational
-rules) by adding the cross-env analysis layer.
+the *same* workload across execution regimes — bare metal, the container
+family (docker / podman / incus / k3s), and VM — and quantifying the
+overhead each regime imposes on every metric the profiler reports. It
+complements [EXPERIMENT-STRATEGY.md](EXPERIMENT-STRATEGY.md) (per-variant
+operational rules) by adding the cross-env analysis layer. The
+cross-deployment Paper 2 suite (its normative axis, variant set, and claim
+classes) is defined in EXPERIMENT-STRATEGY.md § "Paper 2 — cross-deployment
+benchmark suite"; this guide is the pipeline that runs it. The active
+profiler variants for the container + cross-deployment work are
+`v2.1-cgroup-native` and `v3.3-ebpf-cgroup`; the older v0.x–v3.2 variants
+remain as comparison/structural evidence.
 
 ## Goal
 
@@ -37,9 +43,11 @@ The bench script offers two VM modes:
   an ephemeral SSH key, the host launches the profiler binary *inside*
   the guest, and `profiler.tsv` is scp'd back to the campaign tree.
   Per-process attribution matches what bare metal and container would
-  see, at the cost of (a) RDT metrics (`mbw`, `llcocc`) depending on
-  vRDT pass-through in the host kernel, and (b) some boot latency per
-  rep.
+  see, and the guest boots with PMU pass-through (`-cpu host,pmu=on`) so
+  `llcmr` and `cpu` are measurable. The two RDT metrics (`mbw`,
+  `llcocc`) are structurally unavailable in a stock KVM guest (resctrl is
+  host-only; no vRDT pass-through) and are recorded `unsupported`, never
+  0. Per rep there is also some VM boot latency.
 
 The cross-env analysis treats each env's data as independent samples,
 so missing columns in the `vm` mode would bias the KW omnibus away from
@@ -100,10 +108,12 @@ count, event counts bounded below at zero) and the per-rep sample size
 is small. Normality is not defensible; ANOVA-derived p-values would be
 optimistic. KW + MW preserves interpretability under those conditions.
 
-Bonferroni is the conservative choice and matches the small env-set we
-compare in this campaign (typically 3). For larger env sets switch to
-Holm-Bonferroni or BH-FDR — implement upstream of `stats.tsv` if you
-need it.
+Bonferroni is the conservative choice and matches the small env-set of a
+classic bare/container/vm comparison (typically 3). The cross-deployment
+Paper 2 suite spans 6 envs (15 pairs), where Bonferroni is overly
+conservative; that suite corrects with BH-FDR over the 15-pair table
+instead, and stamps the per-metric `claim_class` into `stats.tsv` (see
+EXPERIMENT-STRATEGY.md § "Comparison statistic + claim classes").
 
 ## Running
 
@@ -115,6 +125,17 @@ sudo BENCH_ENVS=bare,container,vm-guest \
      VM_IMAGE=/var/lib/intp/ubuntu24.qcow2 \
      INTP_BENCH_CPUS=64 INTP_BENCH_MEM=192G \
      REPS=10 DURATION=120 \
+     bash run-big-batch.sh
+```
+
+Full cross-deployment campaign (Paper 2 axis) on the Sapphire Rapids host:
+
+```bash
+sudo BENCH_ENVS=bare,container,container-podman,container-lxc,container-k8s,vm-guest \
+     BENCH_VARIANTS=v2.1,v3.3 \
+     VM_IMAGE=/var/lib/intp/ubuntu24.qcow2 \
+     INTP_BENCH_CPUS=64 INTP_BENCH_MEM=192G \
+     REPS=12 DURATION=120 \
      bash run-big-batch.sh
 ```
 
@@ -140,16 +161,21 @@ for catching regressions in the pipeline without a 6-hour bench-full.
 
 ## Known limitations
 
-- **RDT in guest.** `mbw` and `llcocc` rely on Intel RDT counters via
-  `/sys/fs/resctrl`. Without vRDT pass-through these metrics are
-  unobservable inside the guest; `availability.tsv` will mark those
-  cells `missing`. Plain `vm` (host-observer) still captures host-side
-  RDT but attributed to qemu, not the workload.
-- **Network forwarding model.** `vm-guest` uses qemu user-mode SLIRP
-  with port forwarding for SSH. SLIRP throttles `netp`/`nets`; if you
-  need representative network numbers, switch the launcher to TAP and
-  bridge it to the host NIC — but TAP requires `CAP_NET_ADMIN` and
-  changes the guest IP plan.
+- **RDT metrics in guest are structurally gapped, not missing.** `mbw`
+  and `llcocc` rely on Intel RDT counters via `/sys/fs/resctrl`, which is
+  host-only under KVM (no vRDT pass-through), so they are structurally
+  unavailable inside the guest. The Paper 2 suite records those cells
+  with an `unsupported` availability status (distinct from `missing`) and
+  never emits them as 0. For VM rows that need bandwidth/memory pressure
+  signal, the flag-gated `--portable-metrics` VM benchmark (schedlat,
+  psi_mem, membw_est, psi_io, schedthr, steal) is the VM path, keeping
+  the canonical 7-metric contract intact. Plain `vm` (host-observer)
+  still captures host-side RDT but attributed to qemu, not the workload.
+- **Network forwarding model.** The canonical `vm-guest` row boots with a
+  TAP NIC bridged to the host so `netp`/`nets` see a real device. The
+  legacy qemu user-mode SLIRP path (port forwarding for SSH) throttles
+  `netp`/`nets` and is unsuitable for representative network numbers;
+  TAP requires `CAP_NET_ADMIN` and changes the guest IP plan.
 - **VM boot latency.** Each rep pays ~30–60 s of cloud-init time. At
   `--reps 10 --duration 120` the VM boot tax is ~10% of the campaign
   budget for VM rows. Pre-baking IntP build deps into the qcow2 (so

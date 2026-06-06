@@ -4,8 +4,13 @@
 # Compiled binaries (one per implementation variant)
 variants/v1.1-stap-modern/intp-helper
 variants/v2-c-abi/intp-hybrid
+variants/v2.1-cgroup-native/intp-hybrid
 variants/v3-ebpf-ring/intp-ebpf
 variants/v3.2-ebpf-core/intp-eBPF-CORE
+
+# v2.1 unit-test binaries (in-place build; keep the .c sources)
+variants/v2.1-cgroup-native/tests/test-*
+!variants/v2.1-cgroup-native/tests/test-*.c
 
 # Generic C/C++ build artifacts
 *.o

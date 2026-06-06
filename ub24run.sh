@@ -18,6 +18,14 @@
 # All of the above is the shared engine bench/run-os-campaign.sh; this file
 # just pins the UB24 variant set. The UB22 / v0.2 counterpart is ub22run.sh.
 #
+# Default variant set is the bare-metal measured endpoints v1.1,v2,v3.2.
+# Override with UB24_VARIANTS to add the cgroup-native endpoints, e.g.
+#   sudo UB24_VARIANTS=v1.1,v2,v2.1,v3.2,v3.3 bash ub24run.sh
+# On BARE metal v2.1/v3.3 attribute system-wide (no container/VM cgroup target);
+# for their intended per-cgroup path use the container launcher (containerun24.sh,
+# env=container-lxc) or a VM tenant (run-big-batch.sh BENCH_ENVS=vm). The set is
+# forwarded verbatim to run-os-campaign.sh --variants.
+#
 # Prerequisite: the host is already bootstrapped (bench/setup/setup-host.sh
 # has been run and any kernel pin/reboot completed). This script does NOT
 # install packages or pin kernels -- but its Stage 0 DOES assert the live
@@ -63,7 +71,11 @@ export HIBENCH_MVN_EXTRA_ARGS="${HIBENCH_MVN_EXTRA_ARGS:-}"
 export HIBENCH_SIZE="${HIBENCH_SIZE:-large}"
 export HIBENCH_PROFILE="${HIBENCH_PROFILE:-all-stress}"
 
+# UB24 variant set. Defaults to the bare-metal measured endpoints; override with
+# UB24_VARIANTS to fold in the cgroup-native endpoints v2.1 / v3.3.
+UB24_VARIANTS="${UB24_VARIANTS:-v1.1,v2,v3.2}"
+
 exec bash "$SCRIPT_DIR/bench/run-os-campaign.sh" \
     --host-tag ub24 \
-    --variants v1.1,v2,v3.2 \
+    --variants "$UB24_VARIANTS" \
     "$@"

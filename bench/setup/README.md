@@ -12,6 +12,11 @@ experiments.
 | `installimage-noble.conf`     | Hetzner installimage config: Ubuntu 24.04 onto `nvme1n1`    |
 | `setup-host.sh`               | Auto-detecting bootstrap script for either OS               |
 | `setup-host-legacy.sh`        | Minimal idempotent bootstrap for the U22 / kernel 5.15 leg of the legacy-V0 campaign |
+| `Dockerfile.bench`            | LEAN bench-tenant container image (stress-ng + bench deps; NOT the heavy `intp-full`) |
+| `lxc-bench.cloud-init.yaml`   | cloud-init user-data baking the same bench deps into an LXC/Incus tenant |
+| `vm-bench.cloud-init.yaml`    | cloud-init turning an Ubuntu 24.04 cloud image into a bench VM (HWE kernel + bench deps) |
+| `build-bench-vm.sh`           | Idempotent builder: cloud image + `vm-bench.cloud-init.yaml` -> `intp-bench-vm.qcow2` |
+| `publish-images.sh`           | Operator-invoked: build + (with `--publish`) push image to GHCR / upload qcow2 to a GH release |
 
 ## Read flow (docs -> findings)
 
@@ -166,6 +171,169 @@ installed independently on its own drive with its own bootloader.
 Keep the two `results/` trees side by side. The plotter merges them when
 pointed at a parent directory.
 
+## Bench-tenant image definitions (container / cross-deployment envs)
+
+The container / container-podman / container-lxc / container-k8s / vm envs run
+the workload inside a tenant. By default the harness uses **stock `ubuntu:24.04`**
+and apt-installs `stress-ng` on every rep (slow). These image definitions pre-bake
+the bench deps so that per-run cost disappears. They are **opt-in**: the harness
+defaults (`CONTAINER_IMAGE=ubuntu:24.04`, `INTP_BENCH_PODMAN_IMAGE=ubuntu:24.04`,
+`LXC_IMAGE=ubuntu:24.04`, `VM_IMAGE=` unset) are unchanged -- you point at the
+lean images via env vars. `Dockerfile.bench` is an OCI image, so it serves both
+the docker (`container`) and podman (`container-podman`) envs unchanged.
+
+Matching the host: containers/LXC **share the host kernel**, so 6.17 HWE is
+automatic and nothing kernel-related is baked in. A **VM has its own kernel**,
+so the VM image installs the HWE kernel (`linux-generic-hwe-24.04`) to track the
+host's 6.17 line. All three carry the same userspace bench deps
+(`stress-ng iperf3 sysstat numactl bc procps iproute2`), matching what
+`setup-host.sh` installs on the bare host.
+
+These are the LEAN tenants -- they do NOT contain the heavy HDFS/Spark/HiBench
+stack. That all-in-one path stays in `bench/deploy/` (`Dockerfile.full`,
+`build-full-image.sh`, `build-full-vm.sh`) for the `container-full` / `vm-full`
+envs and is untouched.
+
+### Container (docker) -- `Dockerfile.bench`
+
+```bash
+docker build -f bench/setup/Dockerfile.bench \
+    -t ghcr.io/ggrv-intp/intp-bench:24.04 bench/setup
+
+INTP_BENCH_CONTAINER=ghcr.io/ggrv-intp/intp-bench:24.04 \
+    sudo bash bench/run-intp-bench.sh --env container --variants v2,v3.2 ...
+```
+
+The image's `ubuntu:24.04` base can be digest-pinned for byte-for-byte repro
+(see the commented `FROM ... @sha256:` line in the Dockerfile).
+
+### Container-podman (rootful Podman) -- `Dockerfile.bench`
+
+Podman is a **daemonless, OCI-compatible** runtime, so it consumes the *same*
+`Dockerfile.bench` image as the docker env -- no separate definition. Run as
+root (the harness runs as root) podman places the container in **host-visible
+cgroup v2 cgroups**, so the host-side profiler attributes its PID/cgroup exactly
+like the docker env (`--pid=host`). Being daemonless, it has no idle runtime
+daemon, so a container-podman campaign needs no quiesce step (see
+`run-big-batch.sh`); podman also brings CRIU-based checkpoint/live-migration
+that docker lacks.
+
+```bash
+podman build -f bench/setup/Dockerfile.bench \
+    -t ghcr.io/ggrv-intp/intp-bench:24.04 bench/setup
+
+INTP_BENCH_PODMAN_IMAGE=ghcr.io/ggrv-intp/intp-bench:24.04 \
+    sudo bash bench/run-intp-bench.sh --env container-podman --variants v2,v3.2 ...
+```
+
+Override the client binary with `INTP_BENCH_PODMAN_BIN` (default `podman`); the
+image defaults to `ubuntu:24.04` (`INTP_BENCH_PODMAN_IMAGE`), with apt-install
+on the fly when not using the pre-baked image -- identical to the docker path.
+
+### Container-lxc (LXD / Incus) -- `lxc-bench.cloud-init.yaml`
+
+```bash
+# LXD:
+lxc launch ubuntu:24.04 intp-bench-lxc \
+    --config=cloud-init.user-data="$(cat bench/setup/lxc-bench.cloud-init.yaml)"
+# Incus:
+incus launch images:ubuntu/24.04 intp-bench-lxc \
+    --config=cloud-init.user-data="$(cat bench/setup/lxc-bench.cloud-init.yaml)"
+
+# Snapshot it to a reusable image alias, then point the harness at it:
+lxc publish intp-bench-lxc --alias intp-bench
+INTP_BENCH_LXC_IMAGE=intp-bench \
+    sudo bash bench/run-intp-bench.sh --env container-lxc --variants v2,v3.2 ...
+```
+
+### Container-k8s (Kubernetes / k3s) -- `Dockerfile.bench`
+
+The `container-k8s` env runs the bench tenant as a **Kubernetes pod**, backed by
+**k3s** -- a lightweight single-binary Kubernetes that bundles `kubectl`,
+`crictl`, and an embedded `containerd`. k3s is the vehicle so a one-line install
+brings up the whole control plane + node runtime without a separate
+kubeadm/containerd setup.
+
+This is the **deepest cgroup nesting** of any env: the in-pod `stress-ng`
+process lands at
+`kubepods.slice/kubepods-<qos>.slice/kubepods-<qos>-pod<uid>.slice/cri-containerd-<id>.scope`.
+It therefore exercises the per-cgroup attribution path (v2.1's cgroup targeting
+and v3.3's ancestor-cgid gate + `target_level`) against the most nested layout
+the campaign covers. No profiler change is needed: the launcher resolves the
+in-pod `stress-ng` host-PID-namespace PID via `crictl inspect`, and the
+host-side profiler self-resolves that deep cgroup from the PID exactly as it
+does for the docker/podman envs.
+
+k3s is **opt-in** and never installed by default. Install it with the
+`--with-k8s` flag (mirroring `--with-scx`):
+
+```bash
+sudo bash bench/setup/setup-host.sh --with-k8s
+```
+
+`Dockerfile.bench` is an OCI image, so the same image serves the docker, podman,
+and k8s envs. By default the k8s leg mirrors the docker path: it uses a stock
+`docker.io/library/ubuntu:24.04` (`INTP_BENCH_K8S_IMAGE`) and apt-installs
+`stress-ng` in the pod command on every rep, so no pre-baked image is required.
+To skip the per-run install, make the bench image available to k3s's embedded
+containerd:
+
+```bash
+# Import the locally built bench image into k3s's containerd:
+docker save ghcr.io/ggrv-intp/intp-bench:24.04 -o /tmp/intp-bench.tar
+sudo k3s ctr images import /tmp/intp-bench.tar
+# or pull the published image from GHCR (see publish-images.sh below):
+#   ghcr.io/ggrv-intp/intp-bench:24.04
+
+INTP_BENCH_K8S_IMAGE=ghcr.io/ggrv-intp/intp-bench:24.04 \
+    sudo bash bench/run-intp-bench.sh --env container-k8s --variants v2,v3.2 ...
+```
+
+Override the API client with `INTP_BENCH_KUBECTL` (default `kubectl`; on a
+k3s-only host use `INTP_BENCH_KUBECTL='k3s kubectl'`), the CRI client with
+`INTP_BENCH_CRICTL` (default `crictl`, bundled with k3s), and the namespace with
+`INTP_BENCH_K8S_NS` (default `intp-bench`).
+
+`k3s.service` runs the kubelet, containerd, and control plane, so it is a **heavy
+idle daemon**: for non-k8s campaigns it is quiesced like docker/lxd/incus (see
+`run-big-batch.sh` and `bench/deploy/host-services.sh`), and a `container-k8s`
+campaign keeps it running.
+
+### VM (qemu) -- `vm-bench.cloud-init.yaml` + `build-bench-vm.sh`
+
+```bash
+# Build a lean qcow2 from the Ubuntu 24.04 cloud image + the cloud-init above:
+sudo bash bench/setup/build-bench-vm.sh         # -> /var/lib/intp/intp-bench-vm.qcow2
+# Optional: bake the full profiler toolchain by running setup-host.sh in-guest:
+INCLUDE_SETUP_HOST=1 sudo bash bench/setup/build-bench-vm.sh
+
+INTP_BENCH_VM_IMAGE=/var/lib/intp/intp-bench-vm.qcow2 \
+    sudo bash bench/run-intp-bench.sh --env vm --variants v2,v3.2 ...
+```
+
+Exact 6.17 parity may need a mainline kernel (HWE is the supported
+approximation) -- see the header of `vm-bench.cloud-init.yaml`.
+
+### Publishing as packages -- `publish-images.sh`
+
+To share the lean images, `publish-images.sh` builds them and (with
+`--publish`) pushes the container image to GHCR and uploads the qcow2 to a
+GitHub release:
+
+```bash
+# Default: build locally + PRINT the push/upload commands (nothing outward):
+bash bench/setup/publish-images.sh
+bash bench/setup/publish-images.sh --vm        # also build the bench VM qcow2
+
+# Operator only: actually push to GHCR + upload to a GH release.
+# Requires YOUR `docker login ghcr.io` and `gh auth login`; uploads multi-GB:
+bash bench/setup/publish-images.sh --vm --publish
+```
+
+The `--publish` path is gated behind the flag and prints a loud banner: it is
+never run by the harness or CI, since it needs the operator's GitHub auth and
+bandwidth.
+
 ## Optional flags
 
 `setup-host.sh` accepts:
@@ -179,6 +347,13 @@ pointed at a parent directory.
 | `--no-debuginfo`    | Skip the ddebs repo and matching dbgsym package. SystemTap probes
                        lose access to a lot of internal symbols; only use this if you
                        intend to run C-ABI/bpftrace/ebpf-ring only.                  |
+| `--with-scx`        | Opt-in heavy: also install the sched_ext/scx scheduler tooling
+                       (rustup/cargo) for the future IADA/scheduler leg. Not installed
+                       by default.                                                       |
+| `--with-k8s`        | Opt-in heavy: also install k3s (lightweight single-binary
+                       Kubernetes bundling kubectl/crictl/containerd) for the
+                       `container-k8s` env. Not installed by default; `k3s.service` is
+                       a heavy daemon quiesced for non-k8s campaigns.                    |
 
 ## Sanity check after step 4 / step 6
 

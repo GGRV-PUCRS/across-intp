@@ -95,12 +95,14 @@ V1_STP="$REPO_ROOT/variants/v1-stap-nohelper/intp-resctrl.stp"
 V1_1_STP="$REPO_ROOT/variants/v1.1-stap-modern/intp-v1.1.stp"
 V1_1_HELPER="$REPO_ROOT/variants/v1.1-stap-modern/intp-helper"
 V2_BIN="$REPO_ROOT/variants/v2-c-abi/intp-hybrid"
+V2_1_BIN="$REPO_ROOT/variants/v2.1-cgroup-native/intp-hybrid"
 V3_1_RUNNER="$REPO_ROOT/variants/v3.1-bpftrace/run-intp-bpftrace.sh"
 V3_BIN="$REPO_ROOT/variants/v3-ebpf-ring/intp-ebpf"
 V3_2_BIN="$REPO_ROOT/variants/v3.2-ebpf-core/intp-eBPF-CORE"
+V3_3_BIN="$REPO_ROOT/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup"
 
 DEFAULT_STAGES="detect,build,solo,pairwise,overhead,timeseries,report"
-DEFAULT_VARIANTS="v0,v0.1,v0.2,v1,v1.1,v2,v3.1,v3,v3.2"
+DEFAULT_VARIANTS="v0,v0.1,v0.2,v1,v1.1,v2,v2.1,v3.1,v3,v3.2"
 # Seven execution environments form three nested axes:
 #   • where the WORKLOAD runs (host / container / VM)
 #   • where the PROFILER runs (host-observer or in-guest)
@@ -648,7 +650,7 @@ write_metadata() {
     {
         printf '# variant manifest\n'
         printf 'variant\tpath\tsha256\tmtime\n'
-        for v in v0 v0.1 v0.2 v1 v1.1 v2 v3.1 v3 v3.2; do
+        for v in v0 v0.1 v0.2 v1 v1.1 v2 v2.1 v3.1 v3 v3.2 v3.3; do
             local p
             case "$v" in
                 v0) p="$V0_STP" ;;
@@ -657,9 +659,11 @@ write_metadata() {
                 v1) p="$V1_STP" ;;
                 v1.1) p="$V1_1_STP" ;;
                 v2) p="$V2_BIN" ;;
+                v2.1) p="$V2_1_BIN" ;;
                 v3.1) p="$V3_1_RUNNER" ;;
                 v3) p="$V3_BIN" ;;
                 v3.2) p="$V3_2_BIN" ;;
+                v3.3) p="$V3_3_BIN" ;;
             esac
             if [ -f "$p" ] || [ -x "$p" ]; then
                 printf '%s\t%s\t%s\t%s\n' "$v" "$p" \
@@ -686,9 +690,17 @@ stage_build() {
         log "Building v2..."
         run_or_dry make -C "$REPO_ROOT/variants/v2-c-abi"
     fi
+    if variant_selected v2.1 && [ ! -x "$V2_1_BIN" ]; then
+        log "Building v2.1 (cgroup-native)..."
+        run_or_dry make -C "$REPO_ROOT/variants/v2.1-cgroup-native"
+    fi
     if variant_selected v3.2 && [ ! -x "$V3_2_BIN" ]; then
         log "Building v3.2 (eBPF in-kernel aggregating)…"
         run_or_dry make -C "$REPO_ROOT/variants/v3.2-ebpf-core"
+    fi
+    if variant_selected v3.3 && [ ! -x "$V3_3_BIN" ]; then
+        log "Building v3.3 (eBPF cgroup-native)…"
+        run_or_dry make -C "$REPO_ROOT/variants/v3.3-ebpf-cgroup"
     fi
     if variant_selected v3 && [ ! -x "$V3_BIN" ]; then
         log "Building v3..."
@@ -711,6 +723,7 @@ stage_build() {
     if variant_selected v1 && [ ! -f "$V1_STP" ]; then warn "v1 selected but $V1_STP missing"; fi
     if variant_selected v1.1 && [ ! -f "$V1_1_STP" ]; then warn "v1.1 selected but $V1_1_STP missing"; fi
     if variant_selected v3.1 && [ ! -x "$V3_1_RUNNER" ]; then warn "v3.1 selected but runner $V3_1_RUNNER not executable"; fi
+    if variant_selected v3.3 && [ ! -x "$V3_3_BIN" ]; then warn "v3.3 selected but $V3_3_BIN missing (build failed or not built)"; fi
 }
 
 # -----------------------------------------------------------------------------
@@ -778,6 +791,12 @@ variant_kernel_ok() {
             # in 5.8 — earlier kernels need root or paranoid≤1.
             if _kernel_lt 5 8;  then warn "v2 needs kernel ≥5.8 (CAP_PERFMON)"; return 1; fi
             ;;
+        v2.1)
+            # V2 + continuous cgroup-native attribution (cpu.stat, io.stat,
+            # perf cgroup mode). Same 5.8 floor as v2 (CAP_PERFMON), and needs
+            # the cgroup v2 unified hierarchy for cpu.stat / io.stat.
+            if _kernel_lt 5 8;  then warn "v2.1 needs kernel ≥5.8 (CAP_PERFMON + cgroup v2)"; return 1; fi
+            ;;
         v3)
             # libbpf + CO-RE eBPF with BTF. Practical floor 5.10 for stable
             # libbpf + reliable kfunc/tp_btf attach.
@@ -800,6 +819,24 @@ variant_kernel_ok() {
             if [ ! -f /sys/kernel/btf/vmlinux ]; then
                 warn "v3.2 needs CONFIG_DEBUG_INFO_BTF=y (no /sys/kernel/btf/vmlinux)"
                 return 1
+            fi
+            ;;
+        v3.3)
+            # eBPF cgroup-native. cgroup/skb + cgroup BPF attach is stable from
+            # 5.8 (matching the v2.1 cgroup-v2 floor); CO-RE needs BTF. The
+            # per-cgroup netp tap attach wants CAP_NET_ADMIN, but that is a
+            # soft requirement: without it netp degrades, so warn (don't fail).
+            if _kernel_lt 5 8;  then warn "v3.3 needs kernel ≥5.8 (cgroup-BPF + cgroup v2)"; return 1; fi
+            if [ ! -f /sys/kernel/btf/vmlinux ]; then
+                warn "v3.3 needs CONFIG_DEBUG_INFO_BTF=y (no /sys/kernel/btf/vmlinux)"
+                return 1
+            fi
+            if command -v capsh >/dev/null 2>&1; then
+                if ! capsh --print 2>/dev/null | grep -q 'cap_net_admin'; then
+                    warn "v3.3: CAP_NET_ADMIN not present; per-cgroup netp tap attach may degrade"
+                fi
+            elif [ "$(id -u)" -ne 0 ]; then
+                warn "v3.3: not root and capsh unavailable; CAP_NET_ADMIN unverified, netp may degrade"
             fi
             ;;
     esac
@@ -2126,6 +2163,68 @@ run_profiler_v2() {
     awk '/^[0-9]/{n++}END{print n+0}' "$outfile" > "$outfile.samples"
 }
 
+# Resolve a PID's cgroup v2 path (host view) to /sys/fs/cgroup<rel>, for the
+# cgroup-native variants (v2.1/v3.3) when a workload is launched by PID
+# (docker/podman container, vm-guest) rather than in a pre-created cgroup.
+# Echoes the resolved path, or nothing if it cannot be resolved.
+resolve_pid_cgroup() {
+    local pid="$1" cgrel
+    [ -n "$pid" ] && [ "$pid" != "0" ] || return 0
+    cgrel=$(awk -F: '/^0::/{print $3; exit}' "/proc/$pid/cgroup" 2>/dev/null)
+    [ -n "$cgrel" ] && [ -d "/sys/fs/cgroup$cgrel" ] && printf '%s\n' "/sys/fs/cgroup$cgrel"
+}
+
+# v2.1 is the cgroup-native sibling of v2: same intp-hybrid CLI, but its
+# cpu/blk/llcmr backends attribute per-cgroup (continuous) when --cgroup is
+# given, and blk self-detects disk bandwidth. For PID-launched envs (docker/
+# vm-guest hand a PID, not a cgroup) the target PID's cgroup v2 path is
+# resolved and passed via --cgroup so v2.1 attributes the tenant instead of
+# falling back to its system-wide <root> resctrl mon_group.
+run_profiler_v2_1() {
+    local outfile="$1" duration="$2" pid="$3" cgroup_path="${4:-}"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        if [ -n "$cgroup_path" ]; then
+            log "DRY: $V2_1_BIN --interval $INTERVAL --duration $duration --cgroup $cgroup_path -> $outfile"
+        elif [ "$V_USE_PID_FILTER" = "1" ] && [ -n "$pid" ] && [ "$pid" != "0" ]; then
+            log "DRY: $V2_1_BIN --interval $INTERVAL --duration $duration --pids $pid -> $outfile"
+        elif [ -n "$pid" ] && [ "$pid" != "0" ]; then
+            log "DRY: $V2_1_BIN --interval $INTERVAL --duration $duration --cgroup \$(resolve_pid_cgroup $pid) -> $outfile"
+        else
+            log "DRY: $V2_1_BIN --interval $INTERVAL --duration $duration (system-wide) -> $outfile"
+        fi
+        printf 'netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu\n' > "$outfile"
+        echo 0 > "$outfile.samples"
+        return 0
+    fi
+    local args=( --interval "$INTERVAL" --duration "$duration" --output tsv )
+    local scope="system-wide"
+    if [ -n "$cgroup_path" ]; then
+        args+=( --cgroup "$cgroup_path" )
+        scope="cgroup=$cgroup_path"
+    elif [ "$V_USE_PID_FILTER" = "1" ] && [ -n "$pid" ] && [ "$pid" != "0" ]; then
+        args+=( --pids "$pid" )
+        scope="pid=$pid"
+    elif [ -n "$pid" ] && [ "$pid" != "0" ]; then
+        # PID-launched envs (docker/vm-guest hand a PID, not a cgroup): resolve
+        # the PID's cgroup v2 path and scope v2.1 to it, exactly as
+        # run_profiler_v3_3 does. Without this v2.1 falls to its system-wide
+        # <root> resctrl mon_group and reports whole-machine L3 occupancy.
+        local cg21; cg21=$(resolve_pid_cgroup "$pid")
+        if [ -n "$cg21" ]; then
+            args+=( --cgroup "$cg21" )
+            scope="cgroup=$cg21 (resolved from pid=$pid)"
+        else
+            warn "v2.1: could not resolve cgroup for pid=$pid; running system-wide"
+        fi
+    fi
+    {
+        printf '# variant=v2.1 scope=%s\n' "$scope"
+        "$V2_1_BIN" "${args[@]}" 2>"${outfile%.tsv}.v2.1.log" \
+            | awk 'BEGIN{cmd="date +%s.%N"} /^#/||/^netp/{print;next} {cmd|getline ts;close(cmd); print ts"\t"$0}'
+    } > "$outfile" || true
+    awk '/^[0-9]/{n++}END{print n+0}' "$outfile" > "$outfile.samples"
+}
+
 run_profiler_v3_1() {
     local outfile="$1" duration="$2" pid="$3"
     if [ "$DRY_RUN" -eq 1 ]; then
@@ -2250,17 +2349,82 @@ run_profiler_v3_2() {
     awk '/^[0-9]/{n++}END{print n+0}' "$outfile" > "$outfile.samples"
 }
 
+run_profiler_v3_3() {
+    # V3.3 (eBPF cgroup-native). Cloned from run_profiler_v3_2 but invokes
+    # V3_3_BIN and passes --no-diag-cols EXACTLY where v3.2 passes --no-raw-mbw.
+    # This keeps the captured TSV at leading-ts + EXACTLY the 7 canonical
+    # columns; the v3.3 diagnostic columns (netp_dev, nets_sys, mbw_raw_mbps,
+    # blk_MBps) are emitted only WITHOUT --no-diag-cols and would otherwise
+    # leak into stage_report's off=n-7 metric window. Do not drop the
+    # --no-diag-cols flag from any capture site here.
+    #
+    # v3.3 is cgroup-id only (no --pids path). For PID-launched envs (docker
+    # container, vm-guest) the target PID's cgroup v2 path is resolved and
+    # passed via --cgroup so they get per-cgroup attribution instead of
+    # silently degrading to system-wide (an all-zero in-container capture).
+    local outfile="$1" duration="$2" pid="$3" cgroup_path="${4:-}"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        if [ -n "$cgroup_path" ]; then
+            log "DRY: $V3_3_BIN --interval $INTERVAL --duration $duration --cgroup $cgroup_path --no-diag-cols -> $outfile"
+        elif [ -n "$pid" ] && [ "$pid" != "0" ]; then
+            log "DRY: $V3_3_BIN --interval $INTERVAL --duration $duration --cgroup \$(resolve_pid_cgroup $pid) --no-diag-cols -> $outfile"
+        else
+            log "DRY: $V3_3_BIN --interval $INTERVAL --duration $duration --no-diag-cols (system-wide) -> $outfile"
+        fi
+        printf 'netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu\n' > "$outfile"
+        echo 0 > "$outfile.samples"
+        return 0
+    fi
+    # --no-diag-cols: captured TSV stays leading-ts + exactly 7 metrics.
+    local args=( --interval "$INTERVAL" --duration "$duration"
+                 --output tsv --no-diag-cols )
+    local scope="system-wide"
+    if [ -n "$cgroup_path" ]; then
+        args+=( --cgroup "$cgroup_path" )
+        scope="cgroup=$cgroup_path"
+    elif [ -n "$pid" ] && [ "$pid" != "0" ]; then
+        local cg33; cg33=$(resolve_pid_cgroup "$pid")
+        if [ -n "$cg33" ]; then
+            args+=( --cgroup "$cg33" )
+            scope="cgroup=$cg33 (resolved from pid=$pid)"
+        else
+            warn "v3.3: could not resolve cgroup for pid=$pid; running system-wide"
+        fi
+    fi
+    local mbw_bps; mbw_bps="$(resolve_mem_bw_max_bps)"
+    [ -n "$mbw_bps" ] && args+=( --mem-bw-max-bps "$mbw_bps" )
+    {
+        printf '# variant=v3.3 scope=%s\n' "$scope"
+        "$V3_3_BIN" "${args[@]}" 2>"${outfile%.tsv}.v3.3.log" \
+            | awk 'BEGIN{cmd="date +%s.%N"} /^#/||/^netp/{print;next} {cmd|getline ts;close(cmd); print ts"\t"$0}'
+    } > "$outfile" || true
+    awk '/^[0-9]/{n++}END{print n+0}' "$outfile" > "$outfile.samples"
+}
+
 # Map a variant to the profiler invocation as it appears INSIDE the guest.
 # Inside the container, /opt/intp/ is the bind-mounted REPO_ROOT (read-only);
 # inside the VM, /home/intp/intp is assumed (scp'd by run_profiler_inguest_vm).
 _inguest_profiler_cmd() {
-    # _inguest_profiler_cmd <variant> <pid> <duration> <interval>
-    local variant="$1" pid="$2" duration="$3" interval="$4" prefix="$5"
+    # _inguest_profiler_cmd <variant> <pid> <duration> <interval> <prefix> [cgroup]
+    # For the cgroup-native variants (v2.1/v3.3) prefer --cgroup when the
+    # in-guest workload was placed in a dedicated cgroup: --pids on the idle
+    # stress-ng supervisor misses the worker children (cpu/llcmr ~0).
+    local variant="$1" pid="$2" duration="$3" interval="$4" prefix="$5" cgroup="${6:-}"
     case "$variant" in
         v2)   echo "$prefix/variants/v2-c-abi/intp-hybrid --pid $pid --interval $interval --duration $duration --no-prom" ;;
+        v2.1) if [ -n "$cgroup" ]; then
+                  echo "$prefix/variants/v2.1-cgroup-native/intp-hybrid --cgroup $cgroup --interval $interval --duration $duration"
+              else
+                  echo "$prefix/variants/v2.1-cgroup-native/intp-hybrid --pids $pid --interval $interval --duration $duration"
+              fi ;;
         v3)   echo "$prefix/variants/v3-ebpf-ring/intp-ebpf --pid $pid --interval $interval --duration $duration" ;;
         v3.1) echo "bash $prefix/variants/v3.1-bpftrace/run-intp-bpftrace.sh --pid $pid --interval $interval --duration $duration" ;;
         v3.2) echo "$prefix/variants/v3.2-ebpf-core/intp-eBPF-CORE --pids $pid --interval $interval --duration $duration --no-raw-mbw" ;;
+        v3.3) if [ -n "$cgroup" ]; then
+                  echo "$prefix/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup --cgroup $cgroup --interval $interval --duration $duration --no-diag-cols"
+              else
+                  echo "$prefix/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup --pids $pid --interval $interval --duration $duration --no-diag-cols"
+              fi ;;
         v1.1) echo "stap -DMAXACTION=8192 -DSTP_NO_OVERLOAD --suppress-handler-errors $prefix/variants/v1.1-stap-modern/intp-v1.1.stp -x $pid --target-pid=$pid -F" ;;
         v0|v0.1|v1) echo "stap -DMAXACTION=8192 --suppress-handler-errors $prefix/variants/v0.1-stap-nollc/intp-6.8.stp -x $pid -F" ;;
         *) echo ""; return 1 ;;
@@ -2381,9 +2545,11 @@ run_profiler() {
         v1) run_profiler_systemtap v1 "$V1_STP" "$outfile" "$duration" "$pid" ;;
         v1.1) run_profiler_systemtap_v1_1 "$outfile" "$duration" "$pid" ;;
         v2) run_profiler_v2 "$outfile" "$duration" "$pid" "$cgroup_path" ;;
+        v2.1) run_profiler_v2_1 "$outfile" "$duration" "$pid" "$cgroup_path" ;;
         v3.1) run_profiler_v3_1 "$outfile" "$duration" "$pid" ;;
         v3) run_profiler_v3 "$outfile" "$duration" "$pid" "$cgroup_path" ;;
         v3.2) run_profiler_v3_2 "$outfile" "$duration" "$pid" "$cgroup_path" ;;
+        v3.3) run_profiler_v3_3 "$outfile" "$duration" "$pid" "$cgroup_path" ;;
         *) die "Unknown variant: $variant" ;;
     esac
 }

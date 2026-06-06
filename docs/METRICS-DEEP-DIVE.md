@@ -31,6 +31,13 @@ constants.
 
 The line numbers cited refer to `variants/v0-stap-2022/intp.stp`.
 
+> **VM-portable metrics** (`schedlat psi_mem membw_est psi_io schedthr steal`)
+> are a SEPARATE, opt-in `--portable-metrics` benchmark on v2.1 (cgroup-native)
+> and v3.3 (ebpf-cgroup) for KVM guests where `mbw`/`llcocc`/`llcmr` are
+> structurally unavailable. They are not part of the canonical 7 deep-dived
+> here; their probe points, normalization, and claim classes are in
+> [reports/8th-metric-vm-portable-design.md](reports/8th-metric-vm-portable-design.md).
+
 ---
 
 ## 1. netp -- network physical utilization

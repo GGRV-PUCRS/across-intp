@@ -2,7 +2,7 @@
 # -----------------------------------------------------------------------------
 # validate-cross-variant.sh
 #
-# Cross-variant byte-equivalence test for IntP V2/V3.1/V3/V3.2 (the
+# Cross-variant byte-equivalence test for IntP V2/V2.1/V3.1/V3/V3.2/V3.3 (the
 # runtime-binary variants; the stap-based variants are not covered here).
 #
 # Runs each available variant under identical conditions (same target PID,
@@ -25,9 +25,11 @@
 #   --tolerance PCT       Max allowed column divergence in % points (default: 15)
 #   --output-dir DIR      Directory for captured outputs (default: /tmp/intp-xval-*)
 #   --v2-bin PATH         Path to V2 binary (default: ../variants/v2-c-abi/intp-hybrid)
+#   --v2.1-bin PATH       Path to V2.1 binary (default: ../variants/v2.1-cgroup-native/intp-hybrid)
 #   --v3.1-script PATH    Path to V3.1 launcher (default: ../variants/v3.1-bpftrace/run-intp-bpftrace.sh)
 #   --v3-bin PATH         Path to V3 binary (default: ../variants/v3-ebpf-ring/intp-ebpf)
 #   --v3.2-bin PATH       Path to V3.2 binary (default: ../variants/v3.2-ebpf-core/intp-eBPF-CORE)
+#   --v3.3-bin PATH       Path to V3.3 binary (default: ../variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup)
 #   --nic-speed-bps N    Force NIC speed (bytes/sec) for all variants
 #   --mem-bw-max-bps N   Force memory bandwidth ceiling (bytes/sec) for all variants
 #   --llc-size-bytes N   Force LLC size (bytes) for all variants
@@ -54,9 +56,11 @@ MEM_BW_MAX_BPS=""
 LLC_SIZE_BYTES=""
 
 V2_BIN="${REPO_ROOT}/variants/v2-c-abi/intp-hybrid"
+V2_1_BIN="${REPO_ROOT}/variants/v2.1-cgroup-native/intp-hybrid"
 V3_1_SCRIPT="${REPO_ROOT}/variants/v3.1-bpftrace/run-intp-bpftrace.sh"
 V3_BIN="${REPO_ROOT}/variants/v3-ebpf-ring/intp-ebpf"
 V3_2_BIN="${REPO_ROOT}/variants/v3.2-ebpf-core/intp-eBPF-CORE"
+V3_3_BIN="${REPO_ROOT}/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup"
 
 METRICS=("netp" "nets" "blk" "mbw" "llcmr" "llcocc" "cpu")
 
@@ -76,9 +80,11 @@ parse_args() {
             --tolerance)      TOLERANCE="$2"; shift 2 ;;
             --output-dir)     OUTPUT_DIR="$2"; shift 2 ;;
             --v2-bin)         V2_BIN="$2"; shift 2 ;;
+            --v2.1-bin)       V2_1_BIN="$2"; shift 2 ;;
             --v3.1-script)    V3_1_SCRIPT="$2"; shift 2 ;;
             --v3-bin)         V3_BIN="$2"; shift 2 ;;
             --v3.2-bin)       V3_2_BIN="$2"; shift 2 ;;
+            --v3.3-bin)       V3_3_BIN="$2"; shift 2 ;;
             --nic-speed-bps)  NIC_SPEED_BPS="$2"; shift 2 ;;
             --mem-bw-max-bps) MEM_BW_MAX_BPS="$2"; shift 2 ;;
             --llc-size-bytes) LLC_SIZE_BYTES="$2"; shift 2 ;;
@@ -110,6 +116,9 @@ variant_available() {
         v2)
             [[ -x "$V2_BIN" ]]
             ;;
+        v2.1)
+            [[ -x "$V2_1_BIN" ]]
+            ;;
         v3.1)
             [[ -x "$V3_1_SCRIPT" ]] && command -v bpftrace >/dev/null 2>&1
             ;;
@@ -118,6 +127,9 @@ variant_available() {
             ;;
         v3.2)
             [[ -x "$V3_2_BIN" ]]
+            ;;
+        v3.3)
+            [[ -x "$V3_3_BIN" ]]
             ;;
         *)
             return 1
@@ -135,8 +147,10 @@ run_variant() {
     local pid_args=()
     if [[ "$TARGET_PID" -gt 0 ]]; then
         pid_args=(--pid "$TARGET_PID")
-        # V2 uses --pids (plural)
-        [[ "$name" == "v2" ]] && pid_args=(--pids "$TARGET_PID")
+        # V2 / V2.1 / V3.3 use --pids (plural)
+        case "$name" in
+            v2|v2.1|v3.3) pid_args=(--pids "$TARGET_PID") ;;
+        esac
     fi
 
     # Hardware overrides ensure all variants normalise against the same
@@ -149,6 +163,18 @@ run_variant() {
     case "$name" in
         v2)
             timeout "$((DURATION + 5))" "$V2_BIN" \
+                "${pid_args[@]}" \
+                "${hw_args[@]}" \
+                --interval "$INTERVAL" \
+                --duration "$DURATION" \
+                --output tsv \
+                --no-header \
+                > "$outfile" 2>"${outfile}.err" || true
+            ;;
+        v2.1)
+            # V2.1 = cgroup-native sibling of V2; identical intp-hybrid CLI,
+            # so it captures the same leading-7 columns without diag flags.
+            timeout "$((DURATION + 5))" "$V2_1_BIN" \
                 "${pid_args[@]}" \
                 "${hw_args[@]}" \
                 --interval "$INTERVAL" \
@@ -188,6 +214,25 @@ run_variant() {
                 --output tsv \
                 --no-header \
                 --no-raw-mbw \
+                > "$outfile" 2>"${outfile}.err" || true
+            ;;
+        v3.3)
+            # --no-diag-cols (C13) is passed at EVERY v3.3 capture site,
+            # exactly mirroring how V3.2 passes --no-raw-mbw above, so the
+            # captured TSV is EXACTLY the 7 canonical columns
+            # (netp nets blk mbw llcmr llcocc cpu) that column_means reads as
+            # fields 1..7. The v3.3 diagnostic columns (netp_dev, nets_sys,
+            # mbw_raw_mbps, blk_MBps) are emitted only WITHOUT --no-diag-cols
+            # and would otherwise leak into the metric window. Do not drop
+            # this flag.
+            timeout "$((DURATION + 5))" "$V3_3_BIN" \
+                "${pid_args[@]}" \
+                "${hw_args[@]}" \
+                --interval "$INTERVAL" \
+                --duration "$DURATION" \
+                --output tsv \
+                --no-header \
+                --no-diag-cols \
                 > "$outfile" 2>"${outfile}.err" || true
             ;;
     esac
@@ -234,8 +279,21 @@ compare_pair() {
         return 1
     fi
 
+    # C2 (DECISIONS-container.md): the v2.1<->v3.3 pair DIVERGES ON nets BY
+    # DESIGN. v2.1 keeps the system-wide softirq nets; v3.3 emits a per-cgroup
+    # PROXY (skb byte-share cost model) in the canonical nets column. The two
+    # are not byte-equivalent and must NOT be flagged DIVERGENT here — nets is
+    # exempted (expected-divergent) for this pair while the other 6 canonical
+    # metrics are still compared within tolerance. (Either ordering of the
+    # pair is covered.)
+    local exempt_nets=0
+    case "${name_a}/${name_b}" in
+        v2.1/v3.3|v3.3/v2.1) exempt_nets=1 ;;
+    esac
+
     local pass=0
     local fail=0
+    local checked=0
     local i=0
 
     local IFS=$'\t'
@@ -252,12 +310,17 @@ compare_pair() {
         local delta
         delta=$(awk "BEGIN { d = $a - $b; print (d < 0 ? -d : d) }")
         local status
-        if awk "BEGIN { exit !($delta <= $tol) }"; then
+        if [[ "$exempt_nets" -eq 1 && "$metric" == "nets" ]]; then
+            # Expected-divergent by design (C2); not counted toward pass/fail.
+            status="EXEMPT(C2)"
+        elif awk "BEGIN { exit !($delta <= $tol) }"; then
             status="OK"
             ((pass++)) || true
+            ((checked++)) || true
         else
             status="DIVERGENT"
             ((fail++)) || true
+            ((checked++)) || true
         fi
         printf "  %-7s  %6s  %6s  %6.2f  %s\n" "$metric" "$a" "$b" "$delta" "$status"
         ((i++)) || true
@@ -265,10 +328,14 @@ compare_pair() {
 
     echo ""
     if [[ "$fail" -gt 0 ]]; then
-        warn "$name_a vs $name_b: $fail of 7 metrics exceed tolerance (${tol}%)"
+        warn "$name_a vs $name_b: $fail of $checked metrics exceed tolerance (${tol}%)"
         return 1
     else
-        log "$name_a vs $name_b: all 7 metrics within tolerance (${tol}%)"
+        if [[ "$exempt_nets" -eq 1 ]]; then
+            log "$name_a vs $name_b: all $checked compared metrics within tolerance (${tol}%); nets exempt by design (C2)"
+        else
+            log "$name_a vs $name_b: all $checked metrics within tolerance (${tol}%)"
+        fi
         return 0
     fi
 }
@@ -288,7 +355,7 @@ main() {
 
     # Discover available variants
     local available=()
-    for v in v2 v3.1 v3 v3.2; do
+    for v in v2 v2.1 v3.1 v3 v3.2 v3.3; do
         if variant_available "$v"; then
             available+=("$v")
             log "Variant $v: available"

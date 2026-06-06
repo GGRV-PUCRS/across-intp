@@ -7,7 +7,10 @@ Detailed comparison of all 7 implementation variants with rationale for each.
 The dissertation compares seven instrumentation approaches for collecting the
 same 7 interference metrics. Each variant represents a different point in the
 tradeoff space between measurement fidelity, portability, safety, and
-deployment complexity.
+deployment complexity. The active variants for the container +
+cross-deployment (Paper 2) work are `v2.1-cgroup-native` (C/cgroup) and
+`v3.3-ebpf-cgroup` (eBPF/CO-RE, in-kernel aggregation); the rest (v0.x-v3.2)
+remain as comparison and structural evidence.
 
 ## Evidence trail
 
@@ -411,6 +414,80 @@ per-event handler, at the cost of causal attribution. C-ABI differs from
 loading, at the cost of kernel-internal counters that are only exposed
 through tracepoints.
 
+### V2.1 (cgroup-native) -- Cgroup-native per-cgroup attribution (no eBPF)
+
+**Architecture summary.** cgroup-native is C-ABI's sibling: the same C99 `intp-hybrid`
+binary structure, the same backend-hierarchy contract, the same 7-column TSV /
+JSON / Prometheus output, and the same `status`/`note` per-sample envelope. The
+one difference is *attribution scope*. C-ABI reads system-wide or per-PID counters;
+cgroup-native adds per-cgroup readers the runtime binds when the target is a cgroup
+(`--cgroup <path>`): first-priority `cgroup` backends for cpu, blk, llcmr, and
+netp, plus resctrl mon_group scoping for mbw and llcocc. Run without `--cgroup`,
+cgroup-native falls back to exactly C-ABI's
+backends and is byte-for-byte C-ABI. The motivation is the paper-#2 container +
+IADA work: "a container is a cgroup", so one code path covers bare co-located
+processes, containers, and VM guests.
+
+**Backend hierarchy per metric** (cgroup-first where applicable; the rest are
+C-ABI's chain unchanged):
+
+| metric | 1st choice      | 2nd choice            | 3rd / 4th choice          |
+|--------|-----------------|-----------------------|---------------------------|
+| netp   | **cgroup**      | sysfs                 | procfs                    |
+| nets   | procfs_softirq  | procfs_throughput     |                           |
+| blk    | **cgroup**      | diskstats             | sysfs                     |
+| mbw    | perf_uncore_imc | perf_amd_df           | perf_arm_cmn, resctrl_mbm |
+| llcmr  | **cgroup**      | perf_hwcache          | perf_raw                  |
+| llcocc | resctrl         | proxy_from_miss_ratio |                           |
+| cpu    | **cgroup**      | procfs_pid            | procfs_system             |
+
+**Per-cgroup mechanism.** `cpu` reads cgroup v2 `cpu.stat` (`usage_usec`,
+hierarchical so descendants are included); `blk` reads `io.stat`
+(rbytes+wbytes) normalized by a disk-bandwidth ceiling self-detected from the
+device class (NVMe / SSD / HDD via `/sys/block/.../queue/rotational`) or
+overridden with `--disk-bw-max-bps`; `llcmr` opens `perf_event_open` in cgroup
+mode (`PERF_FLAG_PID_CGROUP`), one LL-cache loads/misses pair per online CPU,
+summed. These three are **continuous and child-inclusive**: tasks the container
+spawns after the profiler starts are counted with no PID re-scan. `netp` reads
+the container's own netns view (`/proc/<pid>/net/dev` for a cgroup PID),
+normalized by the host NIC speed = the cgroup's share of the physical link.
+`mbw` and `llcocc` scope a resctrl mon_group to the cgroup's PIDs,
+**re-scanned from `cgroup.procs`** on a cadence (tight at startup, then
+periodic -- `resctrl_rescan_cgroup`) so late-spawned workers are picked up;
+RMID fork-inheritance covers descendants between re-scans.
+
+**`nets` stays system-wide -- by construction.** Softirq CPU time
+(`/proc/stat`, `/proc/softirqs`) is host-global, and there is no per-cgroup
+softirq counter without eBPF. So cgroup-native attributes 6/7 metrics per-cgroup and
+leaves `nets` system-wide. This is the one irreducible advantage the
+eBPF-native per-cgroup variant ebpf-cgroup (in-kernel skb/cgroup attribution)
+holds over cgroup-native, and it is the v2.1-vs-v3.3 comparison axis for paper #2.
+
+**Deployment requirements.** Same as C-ABI (glibc + libpthread; optional resctrl;
+perf paranoid / `CAP_PERFMON` for uncore and for cgroup-mode perf) plus a
+unified **cgroup v2** hierarchy and kernel **5.8+** (cgroup-mode perf + stable
+cgroup v2 ABIs). The host-side profiler must be able to read the target
+cgroup's files and open cgroup-scoped perf events -- root, or `CAP_PERFMON`
+with `perf_event_paranoid<=0`.
+
+**Known limitations.** cgroup-native inherits C-ABI's three (sub-second events, causal
+attribution, per-packet nets) and adds scope-specific ones: (1) `nets` is
+system-wide -- host-global softirq has no per-cgroup counter without eBPF, so a
+container's network-softirq share is not isolated; (2) per-cgroup `netp` needs
+the container to own its netns (default for LXC/Docker) -- `--net=host` or bare
+colocated processes sharing the host netns fall back to system-wide; (3)
+`mbw`/`llcocc` re-scan `cgroup.procs` on a cadence, so a worker that both
+spawns and exits entirely between re-scans is missed (rare). `io.stat` is
+non-recursive in cgroup v2, so
+targeting a container's top cgroup attributes I/O charged at that level.
+
+**Relationship to other variants.** cgroup-native is to **C-ABI** what per-cgroup is to
+system-wide: identical mechanism, narrowed scope. It is the stable-ABI, no-eBPF
+analogue of the per-cgroup path **ebpf-cgroup** implements natively in eBPF; holding
+granularity fixed, v2.1-vs-v3.3 is the paper-#2 counterpart of the
+v2-vs-v3.2 system-wide comparison in paper #1. cgroup-native and ebpf-cgroup are the two
+active profiler variants for the container + cross-deployment work.
+
 ### V3.1 (bpftrace) -- bpftrace (eBPF scripts)
 
 **Status.** *Implemented; measurement out of scope for this campaign.*
@@ -678,3 +755,85 @@ and "above" C-ABI (eBPF probes with sub-microsecond cost vs. /proc
 polling). It does not replace ebpf-ring -- ebpf-ring remains the introspection
 profiler. eBPF-CORE is the steady-state profiler the paper section VIII
 calls for.
+
+### V3.3 (ebpf-cgroup) -- eBPF-native per-cgroup (active variant for Paper 2)
+
+**Architecture summary.** ebpf-cgroup (`variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup`)
+is the eBPF-native per-cgroup endpoint: it keeps eBPF-CORE's in-kernel aggregation
+(per-CPU + hash counter maps polled once per interval, no ring buffer) but
+attributes every event to a **cgroup** rather than a PID set. It is the
+eBPF-native sibling of cgroup-native and the per-cgroup sibling of eBPF-CORE. Holding
+granularity fixed, the comparison structure is two parallel axes: v2-vs-v3.2 is
+the *system-wide* stable-ABI-vs-eBPF pair (paper #1), and **v2.1-vs-v3.3 is the
+*per-cgroup* counterpart** (paper #2, container + IADA).
+
+**cgroup-identity gating.** Where eBPF-CORE filters by PID lineage (a static
+`target_pids[]` seeded from `cgroup.procs` plus fork/exit tracking -- which
+misses a task *migrated into* the cgroup after attach), ebpf-cgroup gates on cgroup
+identity: it resolves `--cgroup PATH` to the directory inode id and matches in
+the BPF program via `bpf_get_current_ancestor_cgroup_id(level)` (the ancestor
+form by default, so a container's payload cgroup and any sub-scopes are all
+attributed). This is exact and migration-safe, with no `/proc` seed and no
+fork-tracking. Aggregation keys on cgroup id in `agg_per_cgroup`, which
+generalizes to the whole-node "attribute every cgroup at once" IADA view
+without a probe rewrite.
+
+**Backend / probe map.** Same probe sites as eBPF-CORE (net_dev_xmit /
+netif_receive_skb for netp, block_rq_issue/complete for blk, sched_switch for
+cpu, softirq_entry/exit vec 2,3 for the nets numerator, two perf_event LLC
+counters for llcmr; mbw/llcocc stay the userspace resctrl hybrid). The new
+mechanism is the network pair: per-cgroup bytes via a `BPF_PROG_TYPE_CGROUP_SKB`
+ingress+egress program (socket-exact, covering `--net=host`/shared-netns cases
+cgroup-native's netns trick degrades on), and per-cgroup `nets` via an explicit
+byte-share cost model `nets(cgroup) = nets_systemwide * bytes(cgroup) /
+bytes_total`.
+
+**Measurement fidelity.** cpu/blk/llcmr reach **parity** with cgroup-native's
+per-cgroup continuity (eBPF adds sub-interval resolution and, for blk, a real
+svctm/queue-depth signal that cgroup-native's byte-only `io.stat` lacks). mbw/llcocc are
+RDT, not eBPF -- identical to cgroup-native, no advantage. The genuine eBPF-only
+per-cgroup capability is `nets` (per-cgroup softirq attribution, impossible over
+stable ABIs) plus a more robust socket-exact `netp`. The cost-model `nets`
+split is an explicit, validatable approximation (per-byte cost roughly uniform
+within an interval at steady state); its credibility rests on the
+`bench/validate-attribution.sh` two-cgroup heavy/idle validation.
+
+**Deployment requirements.** Kernel 5.8+ (cgroup v2, cgroup-mode perf), BTF
+for CO-RE, `CAP_BPF` + `CAP_PERFMON` (or root); attaching `cgroup/skb`
+additionally needs `CAP_NET_ADMIN` and a writable handle to the target cgroup
+fd. resctrl for mbw/llcocc, as in cgroup-native/C-ABI.
+
+**VM-guest behaviour (structural RDT/PMU gap).** Under a stock KVM guest the
+RDT/PMU dimensions are gapped by construction, not by a code path: resctrl is
+host-only, so `mbw`/`llcocc` emit `--` (NaN) and are recorded `unsupported` in
+`availability.tsv` -- never a faked 0. The model-specific LL-read perf events are
+not virtualized under the guest vPMU even with `pmu=on`, so for `llcmr` ebpf-cgroup
+falls back to the architectural `PERF_COUNT_HW_CACHE_REFERENCES`/`_MISSES`
+events (virtualized) and scales by the raised sample period; bare/host keeps the
+LL events. The canonical 7-metric contract is held intact across every
+environment; the dimensions RDT cannot fill in the guest are instead covered by
+a separate, flag-gated VM-portable benchmark (`--portable-metrics`: schedlat,
+psi_mem, membw_est, psi_io, schedthr, steal), a distinct measurement block, not
+a substitution into the canonical columns.
+
+**Acceptance gate.** ebpf-cgroup reuses eBPF-CORE's `test-amplification` gate
+(context-switch ratio <= 1.10 over a 90 s window) -- it is also in-kernel
+aggregating and must pass.
+
+**Known limitations.**
+
+1. *mbw/llcocc are not an eBPF story* (RDT hardware): ebpf-cgroup equals cgroup-native there.
+2. *nets per-cgroup is an approximation* (the byte-share cost model), not a
+   hardware counter; a pathological small-packet vs large-packet mix across
+   cgroups would skew the split.
+3. *cpu/blk/llcmr per-cgroup is parity* with cgroup-native, not novelty -- the eBPF
+   framing should not oversell them. The narrow, correct claim is that
+   per-cgroup network/softirq attribution is the eBPF-only capability at
+   container granularity.
+
+**Relationship to other variants.** ebpf-cgroup is to **cgroup-native** what eBPF in-kernel
+attribution is to stable-ABI polling at fixed (per-cgroup) granularity, and to
+**eBPF-CORE** what per-cgroup is to system-wide. With cgroup-native it forms the two-variant
+active set for the container + cross-deployment work; the v2.1-vs-v3.3 axis is
+the paper-#2 counterpart of the v2-vs-v3.2 system-wide comparison in paper #1.
+See `variants/v3.3-ebpf-cgroup/DESIGN.md` for the full specification.

@@ -44,9 +44,11 @@ V0_2_GENERATOR="$REPO_ROOT/variants/v0.2-legacy-intp-baseline/generate-stp.sh"
 V0_2_RECAL_STP="$REPO_ROOT/variants/v0.2-legacy-intp-baseline/intp.recal.stp"
 V0_2_HELPER="$REPO_ROOT/variants/v0.2-legacy-intp-baseline/intp-helper"
 V2_BIN="$REPO_ROOT/variants/v2-c-abi/intp-hybrid"
+V2_1_BIN="$REPO_ROOT/variants/v2.1-cgroup-native/intp-hybrid"
 V3_1_RUNNER="$REPO_ROOT/variants/v3.1-bpftrace/run-intp-bpftrace.sh"
 V3_BIN="$REPO_ROOT/variants/v3-ebpf-ring/intp-ebpf"
 V3_2_BIN="$REPO_ROOT/variants/v3.2-ebpf-core/intp-eBPF-CORE"
+V3_3_BIN="$REPO_ROOT/variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup"
 
 # Defaults
 SIZE="${SIZE:-medium}"
@@ -192,7 +194,7 @@ Usage: sudo $0 [options]
 
 Options:
   --variants CSV              IntP variants to run (default: v2,v3.1,v3)
-                              Supported: v0.2,v1,v1.1,v2,v3.1,v3,v3.2
+                              Supported: v0.2,v1,v1.1,v2,v2.1,v3.1,v3,v3.2,v3.3
                               (v0/v0.1 are stress-ng-only and not run here)
                               Note: v0.2/v1.1 stap-side run in @system
                               (system-wide) mode for HiBench — see
@@ -417,9 +419,11 @@ start_profiler() {
         v1)   _start_v1_profiler "$outfile" ;;
         v1.1) _start_v1_1_profiler "$outfile" ;;
         v2)   _start_binary_profiler v2 "$outfile" ;;
+        v2.1) _start_binary_profiler v2.1 "$outfile" ;;
         v3.1) _start_v3_1_profiler "$outfile" ;;
         v3)   _start_binary_profiler v3 "$outfile" ;;
         v3.2) _start_binary_profiler v3.2 "$outfile" ;;
+        v3.3) _start_binary_profiler v3.3 "$outfile" ;;
         *)    warn "unknown variant $variant"; return 1 ;;
     esac
 }
@@ -440,7 +444,7 @@ stop_profiler() {
         pre_kids=$(pgrep -P "$PROFILER_PID" 2>/dev/null | tr '\n' ' ')
         log "  [stop_profiler] PROFILER_PID=$PROFILER_PID children='${pre_kids}'"
         _kill_tree KILL "$PROFILER_PID"
-        pkill -KILL -f 'intp-hybrid|intp-ebpf|intp-eBPF-CORE|run-intp-bpftrace|orchestrator/aggregator\.py' 2>/dev/null
+        pkill -KILL -f 'intp-hybrid|intp-ebpf|intp-eBPF-CORE|intp-ebpf-cgroup|run-intp-bpftrace|orchestrator/aggregator\.py' 2>/dev/null
         pkill -KILL -f 'bpftrace -q' 2>/dev/null
         local k=0
         while [ $k -lt 8 ] && kill -0 "$PROFILER_PID" 2>/dev/null; do
@@ -792,8 +796,10 @@ _start_binary_profiler() {
 
     case "$variant" in
         v2)   bin="$V2_BIN" ;;
+        v2.1) bin="$V2_1_BIN" ;;
         v3)   bin="$V3_BIN" ;;
         v3.2) bin="$V3_2_BIN" ;;
+        v3.3) bin="$V3_3_BIN" ;;
     esac
     log="${outfile%.tsv}.${variant}.log"
 
@@ -809,6 +815,11 @@ _start_binary_profiler() {
     # so the captured TSV keeps the canonical 7-column shape the rest
     # of the hibench pipeline expects.
     [ "$variant" = "v3.2" ] && args+=(--no-raw-mbw)
+    # V3.3 (eBPF cgroup-native) emits diagnostic columns (netp_dev, nets_sys,
+    # mbw_raw_mbps, blk_MBps) trailing the 7 canonical metrics by default;
+    # --no-diag-cols suppresses them so the captured TSV stays leading-ts +
+    # EXACTLY the 7 canonical columns (C13). This mirrors v3.2's --no-raw-mbw.
+    [ "$variant" = "v3.3" ] && args+=(--no-diag-cols)
     [ -n "$MEM_BW_MAX_BPS" ] && args+=(--mem-bw-max-bps "$MEM_BW_MAX_BPS")
     [ -n "$LLC_SIZE_BYTES" ] && args+=(--llc-size-bytes "$LLC_SIZE_BYTES")
     [ -n "$NIC_SPEED_BPS" ]  && args+=(--nic-speed-bps  "$NIC_SPEED_BPS")
@@ -1539,7 +1550,7 @@ cleanup_stale_orphans() {
     # eating RAM and signals get throttled, causing the next run to hang.
     [ "$DRY_RUN" -eq 1 ] && return 0
     local victims
-    victims=$(pgrep -f 'intp-hybrid|intp-ebpf|run-intp-bpftrace|orchestrator/aggregator\.py|bench/hibench/run-hibench-subset|stress-ng' 2>/dev/null \
+    victims=$(pgrep -f 'intp-hybrid|intp-ebpf|intp-ebpf-cgroup|run-intp-bpftrace|orchestrator/aggregator\.py|bench/hibench/run-hibench-subset|stress-ng' 2>/dev/null \
               | grep -v "^$$\$" || true)
     if [ -n "$victims" ]; then
         warn "[preflight] killing stale processes: $(echo $victims | tr '\n' ' ')"
@@ -1583,9 +1594,11 @@ preflight() {
                 [ -x "$V0_2_HELPER" ] || die "V0.2 helper not built: $V0_2_HELPER (run 'make -C $REPO_ROOT/variants/v0.2-legacy-intp-baseline')"
                 ;;
             v2) [ -x "$V2_BIN" ] || [ "$DRY_RUN" -eq 1 ] || die "v2 binary not found: $V2_BIN" ;;
+            v2.1) [ -x "$V2_1_BIN" ] || [ "$DRY_RUN" -eq 1 ] || die "v2.1 binary not found: $V2_1_BIN (run 'make -C $REPO_ROOT/variants/v2.1-cgroup-native')" ;;
             v3.1) [ -x "$V3_1_RUNNER" ] || [ "$DRY_RUN" -eq 1 ] || die "v3.1 runner not found: $V3_1_RUNNER" ;;
             v3) [ -x "$V3_BIN" ] || [ "$DRY_RUN" -eq 1 ] || die "v3 binary not found: $V3_BIN" ;;
             v3.2) [ -x "$V3_2_BIN" ] || [ "$DRY_RUN" -eq 1 ] || die "v3.2 binary not found: $V3_2_BIN (run 'make -C $REPO_ROOT/variants/v3.2-ebpf-core')" ;;
+            v3.3) [ -x "$V3_3_BIN" ] || [ "$DRY_RUN" -eq 1 ] || die "v3.3 binary not found: $V3_3_BIN (run 'make -C $REPO_ROOT/variants/v3.3-ebpf-cgroup')" ;;
             *)  die "unknown variant: $v" ;;
         esac
     done
@@ -1613,7 +1626,7 @@ _on_exit() {
         _kill_tree KILL "$STAP_PID" 2>/dev/null || true
     fi
     # Belt-and-suspenders for any profiler binary that escaped tracking
-    pkill -KILL -f 'intp-hybrid|intp-ebpf|run-intp-bpftrace|orchestrator/aggregator\.py' 2>/dev/null || true
+    pkill -KILL -f 'intp-hybrid|intp-ebpf|intp-ebpf-cgroup|run-intp-bpftrace|orchestrator/aggregator\.py' 2>/dev/null || true
     pkill -KILL -f 'bpftrace -q' 2>/dev/null || true
     # Stressor last (lower data-integrity priority; clean up RAM)
     stop_stressor

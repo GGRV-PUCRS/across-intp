@@ -2,7 +2,8 @@
 
 End-to-end recipe to reproduce the IntP campaign host. Everything in
 **Sections 1-7** is whole-machine setup that applies to **stress-ng,
-profilers (stap-modern/C-ABI/ebpf-ring/bpftrace), CloudSim/IADA, and any other workload**.
+profilers (stap-modern/C-ABI/cgroup-native/ebpf-ring/bpftrace/eBPF-CORE/ebpf-cgroup),
+CloudSim/IADA, and any other workload**.
 Section 8 is HiBench/Hadoop-specific and is the only piece that doesn't
 apply if you only need stress-ng + profilers.
 
@@ -78,6 +79,27 @@ reboot
 Partitioning per template (single disk per install): 256 MiB EFI, 1 GiB
 `/boot` ext4, 8 GiB swap, rest `/` ext4. **No RAID.**
 
+### Cross-deployment tenants (container / VM envs)
+
+Beyond the bare host, the bench can run the workload inside a tenant via
+`run-intp-bench.sh --env {container,container-podman,container-lxc,vm}`.
+The lean per-tenant image definitions live alongside this file in
+`bench/setup/`:
+
+- `Dockerfile.bench` — OCI bench-tenant image (docker `container` and podman
+  `container-podman` envs)
+- `lxc-bench.cloud-init.yaml` — LXC/Incus tenant (`container-lxc` env)
+- `vm-bench.cloud-init.yaml` + `build-bench-vm.sh` — qcow2 bench VM (`vm` env)
+- `publish-images.sh` — operator-invoked publish of the lean images to GHCR /
+  a GitHub release
+
+Kernel match: **containers and LXC share the host kernel**, so they inherit
+the noble 6.8 line automatically and nothing kernel-related is baked in. A
+**VM has its own kernel**, so the VM image installs its own HWE kernel to
+track the host. See [bench/setup/README.md](README.md) §2 for the full
+per-env build/run recipes. The per-cgroup attribution path these tenants
+exercise is served by cgroup-native (v2.1) and ebpf-cgroup (v3.3).
+
 ---
 
 ## 3. Bootstrap — `bench/setup/setup-host.sh`
@@ -104,7 +126,12 @@ It auto-detects jammy vs noble and does, in order:
 5. **Profile-specific software**:
    - **jammy**: SystemTap 5.2 from source, intel-cmt-cat, kernel debuginfo via ddebs, `stap-prep`
    - **noble**: systemtap + systemtap-runtime (apt), bpftrace, clang/llvm/libbpf-dev/libelf-dev/pahole, kernel-headers, kernel debuginfo
-6. **Builds C-ABI and ebpf-ring** (`make -C variants/v2-c-abi`, `make -C variants/v3-ebpf-ring`).
+6. **Builds the C and eBPF endpoints**: C-ABI (`make -C variants/v2-c-abi`)
+   and cgroup-native (`make -C variants/v2.1-cgroup-native`), plus on noble
+   ebpf-ring (`make -C variants/v3-ebpf-ring`), eBPF-CORE
+   (`make -C variants/v3.2-ebpf-core`), and ebpf-cgroup
+   (`make -C variants/v3.3-ebpf-cgroup`). cgroup-native and ebpf-cgroup are
+   the per-cgroup attribution endpoints used by the container/VM envs.
 7. **Self-tests** for each profiler.
 
 Idempotent — safe to re-run. Logs to stdout.
@@ -304,16 +331,24 @@ After `setup-host.sh`, validate each variant:
 # V1.1 (SystemTap)
 which stap && stap -V
 
-# V2 (C hybrid)
+# V2 (C-ABI)
 variants/v2-c-abi/intp-hybrid --list-backends
 
-# V3 (eBPF/libbpf)
+# V2.1 (cgroup-native) — per-cgroup attribution endpoint for container/VM envs
+variants/v2.1-cgroup-native/intp-hybrid --list-backends
+
+# V3 (ebpf-ring, eBPF/libbpf)
 variants/v3-ebpf-ring/intp-ebpf --list-capabilities
 ls /sys/kernel/btf/vmlinux   # must exist
 
 # V3.1 (bpftrace)
 bpftrace -V
 bash variants/v3.1-bpftrace/run-intp-bpftrace.sh --help
+
+# V3.2 (eBPF-CORE) and V3.3 (ebpf-cgroup) — eBPF endpoints; v3.3 gates on
+# ancestor cgid for per-cgroup attribution in the container/VM envs
+variants/v3.2-ebpf-core/intp-eBPF-CORE --list-capabilities
+variants/v3.3-ebpf-cgroup/intp-ebpf-cgroup --list-capabilities
 
 # resctrl
 mount | grep resctrl
