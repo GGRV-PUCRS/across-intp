@@ -68,7 +68,26 @@ Per (env,variant) the cell with the highest `membw_est`. If `membw_est` is high 
 
 **psi_mem capacity-only:** CONFIRMED on ≥1 cell (needs a saturating-bandwidth workload with ample free RAM, e.g. app05_streaming).
 
-## §4 vm-guest confirmation
+## §4 membw_est corroboration gate (net-path instrumentation caveat)
+
+`membw_est` is cache-miss-derived and reported as an UNCLAMPED absolute (MB/s), so on net-heavy workloads where the hardware cache/bandwidth canonicals (`mbw`, `llcmr`) read ~0, a non-zero `membw_est` is NOT corroborated as workload DRAM bandwidth — it integrates net-softirq + per-packet eBPF-hook misses. The eBPF variant (v3.3) inflates this over the C variant (v2.1): on app11 v3.3 `membw_est` is ~6–7× v2.1, and an INDEPENDENT host-side GT shows v3.3 generating ~3.6× the system LLC misses v2.1 does on that workload (the bandwidth analogue of the eBPF overhead in `docs/V3-OVERHEAD-FINDINGS.md`). The **canonical 7 are UNAFFECTED** — `mbw`/`llcmr` are %-normalized + clamped, so the ~0.02%-of-ceiling footprint rounds to 0 (verified: app11 `mbw`=0/`llcmr`=0 for BOTH variants). Cells with `membw_est`>0 but `mbw`≈0 and `llcmr`≈0 are flagged **uncorroborated** (C31): read them as instrumentation-influenced, not true bandwidth; do not use them for cross-variant absolute-bandwidth claims.
+
+| env | variant | workload | membw_est | mbw | llcmr | corroborated? |
+|---|---|---|---|---|---|---|
+| bare | v2.1 | app11_sort_net | 9.0 | 0.000 | 0.000 | **uncorroborated (net-path)** |
+| bare | v3.3 | app11_sort_net | 65.0 | 0.000 | 0.000 | **uncorroborated (net-path)** |
+| container | v2.1 | app11_sort_net | 11.0 | 0.000 | 0.000 | **uncorroborated (net-path)** |
+| container | v3.3 | app11_sort_net | 65.5 | 0.000 | 0.000 | **uncorroborated (net-path)** |
+| container-podman | v2.1 | app11_sort_net | 14.0 | 0.000 | 0.000 | **uncorroborated (net-path)** |
+| container-podman | v3.3 | app11_sort_net | 74.5 | 0.000 | 0.000 | **uncorroborated (net-path)** |
+| container-lxc | v2.1 | app11_sort_net | 11.0 | 0.000 | 0.000 | **uncorroborated (net-path)** |
+| container-lxc | v3.3 | app11_sort_net | 27.5 | 0.000 | 0.000 | **uncorroborated (net-path)** |
+| container-k8s | v2.1 | app11_sort_net | 4.0 | 0.000 | 0.000 | **uncorroborated (net-path)** |
+| container-k8s | v3.3 | app11_sort_net | 40.5 | 0.000 | 0.000 | **uncorroborated (net-path)** |
+
+_10 cell(s) flagged: RDT present but mbw≈0 and llcmr≈0 while membw_est>0. The v2.1↔v3.3 gap on these is the eBPF net-path footprint, not workload bandwidth (C31). vm-guest is excluded here (mbw is structurally `--`; see the §2 scope caveat)._
+
+## §5 vm-guest confirmation
 
 Portable medians in-guest (across workloads), and the canonical RDT metrics that are structurally `--` there.
 
@@ -79,7 +98,7 @@ Portable medians in-guest (across workloads), and the canonical RDT metrics that
 
 If the portable columns are numeric while mbw/llcocc/llcmr are `--`, the portable benchmark recovers scheduling + memory dimensions in a stock KVM guest where the RDT/LL-PMU fingerprint cannot (C26).
 
-## §5 Per-cell medians (claim class in header)
+## §6 Per-cell medians (claim class in header)
 
 | env | variant | workload | schedlat[directional] | psi_mem[descriptive] | membw_est[descriptive] | psi_io[descriptive] | schedthr[descriptive(guard)] | steal[descriptive(vm-only)] |
 |---|---|---|---|---|---|---|---|---|
