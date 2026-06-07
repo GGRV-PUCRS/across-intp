@@ -555,12 +555,16 @@ static void compute_sample(const struct intp_counters *d_cg,
     long max_nic = caps->nic_speed_bps > 0 ? caps->nic_speed_bps : 125000000L;
     double interval_ns = interval_sec * 1e9;
 
-    /* --- canonical netp: per-cgroup cgroup_skb bytes (C1), or VM tap. --- */
+    /* --- canonical netp: per-cgroup cgroup_skb bytes (C1), or VM tap. ---
+     * Read from agg_global (d_glob): cgroup_skb is attached ONLY to the target
+     * cgroup, so agg_global.netp_* == the target's bytes, and the BPF side no
+     * longer keeps a per-packet per-cgroup HASH netp counter (membw_est fidelity
+     * fix -- see intp_agg.bpf.c cg_skb_egress; d_cg->netp_* is no longer set). */
     if (vm_netp_pct >= 0.0) {
         out->netp = vm_netp_pct;
     } else {
         double cg_bps =
-            (double)(d_cg->netp_tx_bytes + d_cg->netp_rx_bytes) / interval_sec;
+            (double)(d_glob->netp_tx_bytes + d_glob->netp_rx_bytes) / interval_sec;
         out->netp = safe_pct(cg_bps, (double)max_nic);
     }
 
@@ -581,7 +585,7 @@ static void compute_sample(const struct intp_counters *d_cg,
     double nets_sys_pct = safe_pct(net_lat_total, interval_ns);
     out->nets_sys = nets_sys_pct;
 
-    double bytes_cg    = (double)(d_cg->netp_tx_bytes + d_cg->netp_rx_bytes);
+    double bytes_cg    = (double)(d_glob->netp_tx_bytes + d_glob->netp_rx_bytes);
     double bytes_total =
         (double)(d_glob->netp_dev_tx_bytes + d_glob->netp_dev_rx_bytes);
     double share = (bytes_total > 0.0) ? (bytes_cg / bytes_total) : 0.0;

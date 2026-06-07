@@ -238,10 +238,17 @@ int cg_skb_egress(struct __sk_buff *skb)
     struct intp_counters *g = agg_global_slot();
     if (g) __sync_fetch_and_add(&g->netp_tx_bytes, len);
 
-    if (!cfg->system_wide) {
-        struct intp_counters *p = target_cgroup_slot(cfg);
-        if (p) __sync_fetch_and_add(&p->netp_tx_bytes, len);
-    }
+    /* membw_est fidelity fix: the per-packet per-cgroup HASH update that used to
+     * live here is intentionally GONE. cgroup_skb is attached ONLY to the target
+     * cgroup (single-target gate, see header), so agg_global.netp_* already
+     * equals the target's bytes -- the loader now reads netp/bytes_cg from
+     * agg_global (PERCPU, CPU-local). The old target_cgroup_slot() lookup +
+     * shared-HASH __sync_fetch_and_add bounced a cache line across CPUs and
+     * missed the bucket on every packet; on high-rate net workloads those misses
+     * landed in the architectural cache-miss counter that membw_est integrates,
+     * inflating v3.3's net-victim membw_est ~7x over v2.1 (the eBPF net-path
+     * artifact). agg_global alone carries the same per-cgroup bytes for a
+     * single-target attach with no shared-line traffic. */
     return 1;   /* cgroup_skb: 1 = allow the packet */
 }
 
@@ -256,10 +263,10 @@ int cg_skb_ingress(struct __sk_buff *skb)
     struct intp_counters *g = agg_global_slot();
     if (g) __sync_fetch_and_add(&g->netp_rx_bytes, len);
 
-    if (!cfg->system_wide) {
-        struct intp_counters *p = target_cgroup_slot(cfg);
-        if (p) __sync_fetch_and_add(&p->netp_rx_bytes, len);
-    }
+    /* membw_est fidelity fix (see cg_skb_egress): per-cgroup HASH update dropped;
+     * agg_global (single-target attach) carries the per-cgroup bytes, and the
+     * loader reads netp/bytes_cg from it -- removing the per-packet shared-line
+     * miss source that inflated v3.3 net-victim membw_est. */
     return 1;
 }
 
