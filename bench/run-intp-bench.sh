@@ -1326,7 +1326,11 @@ launch_workload_container() {
     local logfile="$1" duration="$2" args="$3" name="$4"
     CURRENT_WORKLOAD_CGROUP=""
     if [ "$DRY_RUN" -eq 1 ]; then
-        log "DRY: docker run ... stress-ng $args"
+        if [[ "$args" == VETH:* ]]; then
+            log "DRY: docker veth $name spec=$args -> in-container iperf3 client (--network host) + host netns server"
+        else
+            log "DRY: docker run ... stress-ng $args"
+        fi
         echo $$
         return 0
     fi
@@ -1335,6 +1339,45 @@ launch_workload_container() {
         echo 0; return 1
     fi
     docker rm -f "$name" >/dev/null 2>&1 || true
+
+    # Veth-routed network workload IN a container. With --network host the
+    # container shares the host root netns, so an in-container iperf3 client
+    # reaches the netns server (10.42.0.2) over intp-veth-h exactly as the bare
+    # host client does (launch_veth_workload) -> real-NIC netp/nets inside the
+    # container, not loopback. Server runs on the host in netns intp-net; the
+    # host-side profiler (--pid=host) attributes the container's iperf3 PID
+    # (cgroup self-resolved, C17). Mirrors launch_workload_bare's VETH branch.
+    if [[ "$args" == VETH:* ]]; then
+        local netns="${INTP_NETNS_NAME:-intp-net}"
+        local guest_ip="${INTP_NETNS_GUEST_IP:-10.42.0.2}"
+        local host_ip="${INTP_NETNS_HOST_IP:-10.42.0.1}"
+        local _p proto port extra
+        IFS=':' read -r _p proto port extra <<< "$args"
+        local proto_flag=""
+        [ "$proto" = "udp" ] && proto_flag="-u"
+        if ! ip netns list 2>/dev/null | awk '{print $1}' | grep -qx "$netns"; then
+            warn "container veth: netns '$netns' missing; run bench/setup/setup-netns-pair.sh"
+            echo 0; return 1
+        fi
+        ip netns exec "$netns" iperf3 -s -B "$guest_ip" -p "$port" -1 \
+            > "${logfile%.log}.server.log" 2>&1 &
+        local srv_pid=$!
+        sleep 0.5
+        if ! kill -0 "$srv_pid" 2>/dev/null; then
+            warn "container veth: iperf3 server in netns failed (see ${logfile%.log}.server.log)"
+            echo 0; return 1
+        fi
+        docker run --rm -d --name "$name" --pid=host --network host \
+            "$CONTAINER_IMAGE" \
+            bash -c "apt-get update -qq && apt-get install -y -qq iperf3 >/dev/null && iperf3 -c $guest_ip -p $port -t $duration -B $host_ip $proto_flag -i 0 --connect-timeout 2000 $extra" \
+            > "$logfile" 2>&1 \
+            || { warn "container veth: docker run (iperf3 client) failed"; echo 0; return 1; }
+        _publish_caps_applied "$logfile" "n/a"
+        local cpid
+        cpid=$(docker inspect -f '{{.State.Pid}}' "$name" 2>/dev/null || echo 0)
+        echo "$cpid"
+        return 0
+    fi
 
     # Capability matrix:
     #   --pid=host       so the host-side profiler can see the workload PID
