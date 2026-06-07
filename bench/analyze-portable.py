@@ -266,7 +266,13 @@ def main():
                     continue
                 mbwv = _median(vals(env, var, wl, "mbw"))
                 lmrv = _median(vals(env, var, wl, "llcmr"))
-                if (mbwv is not None and mbwv > 1) or (lmrv is not None and lmrv > 1):
+                # The net-path cross-check needs RDT PRESENT to contradict membw_est.
+                # Where mbw is '--' (RDT structurally gapped, e.g. vm-guest) membw_est
+                # IS the primary bandwidth signal -- nothing to corroborate against -- so
+                # skip (the §2 host-vs-guest scope caveat covers those cells instead).
+                if mbwv is None:
+                    continue
+                if mbwv > 1 or (lmrv is not None and lmrv > 1):
                     continue   # corroborated by a hardware cache/bw signal — list only suspects
                 n_uncorr += 1
                 w(f"| {env} | {var} | {wl} | {_fmt(mb)} | {_fmt(mbwv)} | {_fmt(lmrv)} | "
@@ -274,8 +280,9 @@ def main():
     if n_uncorr == 0:
         w("| — | — | — | — | — | — | all membw_est readings corroborated by mbw/llcmr |")
     w()
-    w(f"_{n_uncorr} cell(s) flagged (membw_est>0 with mbw≈0 and llcmr≈0). The v2.1↔v3.3 "
-      "gap on these is the eBPF net-path footprint, not workload bandwidth (C31)._")
+    w(f"_{n_uncorr} cell(s) flagged: RDT present but mbw≈0 and llcmr≈0 while membw_est>0. "
+      "The v2.1↔v3.3 gap on these is the eBPF net-path footprint, not workload bandwidth "
+      "(C31). vm-guest is excluded here (mbw is structurally `--`; see the §2 scope caveat)._")
     w()
 
     # ---- §5 vm-guest confirmation ----
