@@ -63,6 +63,9 @@ static void usage(const char *p)
         "  --output FORMAT         tsv (default), json, prometheus\n"
         "  --header                emit column header (tsv default on)\n"
         "  --no-header             suppress header\n"
+        "  --portable-metrics      append the 6 VM-portable columns (schedlat\n"
+        "                          psi_mem membw_est psi_io schedthr steal); the\n"
+        "                          canonical 7 columns stay byte-identical (C26)\n"
         "\n"
         "Backend control:\n"
         "  --force-backend M:ID    force a backend, e.g. mbw:perf_uncore_imc\n"
@@ -114,7 +117,24 @@ static const char *metric_order_names[] = {
     "netp", "nets", "blk", "mbw", "llcmr", "llcocc", "cpu"
 };
 
-static void emit_header_tsv(FILE *out)
+/* VM-portable trailing columns (--portable-metrics, C26 / DESIGN §10), in the
+ * canonical order shared with intp_portable_metrics() and v2.1/v3.3. A SEPARATE
+ * benchmark: the 7 canonical columns are byte-identical with or without
+ * --portable-metrics. */
+static const char *portable_order_names[] = {
+    "schedlat", "psi_mem", "membw_est", "psi_io", "schedthr", "steal"
+};
+
+static void format_value(char *buf, size_t bufsz, const metric_sample_t *s)
+{
+    if (s->status == METRIC_STATUS_UNAVAILABLE || isnan(s->value)) {
+        snprintf(buf, bufsz, "--");
+    } else {
+        snprintf(buf, bufsz, "%.0f", s->value);
+    }
+}
+
+static void emit_header_tsv(FILE *out, int want_portable)
 {
     int n;
     metric_t **all = intp_all_metrics(&n);
@@ -127,47 +147,65 @@ static void emit_header_tsv(FILE *out)
         const char *bid = (m && m->active) ? m->active->backend_id : "none";
         fprintf(out, " %s=%s", metric_order_names[i], bid);
     }
-    fprintf(out, "\n");
-    fprintf(out, "netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu\n");
-}
-
-static void format_value(char *buf, size_t bufsz, const metric_sample_t *s)
-{
-    if (s->status == METRIC_STATUS_UNAVAILABLE || isnan(s->value)) {
-        snprintf(buf, bufsz, "--");
-    } else {
-        snprintf(buf, bufsz, "%.0f", s->value);
+    if (want_portable) {
+        int np;
+        metric_t **port = intp_portable_metrics(&np);
+        fprintf(out, " | portable:");
+        for (int i = 0; i < np; i++) {
+            const char *bid = port[i]->active ? port[i]->active->backend_id : "none";
+            fprintf(out, " %s=%s", portable_order_names[i], bid);
+        }
     }
+    fprintf(out, "\n");
+    if (want_portable)
+        fprintf(out, "# portable metrics (C26 / DESIGN §10; SEPARATE benchmark): "
+                     "schedlat psi_mem psi_io schedthr steal are %% of interval; "
+                     "membw_est is a DRAM-bandwidth estimate in MB/s; '--' = source "
+                     "unavailable on this host\n");
+    fprintf(out, "netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu");
+    if (want_portable)
+        for (size_t i = 0; i < sizeof(portable_order_names)/sizeof(portable_order_names[0]); i++)
+            fprintf(out, "\t%s", portable_order_names[i]);
+    fprintf(out, "\n");
 }
 
-static void emit_tsv(FILE *out, metric_sample_t samples[7])
+static void emit_tsv(FILE *out, metric_sample_t samples[7],
+                     metric_sample_t *port, int n_port)
 {
-    char b[7][16];
-    for (int i = 0; i < 7; i++) format_value(b[i], sizeof(b[i]), &samples[i]);
-    fprintf(out, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-            b[0], b[1], b[2], b[3], b[4], b[5], b[6]);
+    char b[16];
+    for (int i = 0; i < 7; i++) {
+        format_value(b, sizeof(b), &samples[i]);
+        fprintf(out, i ? "\t%s" : "%s", b);
+    }
+    for (int i = 0; i < n_port; i++) {
+        format_value(b, sizeof(b), &port[i]);
+        fprintf(out, "\t%s", b);
+    }
+    fprintf(out, "\n");
 }
 
-static void emit_json(FILE *out, metric_sample_t samples[7], double t_sec)
+static void emit_json_obj(FILE *out, const char *name, const metric_sample_t *s)
+{
+    fprintf(out, ",\"%s\":{\"v\":", name);
+    if (isnan(s->value)) fprintf(out, "null");
+    else                 fprintf(out, "%.3f", s->value);
+    fprintf(out, ",\"status\":\"%s\",\"backend\":\"%s\"",
+            status_str(s->status), s->backend_id ? s->backend_id : "none");
+    if (s->note) fprintf(out, ",\"note\":\"%s\"", s->note);
+    fprintf(out, "}");
+}
+
+static void emit_json(FILE *out, metric_sample_t samples[7], double t_sec,
+                      metric_sample_t *port, int n_port)
 {
     fprintf(out, "{\"t\":%.3f", t_sec);
-    for (int i = 0; i < 7; i++) {
-        fprintf(out, ",\"%s\":{\"v\":", metric_order_names[i]);
-        if (isnan(samples[i].value))
-            fprintf(out, "null");
-        else
-            fprintf(out, "%.3f", samples[i].value);
-        fprintf(out, ",\"status\":\"%s\",\"backend\":\"%s\"",
-                status_str(samples[i].status),
-                samples[i].backend_id ? samples[i].backend_id : "none");
-        if (samples[i].note)
-            fprintf(out, ",\"note\":\"%s\"", samples[i].note);
-        fprintf(out, "}");
-    }
+    for (int i = 0; i < 7; i++) emit_json_obj(out, metric_order_names[i], &samples[i]);
+    for (int i = 0; i < n_port; i++) emit_json_obj(out, portable_order_names[i], &port[i]);
     fprintf(out, "}\n");
 }
 
-static void emit_prometheus(FILE *out, metric_sample_t samples[7])
+static void emit_prometheus(FILE *out, metric_sample_t samples[7],
+                            metric_sample_t *port, int n_port)
 {
     for (int i = 0; i < 7; i++) {
         if (isnan(samples[i].value)) continue;
@@ -177,6 +215,15 @@ static void emit_prometheus(FILE *out, metric_sample_t samples[7])
             samples[i].backend_id ? samples[i].backend_id : "none",
             status_str(samples[i].status),
             samples[i].value);
+    }
+    for (int i = 0; i < n_port; i++) {
+        if (isnan(port[i].value)) continue;
+        fprintf(out,
+            "intp_v2{metric=\"%s\",backend=\"%s\",status=\"%s\"} %.3f\n",
+            portable_order_names[i],
+            port[i].backend_id ? port[i].backend_id : "none",
+            status_str(port[i].status),
+            port[i].value);
     }
 }
 
@@ -202,6 +249,7 @@ int main(int argc, char *argv[])
     const char *out_fmt    = "tsv";
     int   want_header      = 1;
     int   list_backends    = 0;
+    int   want_portable    = 0;           /* --portable-metrics (C26) */
 
     force_spec_t forces[16];
     int n_forces = 0;
@@ -211,7 +259,8 @@ int main(int argc, char *argv[])
 
     enum { OPT_PIDS = 1000, OPT_COMM, OPT_CGROUP, OPT_INTERVAL, OPT_DURATION,
            OPT_OUTPUT, OPT_HEADER, OPT_NO_HEADER, OPT_FORCE, OPT_DISABLE,
-           OPT_LIST, OPT_NIC_SPEED, OPT_MEM_BW, OPT_LLC, OPT_IFACE, OPT_DISK };
+           OPT_LIST, OPT_NIC_SPEED, OPT_MEM_BW, OPT_LLC, OPT_IFACE, OPT_DISK,
+           OPT_PORTABLE };
 
     static struct option long_opts[] = {
         { "pids",            required_argument, NULL, OPT_PIDS },
@@ -230,6 +279,7 @@ int main(int argc, char *argv[])
         { "llc-size-bytes",  required_argument, NULL, OPT_LLC },
         { "iface",           required_argument, NULL, OPT_IFACE },
         { "disk",            required_argument, NULL, OPT_DISK },
+        { "portable-metrics",no_argument,       NULL, OPT_PORTABLE },
         { "help",            no_argument,       NULL, 'h' },
         { 0, 0, 0, 0 }
     };
@@ -254,6 +304,7 @@ int main(int argc, char *argv[])
         case OPT_OUTPUT:   out_fmt      = optarg;       break;
         case OPT_HEADER:    want_header = 1; break;
         case OPT_NO_HEADER: want_header = 0; break;
+        case OPT_PORTABLE:  want_portable = 1; break;
         case OPT_FORCE:
             if (n_forces < (int)(sizeof(forces)/sizeof(forces[0])) &&
                 parse_force(optarg, &forces[n_forces]) == 0) {
@@ -363,6 +414,19 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    /* Probe + init the 6 VM-portable metrics (--portable-metrics, C26). A
+     * SEPARATE list from the canonical 7 so the fingerprint path is unchanged
+     * when the flag is off. A metric that probes/inits to nothing reads "--". */
+    int n_port = 0;
+    metric_t **port = NULL;
+    if (want_portable) {
+        port = intp_portable_metrics(&n_port);
+        for (int i = 0; i < n_port; i++) {
+            metric_select_backend(port[i]);
+            if (port[i]->active) metric_init(port[i]);
+        }
+    }
+
     signal(SIGINT,  on_signal);
     signal(SIGTERM, on_signal);
 
@@ -373,7 +437,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "unknown --output format: %s\n", out_fmt);
         return 1;
     }
-    if (is_tsv && want_header) emit_header_tsv(stdout);
+    if (is_tsv && want_header) emit_header_tsv(stdout, want_portable);
 
     struct timespec start, wake;
     clock_gettime(CLOCK_MONOTONIC, &start);
@@ -400,9 +464,15 @@ int main(int argc, char *argv[])
             metric_read(m, &samples[i], interval_sec);
         }
 
-        if (is_tsv)  emit_tsv(stdout, samples);
-        if (is_json) emit_json(stdout, samples, t);
-        if (is_prom) emit_prometheus(stdout, samples);
+        /* Portable metrics in canonical order; metric_read fills UNAVAILABLE
+         * ("--") for any with no active backend. */
+        metric_sample_t port_samples[INTP_N_PORTABLE];
+        for (int i = 0; i < n_port; i++)
+            metric_read(port[i], &port_samples[i], interval_sec);
+
+        if (is_tsv)  emit_tsv(stdout, samples, port_samples, n_port);
+        if (is_json) emit_json(stdout, samples, t, port_samples, n_port);
+        if (is_prom) emit_prometheus(stdout, samples, port_samples, n_port);
 
         if (duration_sec > 0 && t >= duration_sec) break;
     }
