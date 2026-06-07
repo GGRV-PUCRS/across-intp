@@ -939,3 +939,35 @@ resctrl GROUP_NAME `intp-v3.3`, the Prometheus label `intp_v3_3`, and the BPF so
 basenames `intp_agg.*`. Verified: 0 old slugs / 0 `intp-ebpf-cgroup` / 0 `ebpf-cgroup`
 remaining; all variants build at the new paths; v2.1 unit tests pass (7 metrics/21
 backends); analyzers/plotters compile; all scripts bash -n clean.
+
+### C31 — membw_est net-path instrumentation: document + gate (not sample) (2026-06-07)
+
+v3.3 (eBPF) over-reports `membw_est` on net-heavy workloads (~6–7× v2.1 on
+app11_sort_net: solo membw_est v3.3≈65 vs v2.1≈9). Root cause: the per-packet eBPF
+net instrumentation (`cgroup_skb` ingress/egress + the `net_dev_xmit`/
+`netif_receive_skb` tracepoints + the nets-latency probes) executes on every packet
+and its cache misses are charged to the cgroup-scoped cache-miss counter that
+`membw_est` integrates. **Confirmed by an INDEPENDENT host-side counter**: the
+campaign `groundtruth.tsv` shows the v3.3 app11 run generating ~9.0 M system LLC
+misses vs ~2.5 M for the v2.1 run (~3.6×). This is the bandwidth analogue of the eBPF
+event-amplification in `docs/V3-OVERHEAD-FINDINGS.md` (188–390× ctxsw).
+
+- **The canonical 7 are UNAFFECTED.** `mbw`/`llcmr` are %-normalized (against the
+  ~281 GB/s ceiling / as a miss ratio) and clamped 0–99, so the ~0.02%-of-ceiling
+  footprint rounds to 0. Verified: app11 `mbw`=0 and `llcmr`=0 for BOTH v2.1 and v3.3.
+  Only `membw_est` shows it, because it is the one metric reported as an unclamped
+  absolute MB/s. The fingerprint contract holds.
+
+- **Decision: DOCUMENT + GATE, not sample.** Sampling 1-in-N packets in the net hooks
+  would cut the footprint ~N× but degrade `netp`/`nets` accuracy (trading one metric's
+  contract to fix another's) — REJECTED. Instead `analyze-portable.py` §4 emits a
+  **corroboration gate**: any cell with `membw_est`>0 while `mbw`≈0 and `llcmr`≈0 is
+  flagged `uncorroborated (net-path)` and must NOT be used for cross-variant
+  absolute-bandwidth claims. For non-net workloads membw_est is corroborated (v2.1≈v3.3).
+
+- **Note on commit `7904566`** ("drop per-packet per-cgroup netp HASH update"): it is a
+  valid micro-optimization (removes a redundant, cross-CPU-contended `__sync_fetch_and_add`
+  that duplicates `agg_global` for a single-target attach; netp from `agg_global` ==
+  per-cgroup for single-target) but it is NOT the membw_est fix — the footprint is the
+  per-packet hook EXECUTION across all the net hooks, not that one write. The commit
+  message overclaimed; this entry is the correction.

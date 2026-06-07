@@ -238,8 +238,48 @@ def main():
       f"(needs a saturating-bandwidth workload with ample free RAM, e.g. app05_streaming).")
     w()
 
-    # ---- §4 vm-guest confirmation ----
-    w("## §4 vm-guest confirmation")
+    # ---- §4 membw_est corroboration gate (net-path instrumentation caveat) ----
+    w("## §4 membw_est corroboration gate (net-path instrumentation caveat)")
+    w()
+    w("`membw_est` is cache-miss-derived and reported as an UNCLAMPED absolute (MB/s), so "
+      "on net-heavy workloads where the hardware cache/bandwidth canonicals (`mbw`, "
+      "`llcmr`) read ~0, a non-zero `membw_est` is NOT corroborated as workload DRAM "
+      "bandwidth — it integrates net-softirq + per-packet eBPF-hook misses. The eBPF "
+      "variant (v3.3) inflates this over the C variant (v2.1): on app11 v3.3 `membw_est` "
+      "is ~6–7× v2.1, and an INDEPENDENT host-side GT shows v3.3 generating ~3.6× the "
+      "system LLC misses v2.1 does on that workload (the bandwidth analogue of the eBPF "
+      "overhead in `docs/V3-OVERHEAD-FINDINGS.md`). The **canonical 7 are UNAFFECTED** — "
+      "`mbw`/`llcmr` are %-normalized + clamped, so the ~0.02%-of-ceiling footprint rounds "
+      "to 0 (verified: app11 `mbw`=0/`llcmr`=0 for BOTH variants). Cells with `membw_est`>0 "
+      "but `mbw`≈0 and `llcmr`≈0 are flagged **uncorroborated** (C31): read them as "
+      "instrumentation-influenced, not true bandwidth; do not use them for cross-variant "
+      "absolute-bandwidth claims.")
+    w()
+    w("| env | variant | workload | membw_est | mbw | llcmr | corroborated? |")
+    w("|---|---|---|---|---|---|---|")
+    n_uncorr = 0
+    for env in envs_present:
+        for var in VARIANTS:
+            for wl in WORKLOAD:
+                mb = _median(vals(env, var, wl, "membw_est"))
+                if mb is None or mb <= 0:
+                    continue
+                mbwv = _median(vals(env, var, wl, "mbw"))
+                lmrv = _median(vals(env, var, wl, "llcmr"))
+                if (mbwv is not None and mbwv > 1) or (lmrv is not None and lmrv > 1):
+                    continue   # corroborated by a hardware cache/bw signal — list only suspects
+                n_uncorr += 1
+                w(f"| {env} | {var} | {wl} | {_fmt(mb)} | {_fmt(mbwv)} | {_fmt(lmrv)} | "
+                  f"**uncorroborated (net-path)** |")
+    if n_uncorr == 0:
+        w("| — | — | — | — | — | — | all membw_est readings corroborated by mbw/llcmr |")
+    w()
+    w(f"_{n_uncorr} cell(s) flagged (membw_est>0 with mbw≈0 and llcmr≈0). The v2.1↔v3.3 "
+      "gap on these is the eBPF net-path footprint, not workload bandwidth (C31)._")
+    w()
+
+    # ---- §5 vm-guest confirmation ----
+    w("## §5 vm-guest confirmation")
     w()
     if "vm-guest" not in envs_present:
         w("_no vm-guest data in this campaign._")
@@ -266,8 +306,8 @@ def main():
           "guest where the RDT/LL-PMU fingerprint cannot (C26).")
     w()
 
-    # ---- §5 per-cell medians ----
-    w("## §5 Per-cell medians (claim class in header)")
+    # ---- §6 per-cell medians ----
+    w("## §6 Per-cell medians (claim class in header)")
     w()
     head = ["env", "variant", "workload"] + [f"{m}[{CLAIM_CLASS[m]}]" for m in PORTABLE]
     w("| " + " | ".join(head) + " |")

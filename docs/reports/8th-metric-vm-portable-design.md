@@ -240,6 +240,15 @@ The local build of the separate `--portable-metrics` benchmark is **complete and
 compiles clean** (steps 1–4 below); remote validation (step 5) and the v2/v3.2
 back-port (step 6) remain. See DECISIONS-container.md **C27**.
 
+**`membw_est` net-path caveat (C31):** on net-heavy workloads the eBPF variant
+(v3.3) over-reports `membw_est` (~6–7× v2.1 on app11) because per-packet eBPF net
+hooks add cache misses to the counter it integrates (independent host GT confirms
+~3.6× the system LLC misses v2.1 generates). The **canonical 7 are unaffected**
+(`mbw`/`llcmr` are %-normalized → the footprint rounds to 0). Mitigation is
+**document + the `analyze-portable.py` §4 corroboration gate** (flag cells where
+`membw_est`>0 but `mbw`≈0 and `llcmr`≈0), NOT sampling (which would cost `netp`/`nets`
+accuracy). See **C31**.
+
 1. **v3.3 loader (`variants/v3.3-ebpf-core-cgroup/src/intp_agg.c`) — DONE.** schedlat
    (eBPF, already in the BPF object + counter) was moved out of the diagnostic
    block into the portable block. Added file-read helpers (`read_psi_some_total_us`,
