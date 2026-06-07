@@ -163,19 +163,18 @@ def w5_report(base, variants, stage_pair="pairwise", stage_solo="solo"):
                 keys = [m for m in M.METRICS_ALL if raw[m][0] is not None]
                 q = M.bh_adjust([raw[m][0] for m in keys])
                 qmap = dict(zip(keys, q))
-                fired = []
+                dvals = {}
                 row = [p.replace("__vs__", " — vs ")]
                 for m in cols:
                     pmd = M._median(raw[m][1]); smd = M._median(raw[m][2])
                     if pmd is None or smd is None:
-                        row.append("-"); continue
+                        row.append("-"); dvals[m] = (None, None); continue
                     d = pmd - smd
                     cd = M.cliffs_delta(raw[m][1], raw[m][2])
                     qv = qmap.get(m)
                     mark = M.signif_marker(qv) if qv is not None else "n/a"
                     row.append(f"{M._fmt(d)} ({mark},{M._fmt(cd)})")
-                    if m in W5_PRIMARY and d > 0 and qv is not None and mark not in ("n.s.", "n/a"):
-                        fired.append(m)
+                    dvals[m] = (d, mark)
                 # full 13 -> TSV
                 for m in M.METRICS_ALL:
                     pmd = M._median(raw[m][1]); smd = M._median(raw[m][2])
@@ -187,7 +186,22 @@ def w5_report(base, variants, stage_pair="pairwise", stage_solo="solo"):
                     tsv.append((var, env, p, m, cls_of(m), M._fmt(smd), M._fmt(pmd),
                                 M._fmt(pmd - smd), M._fmt(cd), M._fmt_p(raw[m][0]),
                                 M._fmt_p(qv), M.signif_marker(qv) if qv is not None else "n/a", role))
-                row.append("**" + "+".join(fired) + "** ↑" if fired else "—")
+                def _sig(mm):
+                    dd, mk = dvals.get(mm, (None, None))
+                    return dd is not None and mk not in ("n.s.", "n/a")
+                up = [mm for mm in W5_PRIMARY if _sig(mm) and dvals[mm][0] > 0]
+                down = [mm for mm in W5_PRIMARY if _sig(mm) and dvals[mm][0] < 0]
+                parts = []
+                if up:
+                    parts.append("**" + "+".join(up) + "** ↑")
+                if down:
+                    parts.append("+".join(down) + " ↓")
+                # Steal/Starving (Volpert): victim runs LESS on-CPU (cpu↓) while its
+                # run-queue wait RISES (schedlat↑) — the false-negative a cpu-util
+                # detector misses but schedlat catches.
+                if _sig("cpu") and dvals["cpu"][0] < 0 and _sig("schedlat") and dvals["schedlat"][0] > 0:
+                    parts.append("⚠STARVING")
+                row.append(" / ".join(parts) if parts else "—")
                 em("| " + " | ".join(row) + " |")
             em("")
     return "\n".join(L) + "\n", tsv
