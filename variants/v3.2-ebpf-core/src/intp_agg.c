@@ -274,6 +274,17 @@ typedef struct {
     double llcocc;
     double cpu;
     double mbw_raw_mbps; /* paralleled in C07 -- 0.0 until then */
+    /* ---- VM-portable block (--portable-metrics, C26 / DESIGN §10; F7 v3.2
+     * backport). SEPARATE flag-gated benchmark; the canonical 7 + mbw_raw_mbps
+     * above are untouched. SYSTEM-WIDE (v3.2 is not cgroup-scoped): schedlat from
+     * /proc/pressure/cpu, psi_* from /proc/pressure/{cpu,memory,io}, steal from /proc/stat,
+     * membw_est from the existing llc_misses counter. NaN -> emitted "--". ---- */
+    double schedlat;     /* /proc/pressure/cpu 'some' % (PSI, not cored)      */
+    double psi_mem;      /* /proc/pressure/memory 'some' %                    */
+    double membw_est;    /* llc_misses*64B/interval, MB/s (mbw complement)    */
+    double psi_io;       /* /proc/pressure/io 'some' %                        */
+    double schedthr;     /* CFS throttling -- no system analogue -> NaN/'--'  */
+    double steal;        /* /proc/stat field 8 %, VM-global                   */
 } intp_sample_t;
 
 static double safe_pct(double num, double den)
@@ -283,6 +294,63 @@ static double safe_pct(double num, double den)
     if (p < 0.0)   p = 0.0;
     if (p > 100.0) p = 100.0;
     return p;
+}
+
+/* ---- VM-portable metric file reads (C26 / F7 v3.2 backport). Pure /proc reads
+ * computed by the guest's own kernel, so they survive inside a stock KVM guest
+ * where resctrl (mbw/llcocc) and the LL-read PMU (llcmr) do not. SYSTEM-WIDE:
+ * v3.2 has no cgroup target. They feed --portable-metrics only; the canonical 7
+ * never touch them. membw_est is computed from llc_misses in the main loop. ---- */
+
+/* PSI 'some' cumulative stall time (us) from the 'some' line's total= field. */
+static int read_psi_some_total_us(const char *path, unsigned long long *out)
+{
+    FILE *f = fopen(path, "r");
+    if (!f) return -1;
+    char line[256];
+    int rc = -1;
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "some", 4) != 0) continue;
+        char *p = strstr(line, "total=");
+        if (p && sscanf(p + 6, "%llu", out) == 1) rc = 0;
+        break;
+    }
+    fclose(f);
+    return rc;
+}
+
+/* /proc/stat aggregate cpu line: *steal = field 8 (hypervisor-stolen jiffies),
+ * *total = sum of all fields. VM-global; 0 on bare/container. 0 on success. */
+static int read_proc_stat_steal(unsigned long long *steal,
+                                unsigned long long *total)
+{
+    FILE *f = fopen("/proc/stat", "r");
+    if (!f) return -1;
+    char line[512];
+    int rc = -1;
+    if (fgets(line, sizeof(line), f) && strncmp(line, "cpu ", 4) == 0) {
+        unsigned long long v[10] = {0};
+        int n = sscanf(line + 4,
+                       "%llu %llu %llu %llu %llu %llu %llu %llu %llu %llu",
+                       &v[0],&v[1],&v[2],&v[3],&v[4],&v[5],&v[6],&v[7],&v[8],&v[9]);
+        if (n >= 8) {
+            unsigned long long t = 0;
+            for (int i = 0; i < n; i++) t += v[i];
+            *steal = v[7];
+            *total = t;
+            rc = 0;
+        }
+    }
+    fclose(f);
+    return rc;
+}
+
+/* Portable %-of-interval delta: (cur-prev) us over interval us, 0-100. */
+static double port_pct(unsigned long long cur, unsigned long long prev,
+                       double interval_us)
+{
+    double d = (cur >= prev) ? (double)(cur - prev) : 0.0;
+    return safe_pct(d, interval_us);
 }
 
 static void compute_sample(const struct intp_counters *d,
@@ -318,7 +386,7 @@ static void compute_sample(const struct intp_counters *d,
 static void emit_tsv_header(FILE *out,
                             const system_capabilities_t *caps,
                             int no_perf, int no_resctrl,
-                            int no_raw_mbw, int clip_mbw)
+                            int no_raw_mbw, int clip_mbw, int portable)
 {
     fprintf(out,
         "# v3.2 eBPF-COREregate -- netp:tracepoint nets:softirq blk:tracepoint"
@@ -336,14 +404,52 @@ static void emit_tsv_header(FILE *out,
     if (!no_raw_mbw)
         fprintf(out, "# mbw_raw_mbps = (mbm_total_bytes_delta / interval) "
                      "/ 1e6  (diagnostic, see paper IV-E)\n");
-    if (no_raw_mbw)
-        fprintf(out, "netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu\n");
-    else
-        fprintf(out, "netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu\tmbw_raw_mbps\n");
+    if (portable)
+        fprintf(out, "# portable trailing columns (--portable-metrics, C26 / "
+                     "DESIGN §10; SEPARATE benchmark, canonical 7 untouched, "
+                     "SYSTEM-WIDE): schedlat (/proc/pressure/cpu some %%, PSI not "
+                     "cored), psi_mem (memory.pressure some %%), membw_est (MB/s = "
+                     "llc_misses*64B/interval), psi_io (io.pressure some %%), "
+                     "schedthr ('--', no system CFS-throttle), steal (/proc/stat "
+                     "field 8 %%) -- '--' where the source is unavailable\n");
+    fprintf(out, "netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu");
+    if (!no_raw_mbw)
+        fprintf(out, "\tmbw_raw_mbps");
+    if (portable)
+        fprintf(out, "\tschedlat\tpsi_mem\tmembw_est\tpsi_io\tschedthr\tsteal");
+    fprintf(out, "\n");
     fflush(out);
 }
 
-static void emit_tsv(FILE *out, const intp_sample_t *s, int no_raw_mbw)
+/* Portable cell: "--" for NaN (source unavailable), else rounded. _pct for the
+ * 0-100 %-metrics; _rate for membw_est (MB/s, not a percent). */
+static void pcell_pct(char *buf, size_t n, double v)
+{
+    if (isnan(v)) snprintf(buf, n, "--");
+    else          snprintf(buf, n, "%d", (int)(v + 0.5));
+}
+static void pcell_rate(char *buf, size_t n, double v)
+{
+    if (isnan(v)) snprintf(buf, n, "--");
+    else          snprintf(buf, n, "%.0f", v);
+}
+
+/* Emit the 6 VM-portable cells in canonical order (DESIGN §10):
+ * schedlat psi_mem membw_est psi_io schedthr steal. */
+static void emit_portable_tsv_cells(FILE *out, const intp_sample_t *s)
+{
+    char a[16], b[16], c[16], d[16], e[16], f[16];
+    pcell_pct (a, sizeof a, s->schedlat);
+    pcell_pct (b, sizeof b, s->psi_mem);
+    pcell_rate(c, sizeof c, s->membw_est);
+    pcell_pct (d, sizeof d, s->psi_io);
+    pcell_pct (e, sizeof e, s->schedthr);
+    pcell_pct (f, sizeof f, s->steal);
+    fprintf(out, "\t%s\t%s\t%s\t%s\t%s\t%s", a, b, c, d, e, f);
+}
+
+static void emit_tsv(FILE *out, const intp_sample_t *s, int no_raw_mbw,
+                     int portable)
 {
     fprintf(out, "%02d\t%02d\t%02d\t%02d\t%02d\t%02d\t%02d",
             (int)(s->netp   + 0.5),
@@ -355,12 +461,14 @@ static void emit_tsv(FILE *out, const intp_sample_t *s, int no_raw_mbw)
             (int)(s->cpu    + 0.5));
     if (!no_raw_mbw)
         fprintf(out, "\t%.0f", s->mbw_raw_mbps);
+    if (portable)
+        emit_portable_tsv_cells(out, s);
     fputc('\n', out);
     fflush(out);
 }
 
 static void emit_json(FILE *out, const intp_sample_t *s, double t_sec,
-                      int no_raw_mbw)
+                      int no_raw_mbw, int portable)
 {
     fprintf(out,
         "{\"t\":%.3f,\"netp\":%.2f,\"nets\":%.2f,\"blk\":%.2f,"
@@ -368,11 +476,22 @@ static void emit_json(FILE *out, const intp_sample_t *s, double t_sec,
         t_sec, s->netp, s->nets, s->blk, s->mbw, s->llcmr, s->llcocc, s->cpu);
     if (!no_raw_mbw)
         fprintf(out, ",\"mbw_raw_mbps\":%.2f", s->mbw_raw_mbps);
+    if (portable) {
+        const char *pn[6] = {"schedlat","psi_mem","membw_est","psi_io","schedthr","steal"};
+        double pv[6] = {s->schedlat, s->psi_mem, s->membw_est,
+                        s->psi_io, s->schedthr, s->steal};
+        for (int i = 0; i < 6; i++) {
+            fprintf(out, ",\"%s\":", pn[i]);
+            if (isnan(pv[i])) fprintf(out, "null");
+            else              fprintf(out, "%.2f", pv[i]);
+        }
+    }
     fprintf(out, "}\n");
     fflush(out);
 }
 
-static void emit_prometheus(FILE *out, const intp_sample_t *s, int no_raw_mbw)
+static void emit_prometheus(FILE *out, const intp_sample_t *s, int no_raw_mbw,
+                            int portable)
 {
     fprintf(out,
         "intp_v3_2{metric=\"netp\"} %.2f\n"
@@ -386,6 +505,14 @@ static void emit_prometheus(FILE *out, const intp_sample_t *s, int no_raw_mbw)
     if (!no_raw_mbw)
         fprintf(out, "intp_v3_2{metric=\"mbw_raw_mbps\"} %.2f\n",
                 s->mbw_raw_mbps);
+    if (portable) {
+        const char *pn[6] = {"schedlat","psi_mem","membw_est","psi_io","schedthr","steal"};
+        double pv[6] = {s->schedlat, s->psi_mem, s->membw_est,
+                        s->psi_io, s->schedthr, s->steal};
+        for (int i = 0; i < 6; i++)
+            if (!isnan(pv[i]))
+                fprintf(out, "intp_v3_2{metric=\"%s\"} %.2f\n", pn[i], pv[i]);
+    }
     fflush(out);
 }
 
@@ -530,7 +657,7 @@ int main(int argc, char **argv)
     int is_prom = strcmp(args.output_fmt, "prometheus") == 0;
     if (is_tsv && args.want_header)
         emit_tsv_header(stdout, &caps, args.no_perf_events, args.no_resctrl,
-                        args.no_raw_mbw, args.clip_mbw);
+                        args.no_raw_mbw, args.clip_mbw, args.portable_metrics);
 
     signal(SIGINT,  on_signal);
     signal(SIGTERM, on_signal);
@@ -545,6 +672,21 @@ int main(int argc, char **argv)
         intp_agg_bpf__destroy(skel);
         return 1;
     }
+    /* ---- VM-portable init (--portable-metrics, C26 / F7 v3.2). SYSTEM-WIDE PSI
+     * paths; seed prev so the first sample yields a real delta. ---- */
+    unsigned long long p_psi_cpu = 0, p_psi_mem = 0, p_psi_io = 0,
+                       p_steal = 0, p_cputot = 0;
+    int psi_cpu_ok = 0, psi_mem_ok = 0, psi_io_ok = 0, steal_ok = 0;
+    if (args.portable_metrics) {
+        psi_cpu_ok = (read_psi_some_total_us("/proc/pressure/cpu",    &p_psi_cpu) == 0);
+        psi_mem_ok = (read_psi_some_total_us("/proc/pressure/memory", &p_psi_mem) == 0);
+        psi_io_ok  = (read_psi_some_total_us("/proc/pressure/io",     &p_psi_io)  == 0);
+        steal_ok   = (read_proc_stat_steal(&p_steal, &p_cputot) == 0);
+        if (args.verbose && !psi_cpu_ok)
+            fprintf(stderr, "warn: /proc/pressure/cpu unreadable (CONFIG_PSI=n?) "
+                            "-- schedlat will read '--'\n");
+    }
+
     struct timespec start, prev_t, now_t;
     clock_gettime(CLOCK_MONOTONIC, &start);
     prev_t = start;
@@ -573,6 +715,34 @@ int main(int argc, char **argv)
         intp_sample_t sample;
         compute_sample(&delta, &caps, interval_real, caps.num_cores, &sample);
 
+        /* ---- VM-portable block (C26 / F7 v3.2). System-wide; NaN -> "--". ---- */
+        if (args.portable_metrics) {
+            double interval_us = interval_real * 1e6;
+            unsigned long long cur, cs, ct;
+            sample.schedlat = sample.psi_mem = sample.psi_io = NAN;
+            sample.schedthr = sample.steal   = NAN;   /* schedthr: no system analogue */
+            if (psi_cpu_ok && read_psi_some_total_us("/proc/pressure/cpu", &cur) == 0) {
+                sample.schedlat = port_pct(cur, p_psi_cpu, interval_us); p_psi_cpu = cur;
+            }
+            if (psi_mem_ok && read_psi_some_total_us("/proc/pressure/memory", &cur) == 0) {
+                sample.psi_mem = port_pct(cur, p_psi_mem, interval_us); p_psi_mem = cur;
+            }
+            if (psi_io_ok && read_psi_some_total_us("/proc/pressure/io", &cur) == 0) {
+                sample.psi_io = port_pct(cur, p_psi_io, interval_us); p_psi_io = cur;
+            }
+            if (steal_ok && read_proc_stat_steal(&cs, &ct) == 0) {
+                unsigned long long ds = (cs >= p_steal)  ? cs - p_steal  : 0;
+                unsigned long long dt = (ct >= p_cputot) ? ct - p_cputot : 0;
+                sample.steal = (dt > 0) ? ((double)ds / (double)dt * 100.0) : 0.0;
+                p_steal = cs; p_cputot = ct;
+            }
+            /* membw_est: llc_misses * 64B / interval -> MB/s. NaN when the miss
+             * counter never opened (--no-perf-events / perf_event_open failed). */
+            int membw_ok = !args.no_perf_events && perf_miss.n_fds > 0;
+            sample.membw_est = (membw_ok && interval_real > 0.0)
+                ? ((double)delta.llc_misses * 64.0 / interval_real) / 1e6 : NAN;
+        }
+
         if (rg) {
             double pct = 0.0, raw = 0.0;
             resctrl_read_mbm_pct_and_raw(rg, &caps, interval_real,
@@ -600,13 +770,13 @@ int main(int argc, char **argv)
             }
         }
 
-        if (is_tsv)  emit_tsv(stdout, &sample, args.no_raw_mbw);
+        if (is_tsv)  emit_tsv(stdout, &sample, args.no_raw_mbw, args.portable_metrics);
         if (is_json) {
             double t = (double)(now_t.tv_sec  - start.tv_sec)
                      + (double)(now_t.tv_nsec - start.tv_nsec) / 1e9;
-            emit_json(stdout, &sample, t, args.no_raw_mbw);
+            emit_json(stdout, &sample, t, args.no_raw_mbw, args.portable_metrics);
         }
-        if (is_prom) emit_prometheus(stdout, &sample, args.no_raw_mbw);
+        if (is_prom) emit_prometheus(stdout, &sample, args.no_raw_mbw, args.portable_metrics);
 
         prev   = cur;
         prev_t = now_t;
