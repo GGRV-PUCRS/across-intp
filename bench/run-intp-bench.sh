@@ -1703,6 +1703,30 @@ _vmg_publish_state() {
     } > "$(dirname "$logfile")/.vmg-state" 2>/dev/null || true
 }
 
+# Start the in-guest stress-ng workload over SSH into an ALREADY-BOOTED vm-guest.
+# SPLIT from the boot (vs the old inline start) so the pairwise path can boot both
+# VMs idle and start the aggressor's attack ONLY AFTER the victim is up + measuring
+# -- a saturating aggressor started at its own boot starves the victim VM's boot
+# (sshd refused, no data; the documented vm-guest pairwise failure). Echoes the
+# in-guest workload PID. guest_cg scopes the in-guest profiler (T1).
+_vmg_start_workload() {
+    local tmpdir="$1" sshport="$2" guest_cg="$3" args="$4" duration="$5"
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        -i "$tmpdir/key" -p "$sshport" intp@127.0.0.1 "cat > /tmp/intp-wl-launch.sh" <<EOF || warn "vm-guest: staging workload launcher failed"
+#!/bin/sh
+sudo mkdir -p $guest_cg 2>/dev/null
+sudo sh -c 'echo \$\$ > $guest_cg/cgroup.procs 2>/dev/null; exec stress-ng $args --timeout ${duration}s --metrics-brief' > /tmp/wl.log 2>&1 &
+echo \$! > /tmp/intp-wl.pid
+EOF
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        -i "$tmpdir/key" -p "$sshport" intp@127.0.0.1 \
+        "nohup sh /tmp/intp-wl-launch.sh >/dev/null 2>&1 &" \
+        || warn "ssh stress-ng dispatch failed"
+    sleep 1
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        -i "$tmpdir/key" -p "$sshport" intp@127.0.0.1 'cat /tmp/intp-wl.pid 2>/dev/null' 2>/dev/null || echo 0
+}
+
 # Incus/LXD instance names allow only [a-zA-Z0-9-] (NO '.'/'_', unlike docker),
 # must start with a letter, and are <=63 chars. The per-run name carries the
 # variant ('v2.1' -> '.') and workload ('app10_search' -> '_'), which incus
@@ -2166,36 +2190,26 @@ EOF
     export INTP_VMG_TMPDIR="$tmpdir"
     export INTP_VMG_SSHPORT="$sshport"
 
-    # Launch stress-ng inside the guest, inside a DEDICATED guest cgroup, so the
-    # in-guest profiler scopes to the whole stress-ng tree via --cgroup instead
-    # of --pids on the (idle) supervisor PID: stress-ng forks N workers off a
-    # near-idle supervisor, so a single-PID scope reads cpu/llcmr ~0 -- bare and
-    # container use cgroup scoping for exactly this reason (T1). The launcher is
-    # staged as a script (heredoc) to avoid nested ssh/sudo/cgroup quoting:
-    # $args/${duration}/$guest_cg are host-expanded; \$\$ / \$! evaluate in-guest.
+    # Start stress-ng inside the guest, in a DEDICATED guest cgroup, so the in-guest
+    # profiler scopes to the whole stress-ng tree via --cgroup instead of --pids on
+    # the (idle) supervisor PID (T1). NEW (vm-guest pairwise reorder): the workload
+    # start is SPLIT out into _vmg_start_workload and SKIPPED under INTP_VMG_BOOT_ONLY
+    # so the pairwise path can boot the aggressor VM idle, boot the victim VM cleanly,
+    # and only then trigger the aggressor attack (see stage_pairwise / run_one). For
+    # solo + the victim, the workload still starts here, right after boot.
     local guest_cg="/sys/fs/cgroup/intp-vmg-wl"
-    ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        -i "$tmpdir/key" -p "$sshport" intp@127.0.0.1 "cat > /tmp/intp-wl-launch.sh" <<EOF || warn "vm-guest: staging workload launcher failed for $name"
-#!/bin/sh
-sudo mkdir -p $guest_cg 2>/dev/null
-sudo sh -c 'echo \$\$ > $guest_cg/cgroup.procs 2>/dev/null; exec stress-ng $args --timeout ${duration}s --metrics-brief' > /tmp/wl.log 2>&1 &
-echo \$! > /tmp/intp-wl.pid
-EOF
-    ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        -i "$tmpdir/key" -p "$sshport" intp@127.0.0.1 \
-        "nohup sh /tmp/intp-wl-launch.sh >/dev/null 2>&1 &" \
-        || warn "ssh stress-ng dispatch failed for $name"
-    sleep 1
-    local gpid; gpid=$(ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        -i "$tmpdir/key" -p "$sshport" intp@127.0.0.1 'cat /tmp/intp-wl.pid 2>/dev/null' 2>/dev/null || echo 0)
-    # Return host-side qemu PID so the existing stop_workload path can kill it.
-    # The guest workload cgroup (used for profiler scoping) + PID (informational)
-    # are published for run_profiler_inguest_vm.
+    local gpid=0
+    if [ "${INTP_VMG_BOOT_ONLY:-0}" = "1" ]; then
+        log "  vm-guest $name: booted idle (boot-only); workload deferred to the attack trigger"
+    else
+        gpid=$(_vmg_start_workload "$tmpdir" "$sshport" "$guest_cg" "$args" "$duration")
+    fi
+    # Return host-side qemu PID so the existing stop_workload path can kill it. The
+    # guest workload cgroup (profiler scoping) + PID (informational) are published.
     export INTP_VMG_GUEST_PID="$gpid"
     export INTP_VMG_GUEST_CGROUP="$guest_cg"
-    # C25/P5: the exports above are lost across the launch_workload subshell;
-    # publish the vm-guest state so run_one can source it for the in-guest
-    # profiler launch (without this run_profiler_inguest_vm skips => no data).
+    # C25/P5: the exports above are lost across the launch_workload subshell; publish
+    # the vm-guest state (incl. for boot-only, so the caller can trigger the attack).
     _vmg_publish_state "$logfile" "$tmpdir" "$sshport" "$gpid" "$guest_cg"
     echo "$qpid"
 }
@@ -3404,6 +3418,17 @@ run_one() {
         target_scope="system-wide"
     fi
 
+    # VM pairwise reorder: the victim VM is up and its workload running; NOW launch
+    # the aggressor's attack into the (idle, pre-booted) aggressor VM so contention
+    # is present through WARMUP + the measurement -- the aggressor never competed
+    # with the victim's boot. (Set by stage_pairwise for vm-guest pairwise only.)
+    if [ "$env" = "vm-guest" ] && [ "$DRY_RUN" -eq 0 ] && [ -n "${INTP_VMG_ATTACK_SSHPORT:-}" ]; then
+        log "  vm-guest pairwise: victim up -> launching aggressor attack"
+        _vmg_start_workload "$INTP_VMG_ATTACK_TMPDIR" "$INTP_VMG_ATTACK_SSHPORT" \
+            "$INTP_VMG_ATTACK_CG" "$INTP_VMG_ATTACK_ARGS" "$INTP_VMG_ATTACK_DURATION" \
+            >/dev/null 2>&1 || warn "vm-guest aggressor attack dispatch failed"
+    fi
+
     [ "$DRY_RUN" -eq 0 ] && sleep "$WARMUP"
 
     # Propagate env / variant / outdir / container name so launch_workload and
@@ -3516,10 +3541,35 @@ stage_pairwise() {
                     local cname_a="intp-bench-antag-$$-$r"
                     log "  pair [$env/$variant/$name press=$press rep=$r] antagonist up"
                     local antag_pid
-                    antag_pid=$(launch_workload "$env" "$antag_log" "$((DURATION + WARMUP + COOLDOWN + 10))" "$aargs" "$cname_a" || echo 0)
-                    [ "$DRY_RUN" -eq 0 ] && sleep 3
+                    local antag_dur=$((DURATION + WARMUP + COOLDOWN + 10))
+                    if [ "$env" = "vm-guest" ]; then
+                        # VM reorder (boot everything, THEN attack): boot the aggressor
+                        # VM IDLE (boot-only), then let run_one boot the victim VM into a
+                        # QUIET machine; run_one triggers the aggressor's attack only once
+                        # the victim is up + measuring (a saturating aggressor started at
+                        # its own boot starves the victim VM's boot -> sshd refused).
+                        antag_pid=$(INTP_VMG_BOOT_ONLY=1 launch_workload "$env" "$antag_log" "$antag_dur" "$aargs" "$cname_a" 2>&1 | tail -1 || echo 0)
+                        # The aggressor VM's SSH conn info is in $outdir/.vmg-state (written
+                        # by its boot); capture it for run_one BEFORE the victim launch
+                        # overwrites that file. INTP_VMG_ATTACK_* tells run_one to fire the
+                        # attack into this VM after the victim profiler starts.
+                        if [ "$DRY_RUN" -eq 0 ] && [ -f "$outdir/.vmg-state" ]; then
+                            # shellcheck disable=SC1090,SC1091
+                            . "$outdir/.vmg-state"
+                            export INTP_VMG_ATTACK_TMPDIR="$INTP_VMG_TMPDIR" \
+                                   INTP_VMG_ATTACK_SSHPORT="$INTP_VMG_SSHPORT" \
+                                   INTP_VMG_ATTACK_CG="$INTP_VMG_GUEST_CGROUP" \
+                                   INTP_VMG_ATTACK_ARGS="$aargs" \
+                                   INTP_VMG_ATTACK_DURATION="$antag_dur"
+                        fi
+                    else
+                        antag_pid=$(launch_workload "$env" "$antag_log" "$antag_dur" "$aargs" "$cname_a" || echo 0)
+                        [ "$DRY_RUN" -eq 0 ] && sleep 3
+                    fi
                     # Now run the victim measurement -- profiler attaches to victim
                     run_one pairwise "$env" "$variant" "$name" "$vargs" "$r" "$DURATION"
+                    unset INTP_VMG_ATTACK_TMPDIR INTP_VMG_ATTACK_SSHPORT INTP_VMG_ATTACK_CG \
+                          INTP_VMG_ATTACK_ARGS INTP_VMG_ATTACK_DURATION
                     stop_workload "$env" "$antag_pid" "$cname_a"
                 done
             done
