@@ -24,8 +24,12 @@ from collections import OrderedDict
 METRICS_CANON = ["netp", "nets", "blk", "mbw", "llcmr", "llcocc", "cpu"]
 # 6 VM-portable metrics (--portable-metrics; canonical order shared with
 # portable.c / intp_portable_metrics() / the v3.3 emitter).
-METRICS_PORTABLE = ["schedlat", "psi_mem", "membw_est", "psi_io", "schedthr", "steal"]
-# The 13-metric superset captured per-rep by a --portable-metrics campaign.
+METRICS_PORTABLE = ["schedlat", "psi_mem", "membw_est", "psi_io", "schedthr", "steal",
+                    # scheduling-regime sub-family (events/s) -- PSP + idle-preempt,
+                    # always counted on the already-attached sched_switch, emitted
+                    # only under --portable-metrics (canonical 7 byte-identical).
+                    "psp", "idle_preempt"]
+# The 15-metric superset captured per-rep by a --portable-metrics campaign.
 METRICS_ALL = METRICS_CANON + METRICS_PORTABLE
 
 # RDT metrics that are structurally gapped in a stock KVM guest.
@@ -54,6 +58,9 @@ CLAIM_CLASS = {
     "psi_io": "descriptive",
     "schedthr": "descriptive(guard)",
     "steal": "descriptive(vm-only)",
+    # scheduling-regime sub-family (rates) -- directional contention signals
+    "psp": "directional",
+    "idle_preempt": "directional",
 }
 
 # Canonical deployment axis (left->right). Envs not listed sort after, alpha.

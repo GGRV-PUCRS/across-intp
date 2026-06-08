@@ -417,6 +417,8 @@ static void accumulate_percpu(struct intp_counters *out,
         out->llc_refs           += per_cpu[i].llc_refs;
         out->llc_misses         += per_cpu[i].llc_misses;
         out->schedlat_wait_ns_sum += per_cpu[i].schedlat_wait_ns_sum;
+        out->psp_count            += per_cpu[i].psp_count;
+        out->idle_preempt_count   += per_cpu[i].idle_preempt_count;
     }
 }
 
@@ -483,6 +485,8 @@ static void counters_diff(const struct intp_counters *cur,
     SUB(llc_refs);
     SUB(llc_misses);
     SUB(schedlat_wait_ns_sum);
+    SUB(psp_count);
+    SUB(idle_preempt_count);
 #undef SUB
 }
 
@@ -518,6 +522,9 @@ typedef struct {
                          /* (confound guard, not a contention signal)        */
     double steal;        /* hypervisor-stolen vCPU %, /proc/stat field 8     */
                          /* (VM-global; 0 on bare/container)                 */
+    double psp;          /* involuntary preemption rate, events/s (Volpert   */
+                         /* PSP) -- scheduling-regime sub-family             */
+    double idle_preempt; /* idle-CPU takeover rate, events/s                 */
 } intp_sample_t;
 
 static double safe_pct(double num, double den)
@@ -668,14 +675,16 @@ static void emit_tsv_header(FILE *out,
                      "psi_mem (memory.pressure some %%), membw_est (DRAM-bandwidth "
                      "estimate MB/s = llc_misses*64B/interval), psi_io (io.pressure "
                      "some %%), schedthr (cpu.stat throttled %%), steal (/proc/stat "
-                     "field 8 %%, VM-global) -- '--' where the source is unavailable\n");
+                     "field 8 %%, VM-global), psp (involuntary preemption rate ev/s), "
+                     "idle_preempt (idle-CPU takeover rate ev/s) -- '--' where the "
+                     "source is unavailable\n");
 
     /* Column header: 7 canonical [+ 4 diag] [+ 6 portable]. */
     fprintf(out, "netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu");
     if (!no_diag_cols)
         fprintf(out, "\tnetp_dev\tnets_sys\tmbw_raw_mbps\tblk_MBps");
     if (portable)
-        fprintf(out, "\tschedlat\tpsi_mem\tmembw_est\tpsi_io\tschedthr\tsteal");
+        fprintf(out, "\tschedlat\tpsi_mem\tmembw_est\tpsi_io\tschedthr\tsteal\tpsp\tidle_preempt");
     fprintf(out, "\n");
     fflush(out);
 }
@@ -708,18 +717,21 @@ static void pcell_rate(char *buf, size_t n, double v)
     else          snprintf(buf, n, "%.0f", v);
 }
 
-/* Emit the 6 VM-portable cells in canonical order (DESIGN §10):
- * schedlat psi_mem membw_est psi_io schedthr steal. */
+/* Emit the 8 VM-portable cells in canonical order (DESIGN §10):
+ * schedlat psi_mem membw_est psi_io schedthr steal psp idle_preempt
+ * (psp + idle_preempt are the scheduling-regime sub-family, events/s). */
 static void emit_portable_tsv_cells(FILE *out, const intp_sample_t *s)
 {
-    char a[16], b[16], c[16], d[16], e[16], f[16];
+    char a[16], b[16], c[16], d[16], e[16], f[16], g[16], h[16];
     pcell_pct (a, sizeof a, s->schedlat);
     pcell_pct (b, sizeof b, s->psi_mem);
     pcell_rate(c, sizeof c, s->membw_est);
     pcell_pct (d, sizeof d, s->psi_io);
     pcell_pct (e, sizeof e, s->schedthr);
     pcell_pct (f, sizeof f, s->steal);
-    fprintf(out, "\t%s\t%s\t%s\t%s\t%s\t%s", a, b, c, d, e, f);
+    pcell_rate(g, sizeof g, s->psp);
+    pcell_rate(h, sizeof h, s->idle_preempt);
+    fprintf(out, "\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s", a, b, c, d, e, f, g, h);
 }
 
 static void emit_tsv(FILE *out, const intp_sample_t *s, int no_diag_cols,
@@ -772,6 +784,8 @@ static void emit_json(FILE *out, const intp_sample_t *s, double t_sec,
         fprintf(out, ",\"psi_io\":");    json_num(out, s->psi_io);
         fprintf(out, ",\"schedthr\":");  json_num(out, s->schedthr);
         fprintf(out, ",\"steal\":");     json_num(out, s->steal);
+        fprintf(out, ",\"psp\":");       json_num(out, s->psp);
+        fprintf(out, ",\"idle_preempt\":"); json_num(out, s->idle_preempt);
     }
     fprintf(out, "}\n");
     fflush(out);
@@ -804,6 +818,8 @@ static void emit_prometheus(FILE *out, const intp_sample_t *s, int no_diag_cols,
         if (!isnan(s->psi_io))    fprintf(out, "intp_v3_3{metric=\"psi_io\"} %.2f\n",    s->psi_io);
         if (!isnan(s->schedthr))  fprintf(out, "intp_v3_3{metric=\"schedthr\"} %.2f\n",  s->schedthr);
         if (!isnan(s->steal))     fprintf(out, "intp_v3_3{metric=\"steal\"} %.2f\n",     s->steal);
+        if (!isnan(s->psp))          fprintf(out, "intp_v3_3{metric=\"psp\"} %.2f\n",          s->psp);
+        if (!isnan(s->idle_preempt)) fprintf(out, "intp_v3_3{metric=\"idle_preempt\"} %.2f\n", s->idle_preempt);
     }
     fflush(out);
 }
@@ -1120,6 +1136,19 @@ int main(int argc, char **argv)
             int membw_ok = !args.no_perf_events && perf_miss.n_fds > 0;
             sample.membw_est = (membw_ok && interval_real > 0.0)
                 ? ((double)miss * 64.0 / interval_real) / 1e6 : NAN;
+
+            /* scheduling-regime rates (PSP + idle-preempt): per-cgroup (or host-
+             * wide) counts / interval -> events/s. Counted unconditionally in the
+             * tp_btf/sched_switch handler; surfaced only here under the flag. */
+            sample.psp = sample.idle_preempt = NAN;
+            if (interval_real > 0.0) {
+                unsigned long long psp_d =
+                    have_cgroup ? delta_c.psp_count : delta_g.psp_count;
+                unsigned long long idl_d =
+                    have_cgroup ? delta_c.idle_preempt_count : delta_g.idle_preempt_count;
+                sample.psp          = (double)psp_d / interval_real;
+                sample.idle_preempt = (double)idl_d / interval_real;
+            }
 
             sample.psi_mem = sample.psi_io = NAN;
             sample.schedthr = sample.steal = NAN;

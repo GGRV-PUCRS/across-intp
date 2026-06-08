@@ -496,19 +496,54 @@ int BPF_PROG(tp_schedlat, bool preempt, struct task_struct *prev,
      * TASK_REPORT value (preempted => TASK_REPORT_MAX, not 0), so it can't be
      * used for this test. */
     (void)prev_state;
-    if (BPF_CORE_READ(prev, __state) == 0) {
-        __u32 prev_pid = (__u32)BPF_CORE_READ(prev, pid);
-        if (prev_pid != 0)
-            bpf_map_update_elem(&task_wakeup_ts, &prev_pid, &now, BPF_ANY);
-    }
+    __u32 prev_pid = (__u32)BPF_CORE_READ(prev, pid);
+    int prev_preempted = (BPF_CORE_READ(prev, __state) == 0);
+    if (prev_preempted && prev_pid != 0)
+        bpf_map_update_elem(&task_wakeup_ts, &prev_pid, &now, BPF_ANY);
+
     __u32 next_pid = (__u32)BPF_CORE_READ(next, pid);
+    struct intp_config *cfg = intp_cfg();
+
+    /* --- scheduling-regime sub-family (PSP + idle-preempt), VM-portable. Counted
+     * unconditionally here (the tp_btf/sched_switch handler is already attached for
+     * schedlat); userspace emits them only under --portable-metrics, exactly like
+     * schedlat, so the canonical 7 stay byte-identical. ---
+     * PSP: prev was preempted (still RUNNABLE) -> involuntary context switch.
+     * Charge to the PREV task's cgroup (the task that got forced off). */
+    if (prev_preempted && prev_pid != 0) {
+        if (cfg && cfg->system_wide) {
+            struct intp_counters *g = agg_global_slot();
+            if (g) __sync_fetch_and_add(&g->psp_count, 1);
+        } else if (cfg) {
+            struct cgroup *pcg = BPF_CORE_READ(prev, cgroups, dfl_cgrp);
+            if (cg_ptr_matches_target(cfg, pcg)) {
+                struct intp_counters *p = target_cgroup_slot(cfg);
+                if (p) __sync_fetch_and_add(&p->psp_count, 1);
+            }
+        }
+    }
+    /* idle-preempt: prev was the idle task (pid 0) and a real task takes the CPU.
+     * Charge to the INCOMING (next) task's cgroup -- it is the one waking the CPU. */
+    if (prev_pid == 0 && next_pid != 0) {
+        if (cfg && cfg->system_wide) {
+            struct intp_counters *g = agg_global_slot();
+            if (g) __sync_fetch_and_add(&g->idle_preempt_count, 1);
+        } else if (cfg) {
+            struct cgroup *icg = BPF_CORE_READ(next, cgroups, dfl_cgrp);
+            if (cg_ptr_matches_target(cfg, icg)) {
+                struct intp_counters *p = target_cgroup_slot(cfg);
+                if (p) __sync_fetch_and_add(&p->idle_preempt_count, 1);
+            }
+        }
+    }
+
+    /* --- schedlat (existing): run-queue wait of the INCOMING task. --- */
     if (next_pid == 0) return 0;
     __u64 *wts = bpf_map_lookup_elem(&task_wakeup_ts, &next_pid);
     if (!wts) return 0;
     __u64 wait = now - *wts;
     bpf_map_delete_elem(&task_wakeup_ts, &next_pid);
 
-    struct intp_config *cfg = intp_cfg();
     if (cfg && cfg->system_wide) {
         struct intp_counters *g = agg_global_slot();
         if (g) __sync_fetch_and_add(&g->schedlat_wait_ns_sum, wait);
