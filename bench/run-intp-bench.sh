@@ -327,6 +327,16 @@ WORKLOADS=(
     # nonzero netp/nets in V2/V3/V3.1 (which filter `lo` but not `intp-veth-h`).
     "app11b_tcp_veth|network|VETH:tcp:23420:-P 16"
     "app12b_udp_veth|network|VETH:udp:23430:-P 16 -b 0"
+
+    # ── Tier-B real-world: Redis key-value store (C32). Profiled = redis-server
+    #    (the victim whose 15-metric fingerprint we measure); load = redis-benchmark
+    #    driving it continuously (the noisy client, NOT profiled). apt-native on
+    #    bare/container/vm-guest (no docker), so it runs in all three deployment
+    #    classes. Exercises schedlat/psp/idle_preempt (request-driven wakeups +
+    #    preemption) + netp/nets + cpu -- the IADA latency-sensitive narrative.
+    #    Deps auto-provisioned by bench/setup/setup-redis-workload.sh.
+    #    Format: REDIS:<port>:<redis-benchmark extra args>.
+    "app18_redis_kv|kv-store|REDIS:7000:-c 50 -d 64 -t get,set,incr -P 8"
 )
 
 # Pairwise victim+antagonist pairs (id|victim_args|antagonist_args|expected_pressure)
@@ -1296,9 +1306,75 @@ _apply_bench_caps_to_cgroup() {
     [ "$ok" = 1 ] && CURRENT_CAPS_APPLIED="yes" || CURRENT_CAPS_APPLIED="no"
 }
 
+launch_redis_workload() {
+    # REDIS:<port>:<redis-benchmark extra args>. Profiled process = redis-server
+    # (placed in the bench cgroup when cgroup-targeting is on, so v2.1/v3.3 scope
+    # it); the load = redis-benchmark run continuously for the whole window (warmup
+    # + measure + cooldown + slack), NOT profiled. Returns the redis-server PID.
+    # Deps (redis-server + redis-benchmark) are provisioned on demand via
+    # bench/setup/setup-redis-workload.sh (reproducibility automation, C32).
+    local logfile="$1" duration="$2" spec="$3" name="$4"
+    local port rb_extra
+    IFS=':' read -r _ port rb_extra <<< "$spec"
+    [[ "$port" =~ ^[0-9]+$ ]] || die "launch_redis_workload: bad port '$port'"
+
+    if ! command -v redis-server >/dev/null 2>&1 || ! command -v redis-benchmark >/dev/null 2>&1; then
+        bash "$SCRIPT_DIR/setup/setup-redis-workload.sh" >> "${logfile%.log}.setup.log" 2>&1 \
+            || { warn "launch_redis_workload: dep install failed (see ${logfile%.log}.setup.log)"; echo 0; return 1; }
+    fi
+
+    local redis_pid
+    if [ "$USE_CGROUP_TARGETING" = "1" ] && [ -d /sys/fs/cgroup ] && [ -w /sys/fs/cgroup ]; then
+        local cg="/sys/fs/cgroup/intp-bench-$name"
+        mkdir -p "$cg"
+        CURRENT_WORKLOAD_CGROUP="$cg"
+        _apply_bench_caps_to_cgroup "$cg"
+        _publish_caps_applied "$logfile" "${CURRENT_CAPS_APPLIED:-n/a}"
+        bash -c "echo \$\$ > '$cg/cgroup.procs'; exec redis-server --port $port --save '' --appendonly no --protected-mode no --maxmemory 2gb --maxmemory-policy allkeys-lru" > "$logfile" 2>&1 &
+        redis_pid=$!
+    else
+        redis-server --port "$port" --save '' --appendonly no --protected-mode no \
+            --maxmemory 2gb --maxmemory-policy allkeys-lru > "$logfile" 2>&1 &
+        redis_pid=$!
+        _publish_caps_applied "$logfile" "n/a"
+    fi
+
+    local i ready=0
+    for i in $(seq 1 50); do
+        if redis-cli -p "$port" ping 2>/dev/null | grep -q PONG; then ready=1; break; fi
+        sleep 0.1
+    done
+    if [ "$ready" != "1" ]; then
+        warn "launch_redis_workload: redis-server not ready on :$port (see $logfile)"
+        kill "$redis_pid" 2>/dev/null; echo 0; return 1
+    fi
+
+    # Continuous load (not profiled); exits when redis dies (stop_workload kills
+    # redis_pid -> the `while redis-cli ping` loop breaks) or the slack timeout.
+    local total=$(( duration + WARMUP + COOLDOWN + 10 ))
+    # shellcheck disable=SC2086
+    setsid timeout "$total" sh -c \
+        "while redis-cli -p $port ping >/dev/null 2>&1; do redis-benchmark -p $port -q -n 1000000 $rb_extra >/dev/null 2>&1 || break; done" \
+        > "${logfile%.log}.load.log" 2>&1 < /dev/null &
+
+    echo "$redis_pid"
+}
+
 launch_workload_bare() {
     local logfile="$1" duration="$2" args="$3" name="$4"
     CURRENT_WORKLOAD_CGROUP=""
+
+    # Redis KV workload (args starts with REDIS:<port>:...)
+    if [[ "$args" == REDIS:* ]]; then
+        if [ "$DRY_RUN" -eq 1 ]; then
+            log "DRY: redis-server + redis-benchmark load for $name spec=$args duration=${duration}s -> $logfile"
+            [ "$USE_CGROUP_TARGETING" = "1" ] && CURRENT_WORKLOAD_CGROUP="/sys/fs/cgroup/intp-bench-$name"
+            echo $$
+            return 0
+        fi
+        launch_redis_workload "$logfile" "$duration" "$args" "$name"
+        return $?
+    fi
 
     # Veth-routed network workload (args starts with VETH:<proto>:<port>:...)
     if [[ "$args" == VETH:* ]]; then
