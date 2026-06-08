@@ -971,3 +971,41 @@ event-amplification in `docs/V3-OVERHEAD-FINDINGS.md` (188–390× ctxsw).
   per-cgroup for single-target) but it is NOT the membw_est fix — the footprint is the
   per-packet hook EXECUTION across all the net hooks, not that one write. The commit
   message overclaimed; this entry is the correction.
+
+### C32 — 15-metric campaign workload set: augmented stress-ng spine + tiered real-world; drop HiBench (2026-06-08)
+
+The extended 15-metric envelope (canonical 7 + portable 6 + scheduling-regime 2: `psp`/`idle_preempt`)
+no longer maps to the 6 resource classes alone — `psi_mem`, `schedthr`, `steal`, and the
+scheduling-regime trio (`schedlat`/`psp`/`idle_preempt`) need oversubscription, memory pressure,
+CFS caps, and colocation, not single-subsystem stress. Workload set for the P2/P3 campaigns is a
+three-tier **realism ladder**, each tier run at the breadth it needs (not the full Cartesian):
+
+- **Tier A — controlled stress-ng spine (metric validation; FULL breadth).** Resource-class spine
+  + two new profiles (this commit): `app16_cpu_oversub` (`--cpu 96`, oversubscribe the 48 logical
+  cores → tasks forced off while runnable → `psp`/`schedlat`/`idle_preempt` fire in *solo*) and
+  `app17_mem_pressure` (`--vm --vm-keep` large anon footprint → `psi_mem` reclaim WHEN under a
+  cgroup memory cap; ~0 uncapped on a 256G host, expected). `schedthr` from the container-cap legs,
+  `steal` from vm-guest. Tier A runs the FULL grid (6 envs + the cadence sweep): cheap, robust,
+  isolates each metric.
+
+- **Tier B — real-world ecological validity (3 deployment classes, fixed 1 s).** Redis + memtier
+  (latency/scheduling → `schedlat`/`psp`/`idle_preempt` + net; the IADA latency-sensitive narrative)
+  and a CloudSuite subset (web-search, in-memory-analytics, data-caching → the SOTA interference
+  suite the proposal cites). Run on bare + one container + vm-guest (the 3 CLASSES), fixed 1 s,
+  full reps → realistic MIXED 15-metric fingerprints. NOT the full 6-env/cadence grid (cadence is
+  characterized by Tier A; the container engine does not change cadence behaviour).
+
+- **Tier C — microservice scheduling story (focused, P3 capstone).** DeathStarBench social-network
+  for the strongest scheduling/tail-latency realism, deployed where it pays off — the P3
+  IADA/sched_ext colocation (W5-style victim/aggressor with a real microservice victim), on bare +
+  container (a full mesh inside a KVM guest is impractical). May slip to the PhD if the P3
+  IADA-sim + ML ablation lands first.
+
+**DROP HiBench** from the 15-metric campaigns (all profiles = too extensive, one = arbitrary;
+heavyweight Spark, overlapping profiles). Keep it only for Paper-1's existing sample-loss study.
+nf-core pipelines are reserved for the Paper-4 iprof head-to-head (enrich B5).
+
+**Factorization (avoids a blow-up):** cadence sweep = 3 deployment classes × 6 cadences (cadence
+effect); cross-deployment = 6 envs × fixed 1 s (env effect). Caveat: heavy real apps
+(CloudSuite/DeathStarBench) inside vm-guest need docker-in-VM and are a stretch — run them
+primarily on bare + container engines; keep vm-guest for stress-ng + Redis.

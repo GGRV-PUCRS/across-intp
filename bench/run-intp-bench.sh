@@ -309,6 +309,16 @@ WORKLOADS=(
     "app14_query_join|disk|--hdd 8 --hdd-bytes 2G --hdd-write-size 4K"
     "app15_query_merge|disk|--iomix 8 --iomix-bytes 2G"
 
+    # ── scheduling-regime + memory-pressure profiles (C32): exercise the new
+    #    dimensions of the 15-metric extended set that the resource-class spine
+    #    under-drives. app16 OVERSUBSCRIBES the cores (96 >> 48 logical) so tasks
+    #    are forced off while runnable -> psp / schedlat / idle_preempt fire in
+    #    SOLO (not only under W5 colocation). app17 sustains a large anon
+    #    footprint -> psi_mem reclaim WHEN run under a cgroup memory cap
+    #    (container / colocation legs); ~0 uncapped on a 256G host (expected).
+    "app16_cpu_oversub|CPU/sched|--cpu 96 --cpu-method matrixprod"
+    "app17_mem_pressure|memory/psi|--vm 8 --vm-bytes 4G --vm-keep --vm-method all"
+
     # ── veth-routed network workloads (require setup-netns-pair.sh active) ──
     # Args format: VETH:<proto>:<port>:<extra iperf3 client args>
     # The launcher starts iperf3 server inside netns intp-net (10.42.0.2:<port>,
