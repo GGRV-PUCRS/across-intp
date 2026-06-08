@@ -2046,6 +2046,13 @@ EOF
     cloud-localds "$tmpdir/seed.iso" "$tmpdir/user-data" "$tmpdir/meta-data" \
         || die "cloud-localds failed to build seed.iso for $name"
 
+    # Per-instance qcow2 overlay over the read-only base (see launch_workload_vm_guest):
+    # qemu write-locks the image it opens, so concurrent VMs must each use their own
+    # overlay rather than open $VM_IMAGE directly.
+    local overlay="$tmpdir/overlay.qcow2"
+    qemu-img create -q -f qcow2 -b "$VM_IMAGE" -F qcow2 "$overlay" \
+        || die "qemu-img overlay create failed for $name (base: $VM_IMAGE)"
+
     # Networking: default to SLIRP user-net (no host tap, requires no setup).
     # Opt into a host tap interface with INTP_BENCH_VM_TAP=1 so the host can
     # observe per-VM NIC traffic on intp-tap-<name>; v3.3 (and v2.1) then pass
@@ -2066,7 +2073,7 @@ EOF
     qemu-system-x86_64 -enable-kvm -nographic \
         -name "$name" \
         -smp "$VM_CPUS" -m "$VM_MEM" \
-        -drive "file=$VM_IMAGE,if=virtio,format=qcow2" \
+        -drive "file=$overlay,if=virtio,format=qcow2" \
         -drive "file=$tmpdir/seed.iso,if=virtio,format=raw" \
         "${netdev_args[@]}" \
         > "$logfile" 2>&1 &
@@ -2155,6 +2162,16 @@ EOF
     cloud-localds "$tmpdir/seed.iso" "$tmpdir/user-data" "$tmpdir/meta-data" \
         || die "cloud-localds failed for vm-guest $name"
 
+    # Per-instance qcow2 OVERLAY backed by the read-only base image. qemu
+    # write-locks the image it opens, so two concurrent VMs (pairwise: aggressor +
+    # victim) cannot both open $VM_IMAGE directly -- the 2nd fails to start and its
+    # sshd is unreachable ("port refused"). A copy-on-write overlay per VM lets any
+    # number of VMs share the base read-only (the vpmu-probe.sh pattern). Used for
+    # solo too (one code path); cleaned with $tmpdir on EXIT.
+    local overlay="$tmpdir/overlay.qcow2"
+    qemu-img create -q -f qcow2 -b "$VM_IMAGE" -F qcow2 "$overlay" \
+        || die "qemu-img overlay create failed for vm-guest $name (base: $VM_IMAGE)"
+
     # -cpu host,pmu=on (C25/P5): expose the host CPU model + a virtual PMU to
     # the guest so the in-guest profiler can read perf LLC counters => llcmr is
     # measurable in vm-guest (directional). Requires KVM (-enable-kvm, present).
@@ -2165,7 +2182,7 @@ EOF
         -name "$name" \
         -cpu host,pmu=on \
         -smp "$VM_CPUS" -m "$VM_MEM" \
-        -drive "file=$VM_IMAGE,if=virtio,format=qcow2" \
+        -drive "file=$overlay,if=virtio,format=qcow2" \
         -drive "file=$tmpdir/seed.iso,if=virtio,format=raw" \
         -netdev user,id=n0,hostfwd=tcp::${sshport}-:22 \
         -device virtio-net-pci,netdev=n0 \
@@ -2317,10 +2334,16 @@ EOF
     cloud-localds "$tmpdir/seed.iso" "$tmpdir/user-data" "$tmpdir/meta-data" \
         || die "cloud-localds failed for vm-full $name"
 
+    # Per-instance qcow2 overlay over the read-only base (see launch_workload_vm_guest):
+    # qemu write-locks the image, so concurrent VMs each need their own overlay.
+    local overlay="$tmpdir/overlay.qcow2"
+    qemu-img create -q -f qcow2 -b "$INTP_FULL_VM_IMAGE" -F qcow2 "$overlay" \
+        || die "qemu-img overlay create failed for vm-full $name (base: $INTP_FULL_VM_IMAGE)"
+
     qemu-system-x86_64 -enable-kvm -nographic \
         -name "$name" \
         -smp "$VM_CPUS" -m "$VM_MEM" \
-        -drive "file=$INTP_FULL_VM_IMAGE,if=virtio,format=qcow2" \
+        -drive "file=$overlay,if=virtio,format=qcow2" \
         -drive "file=$tmpdir/seed.iso,if=virtio,format=raw" \
         -netdev user,id=n0,hostfwd=tcp::${sshport}-:22 \
         -device virtio-net-pci,netdev=n0 \
