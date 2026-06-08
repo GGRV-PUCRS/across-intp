@@ -995,17 +995,28 @@ three-tier **realism ladder**, each tier run at the breadth it needs (not the fu
   full reps → realistic MIXED 15-metric fingerprints. NOT the full 6-env/cadence grid (cadence is
   characterized by Tier A; the container engine does not change cadence behaviour).
 
-- **Tier C — microservice scheduling story (focused, P3 capstone).** DeathStarBench social-network
-  for the strongest scheduling/tail-latency realism, deployed where it pays off — the P3
-  IADA/sched_ext colocation (W5-style victim/aggressor with a real microservice victim), on bare +
-  container (a full mesh inside a KVM guest is impractical). May slip to the PhD if the P3
-  IADA-sim + ML ablation lands first.
+- **Tier C — microservice scheduling story (P3 capstone).** DeathStarBench social-network for the
+  strongest scheduling/tail-latency realism, feeding the P3 IADA/sched_ext colocation (W5-style
+  victim/aggressor with a real microservice victim). Deployed via docker-compose UNIFORMLY across
+  bare, container, AND vm-guest (the bench guest is provisioned with docker — see "Engineering"
+  below), so the microservice colocation runs in all three deployment classes, not just bare/
+  container. Its deployment lift is absorbed by full automation (a setup script: clone +
+  build/pull images + `compose up` + wrk2 load), making it a scripted one-time cost rather than a
+  reason to defer.
 
 **DROP HiBench** from the 15-metric campaigns (all profiles = too extensive, one = arbitrary;
 heavyweight Spark, overlapping profiles). Keep it only for Paper-1's existing sample-loss study.
 nf-core pipelines are reserved for the Paper-4 iprof head-to-head (enrich B5).
 
 **Factorization (avoids a blow-up):** cadence sweep = 3 deployment classes × 6 cadences (cadence
-effect); cross-deployment = 6 envs × fixed 1 s (env effect). Caveat: heavy real apps
-(CloudSuite/DeathStarBench) inside vm-guest need docker-in-VM and are a stretch — run them
-primarily on bare + container engines; keep vm-guest for stress-ng + Redis.
+effect); cross-deployment = 6 envs × fixed 1 s (env effect).
+
+**Engineering the heavy real apps into vm-guest (NOT a caveat).** The "docker-in-VM" obstacle is
+solved by provisioning the bench VM image with docker (a `setup-bench-vm-docker` cloud-init/setup
+step; the guest's SLIRP user-net provides outbound NAT, so in-guest `docker pull` works). The
+vm-guest launcher then drives CloudSuite/DeathStarBench through the same SSH→docker-compose path it
+already uses for stress-ng, giving uniform bare/container/vm-guest coverage. Each real app ships a
+reproducible installer under `bench/setup/` (e.g. `setup-redis-workload.sh`, and equivalents for
+CloudSuite + DeathStarBench) so provisioning a host, a container image, or the guest is one
+scripted command. Redis needs none of this — it is apt-native and already runs in all three
+classes (validated bare 2026-06-08).
