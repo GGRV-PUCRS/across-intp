@@ -1500,6 +1500,41 @@ launch_workload_container() {
 
     local caps_status="n/a"
     [ -n "$BENCH_CPUS$BENCH_MEM" ] && caps_status="yes"
+
+    # Redis KV workload IN a container (Tier B, C32). Profiled = the container's
+    # redis-server (--pid=host + cgroup self-resolve, like the stress-ng path); the
+    # load (redis-benchmark) runs on the HOST against host:<port> -- the container
+    # is --network host -- and is NOT profiled. Mirrors launch_workload_bare's
+    # REDIS branch. Host-side redis-tools provisioned via setup-redis-workload.sh.
+    if [[ "$args" == REDIS:* ]]; then
+        local _r rport rb_extra
+        IFS=':' read -r _r rport rb_extra <<< "$args"
+        if ! command -v redis-benchmark >/dev/null 2>&1; then
+            bash "$SCRIPT_DIR/setup/setup-redis-workload.sh" >> "${logfile%.log}.setup.log" 2>&1 || true
+        fi
+        docker run --rm -d --name "$name" --pid=host --network host \
+            "${parity_args[@]}" "${extra_caps[@]}" "$CONTAINER_IMAGE" \
+            bash -c "apt-get update -qq && apt-get install -y -qq redis-server >/dev/null && exec redis-server --port $rport --save '' --appendonly no --protected-mode no --maxmemory 2gb --maxmemory-policy allkeys-lru" \
+            > "$logfile" 2>&1 \
+            || { warn "container redis: docker run failed"; echo 0; return 1; }
+        _publish_caps_applied "$logfile" "$caps_status"
+        local i ready=0
+        for i in $(seq 1 60); do
+            if redis-cli -p "$rport" ping 2>/dev/null | grep -q PONG; then ready=1; break; fi
+            sleep 0.3
+        done
+        [ "$ready" = "1" ] || warn "container redis: not ready on :$rport (load may be light; see $logfile)"
+        local total=$(( duration + WARMUP + COOLDOWN + 10 ))
+        # shellcheck disable=SC2086
+        setsid timeout "$total" sh -c \
+            "while redis-cli -p $rport ping >/dev/null 2>&1; do redis-benchmark -p $rport -q -n 1000000 $rb_extra >/dev/null 2>&1 || break; done" \
+            > "${logfile%.log}.load.log" 2>&1 < /dev/null &
+        local cpid
+        cpid=$(docker inspect -f '{{.State.Pid}}' "$name" 2>/dev/null || echo 0)
+        echo "$cpid"
+        return 0
+    fi
+
     docker run --rm -d --name "$name" \
         --pid=host --cap-add SYS_NICE \
         --network host \
