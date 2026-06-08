@@ -2,6 +2,11 @@
 
 Envs: bare, container. Variants: v2.1, v3.3. Pairs: 5. scipy: yes.
 
+> vm-guest colocation is reported separately in [w5-vmguest.md](w5-vmguest.md): two
+> co-located KVM guests need a size-matched baseline (96 GiB each so both fit in host
+> RAM), so its solo baseline differs from this bare/container run and the two are not
+> merged into one table. The portable signals behave consistently across all three envs.
+
 **Victim-delta = median(pairwise victim) − median(solo victim)** per metric. PRIMARY contention signals (should RISE under a noisy neighbour): `schedlat, psi_mem, psi_io, membw_est`. GUARDS (own-quota/steal, not contention): `schedthr, steal`. Significance = Mann-Whitney U (pairwise vs solo) + Cliff's δ, BH-FDR across the metric family per (env,variant,pair). Under colocation `cpu` is DIRECTIONAL not absolute (cgroup profiler vs system-wide GT — C29).
 
 ### v2.1 — bare  *(primary contention signals; Δ = pairwise − solo)*
