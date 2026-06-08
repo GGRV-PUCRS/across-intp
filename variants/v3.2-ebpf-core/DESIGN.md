@@ -137,9 +137,9 @@ with three differences:
 - *Probe set coverage*: iprof covers a subset of the IntP metrics
   (disk I/O, LLC). eBPF-CORE carries the full 7-metric IntP set.
 
-The thesis chapter that documents the technique is
-`MasterThesis_RobinGoege.pdf` chapter 3.3 (HASH + PERCPU_ARRAY for
-disk I/O and LLC). That is the direct template eBPF-CORE reuses.
+The thesis chapter that documents the technique is Gögge's MSc thesis
+(2023), chapter 3.3 (HASH + PERCPU_ARRAY for disk I/O and LLC). That is
+the direct template eBPF-CORE reuses.
 
 ## 6. mbw normalization fix
 

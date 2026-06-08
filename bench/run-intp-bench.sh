@@ -439,7 +439,7 @@ Timing:
   --duration SECONDS       Per-workload sampling duration (default: $DURATION)
   --warmup SECONDS         Warmup before sampling (default: $WARMUP)
   --cooldown SECONDS       Cooldown between runs (default: $COOLDOWN)
-  --interval SECONDS       Sampling interval (default: $INTERVAL)
+  --interval SECONDS       Sampling interval, fractional allowed e.g. 0.5 (default: $INTERVAL)
   --reps N                 Repetitions per (env,variant,workload) (default: $REPS)
   --timeseries-duration S  Long-trace duration (default: $TIMESERIES_DURATION)
   --overhead-duration S    Overhead-microbench steady-state window (default: $OVERHEAD_DURATION)
@@ -511,6 +511,16 @@ validate_positive_int() {
     esac
 }
 
+# Like validate_positive_int but accepts a positive DECIMAL (e.g. 0.1, 0.25, 1.5)
+# as well as integers. Used for --interval so the cadence sweep can request
+# sub-second sampling; the profiler binaries take a fractional interval_sec, and
+# sleep / the ms conversion both handle floats.
+validate_positive_number() {
+    local name="$1" value="$2"
+    awk -v v="$value" 'BEGIN { if (v ~ /^[0-9]+(\.[0-9]+)?$/ && v+0 > 0) exit 0; exit 1 }' \
+        || die "Invalid --$name value: '$value' (must be a positive number, e.g. --$name 0.5 or 30)"
+}
+
 parse_args() {
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -553,7 +563,7 @@ parse_args() {
     validate_positive_int duration "$DURATION"
     validate_positive_int warmup "$WARMUP"
     validate_positive_int cooldown "$COOLDOWN"
-    validate_positive_int interval "$INTERVAL"
+    validate_positive_number interval "$INTERVAL"
     validate_positive_int reps "$REPS"
     validate_positive_int timeseries-duration "$TIMESERIES_DURATION"
     validate_positive_int overhead-duration "$OVERHEAD_DURATION"
