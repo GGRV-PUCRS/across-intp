@@ -141,6 +141,8 @@ metric_t **intp_portable_metrics(int *n_out)
     all[3] = metric_psi_io();
     all[4] = metric_schedthr();
     all[5] = metric_steal();
+    all[6] = metric_psp();
+    all[7] = metric_idle_preempt();
     if (n_out) *n_out = INTP_N_PORTABLE;
     return all;
 }

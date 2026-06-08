@@ -60,22 +60,26 @@ metric_t *metric_llcmr(void);
 metric_t *metric_llcocc(void);
 metric_t *metric_cpu(void);
 
-/* Six VM-portable metrics (--portable-metrics, C26 / DESIGN §10). A SEPARATE
+/* Eight VM-portable metrics (--portable-metrics, C26 / DESIGN §10). A SEPARATE
  * flag-gated benchmark: emitted only on demand, never folded into the canonical
  * 7. Order matches intp_portable_metrics() / portable.c: schedlat psi_mem
- * membw_est psi_io schedthr steal. membw_est is a RATE (MB/s); the rest are %.  */
-#define INTP_N_PORTABLE 6
+ * membw_est psi_io schedthr steal psp idle_preempt. membw_est is a RATE (MB/s),
+ * psp + idle_preempt are RATES (events/s, scheduling-regime sub-family); the
+ * rest are %. idle_preempt is eBPF-only -> "--" on this C-ABI variant.          */
+#define INTP_N_PORTABLE 8
 metric_t *metric_schedlat(void);
 metric_t *metric_psi_mem(void);
 metric_t *metric_membw_est(void);
 metric_t *metric_psi_io(void);
 metric_t *metric_schedthr(void);
 metric_t *metric_steal(void);
+metric_t *metric_psp(void);
+metric_t *metric_idle_preempt(void);
 
 /* Registry helpers used by main. */
 metric_t **intp_all_metrics(int *n_out);
 
-/* The 6 portable metrics in canonical order. NULL-safe; n_out set to 6.        */
+/* The 8 portable metrics in canonical order. NULL-safe; n_out set to 8.        */
 metric_t **intp_portable_metrics(int *n_out);
 
 /* Probe and select active backend. Returns 0 if at least one metric bound. */

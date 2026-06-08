@@ -645,3 +645,89 @@ static metric_t membw_est_m = {
     .n_backends = 2,
 };
 metric_t *metric_membw_est(void) { return &membw_est_m; }
+
+/* ---------------- psp (involuntary preemption rate, Volpert PSP) ------------- */
+/* Sum nonvoluntary_ctxt_switches (/proc/<pid>/status) over the target's tasks;
+ * the per-interval delta / interval = involuntary preemptions/s. C-ABI analogue
+ * of v3.3's sched_switch(prev-still-RUNNABLE) BPF counter. Scheduling-regime. */
+static int sum_nonvol_ctxt(unsigned long long *out)
+{
+    pid_t pids[INTP_MAX_PIDS];
+    int n = collect_target_pids(pids, INTP_MAX_PIDS);
+    if (n <= 0) return -1;
+    unsigned long long sum = 0;
+    int any = 0;
+    for (int i = 0; i < n; i++) {
+        char path[64];
+        snprintf(path, sizeof(path), "/proc/%d/status", (int)pids[i]);
+        FILE *f = fopen(path, "r");
+        if (!f) continue;
+        char line[256];
+        while (fgets(line, sizeof(line), f)) {
+            unsigned long long v;
+            if (sscanf(line, "nonvoluntary_ctxt_switches: %llu", &v) == 1) {
+                sum += v; any = 1; break;
+            }
+        }
+        fclose(f);
+    }
+    if (!any) return -1;
+    *out = sum;
+    return 0;
+}
+
+static struct { unsigned long long prev; int valid; } psp_st;
+static int psp_probe(void)
+{
+    unsigned long long tmp;
+    return sum_nonvol_ctxt(&tmp) == 0 ? 0 : -1;
+}
+static int psp_init(void)
+{
+    if (sum_nonvol_ctxt(&psp_st.prev) != 0) return -1;
+    psp_st.valid = 1;
+    return 0;
+}
+static int psp_read(metric_sample_t *out, double iv)
+{
+    if (!psp_st.valid) return -1;
+    unsigned long long cur = 0;
+    if (sum_nonvol_ctxt(&cur) != 0) return -1;
+    double d = (cur >= psp_st.prev) ? (double)(cur - psp_st.prev) : 0.0;
+    psp_st.prev = cur;
+    out->value      = (iv > 0.0) ? d / iv : 0.0;   /* preemptions / s */
+    out->status     = METRIC_STATUS_OK;
+    out->backend_id = "nonvol_ctxt_pid";
+    out->note       = NULL;
+    return 0;
+}
+static void psp_cleanup(void) { psp_st.valid = 0; }
+static backend_t psp_pid = {
+    .backend_id = "nonvol_ctxt_pid",
+    .description = "sum /proc/<pid>/status nonvoluntary_ctxt_switches over target, ev/s",
+    .probe = psp_probe, .init = psp_init, .read = psp_read, .cleanup = psp_cleanup,
+};
+static metric_t psp_m = {
+    .metric_name = "psp",
+    .backends = { &psp_pid },
+    .n_backends = 1,
+};
+metric_t *metric_psp(void) { return &psp_m; }
+
+/* ---------------- idle_preempt (idle-CPU takeover rate) --------------------- */
+/* Not derivable per-process from /proc (idle is a global CPU concept); v3.3
+ * measures it via the sched_switch BPF program. The probe always fails so the
+ * metric reads "--" rather than a fake 0 -- honest unavailability on the C ABI. */
+static int idle_preempt_probe(void) { return -1; }
+static backend_t idle_preempt_none = {
+    .backend_id = "unavailable",
+    .description = "idle-CPU takeover rate -- eBPF-only (not derivable from /proc)",
+    .probe = idle_preempt_probe,
+    .init = NULL, .read = NULL, .cleanup = NULL,
+};
+static metric_t idle_preempt_m = {
+    .metric_name = "idle_preempt",
+    .backends = { &idle_preempt_none },
+    .n_backends = 1,
+};
+metric_t *metric_idle_preempt(void) { return &idle_preempt_m; }

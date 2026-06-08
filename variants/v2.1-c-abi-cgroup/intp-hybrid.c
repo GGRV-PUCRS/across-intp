@@ -120,7 +120,8 @@ static const char *metric_order_names[] = {
  * benchmark: the 7 canonical columns above are byte-identical with or without
  * --portable-metrics. */
 static const char *portable_order_names[] = {
-    "schedlat", "psi_mem", "membw_est", "psi_io", "schedthr", "steal"
+    "schedlat", "psi_mem", "membw_est", "psi_io", "schedthr", "steal",
+    "psp", "idle_preempt"
 };
 
 static void format_value(char *buf, size_t bufsz, const metric_sample_t *s)
@@ -158,8 +159,9 @@ static void emit_header_tsv(FILE *out, int want_portable)
     if (want_portable)
         fprintf(out, "# portable metrics (C26 / DESIGN §10; SEPARATE benchmark): "
                      "schedlat psi_mem psi_io schedthr steal are %% of interval; "
-                     "membw_est is a DRAM-bandwidth estimate in MB/s; '--' = source "
-                     "unavailable on this host\n");
+                     "membw_est is MB/s; psp/idle_preempt are events/s "
+                     "(scheduling-regime; idle_preempt is eBPF-only -> '--' here); "
+                     "'--' = source unavailable on this host\n");
     fprintf(out, "netp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu");
     if (want_portable)
         for (size_t i = 0; i < sizeof(portable_order_names)/sizeof(portable_order_names[0]); i++)
