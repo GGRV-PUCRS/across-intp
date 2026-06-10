@@ -140,7 +140,12 @@ static size_t read_cgroup_procs_rec(const char *cgroup_path, pid_t *out,
     if (d) {
         struct dirent *de;
         while (n < max && (de = readdir(d)) != NULL) {
-            if (de->d_name[0] == '.') continue;   /* skip ".", "..", hidden */
+            /* Skip ONLY "." and ".." -- NOT every dot-dir: incus/lxc place the
+             * container's payload in a ".lxc" child cgroup, so skipping all
+             * dot-dirs misses the actual workload (idle systemd-service cgroups
+             * are non-dot, so a blanket dot-skip found only those -> psp read 0). */
+            if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
+                continue;
             char child[512];
             snprintf(child, sizeof(child), "%s/%s", cgroup_path, de->d_name);
             struct stat st;

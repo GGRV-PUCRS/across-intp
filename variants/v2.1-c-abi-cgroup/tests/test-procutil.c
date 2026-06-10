@@ -34,35 +34,40 @@ static int test_cgroup_procs_recursion(void)
 {
     char top[] = "/tmp/intp-cgtest-XXXXXX";
     if (!mkdtemp(top)) return 1;
-    char leaf[64], sub[96];
+    char leaf[64], sub[96], dotlxc[96];
     snprintf(leaf, sizeof(leaf), "%s/leaf", top);
     snprintf(sub, sizeof(sub), "%s/sub", leaf);
+    snprintf(dotlxc, sizeof(dotlxc), "%s/.lxc", top);   /* incus payload cgroup */
     ASSERT(mkdir(leaf, 0755) == 0);
     ASSERT(mkdir(sub, 0755) == 0);
+    ASSERT(mkdir(dotlxc, 0755) == 0);
 
     write_procs(top, "");                /* top: no internal processes */
     write_procs(leaf, "1001\n1002\n");   /* payload in the child cgroup */
     write_procs(sub, "1003\n");          /* and a grandchild */
+    write_procs(dotlxc, "1004\n");       /* payload in a ".lxc" dot-dir (incus/lxc) */
 
     pid_t pids[16];
     int flat = procutil_read_cgroup_procs(top, pids, 16);
     ASSERT(flat == 0);                   /* non-recursive misses the nested payload */
 
     int rec = procutil_read_cgroup_procs_rec(top, pids, 16);
-    ASSERT(rec == 3);                    /* recursive captures the whole subtree */
-    int got1001 = 0, got1003 = 0;
+    ASSERT(rec == 4);                    /* recursive captures the subtree incl. .lxc */
+    int got1001 = 0, got1003 = 0, got1004 = 0;
     for (int i = 0; i < rec; i++) {
         if (pids[i] == 1001) got1001 = 1;
         if (pids[i] == 1003) got1003 = 1;
+        if (pids[i] == 1004) got1004 = 1;   /* the ".lxc" payload must be found */
     }
-    ASSERT(got1001 && got1003);
+    ASSERT(got1001 && got1003 && got1004);
 
     /* cleanup */
     char rmpath[128];
-    snprintf(rmpath, sizeof(rmpath), "%s/cgroup.procs", sub);  unlink(rmpath);
-    snprintf(rmpath, sizeof(rmpath), "%s/cgroup.procs", leaf); unlink(rmpath);
-    snprintf(rmpath, sizeof(rmpath), "%s/cgroup.procs", top);  unlink(rmpath);
-    rmdir(sub); rmdir(leaf); rmdir(top);
+    snprintf(rmpath, sizeof(rmpath), "%s/cgroup.procs", sub);    unlink(rmpath);
+    snprintf(rmpath, sizeof(rmpath), "%s/cgroup.procs", leaf);   unlink(rmpath);
+    snprintf(rmpath, sizeof(rmpath), "%s/cgroup.procs", dotlxc); unlink(rmpath);
+    snprintf(rmpath, sizeof(rmpath), "%s/cgroup.procs", top);    unlink(rmpath);
+    rmdir(sub); rmdir(leaf); rmdir(dotlxc); rmdir(top);
     return 0;
 }
 
