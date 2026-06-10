@@ -5,6 +5,9 @@
 #include "procutil.h"
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #define ASSERT(cond)                                                    \
@@ -15,6 +18,53 @@
             return 1;                                                   \
         }                                                               \
     } while (0)
+
+static void write_procs(const char *dir, const char *body)
+{
+    char p[512];
+    snprintf(p, sizeof(p), "%s/cgroup.procs", dir);
+    FILE *f = fopen(p, "w");
+    if (f) { fputs(body, f); fclose(f); }
+}
+
+/* Build a fake nested cgroup tree (top has NO direct procs, the payload lives in
+ * child + grandchild cgroups -- the incus/lxc layout) and check that the
+ * recursive reader captures the descendants the non-recursive one misses. */
+static int test_cgroup_procs_recursion(void)
+{
+    char top[] = "/tmp/intp-cgtest-XXXXXX";
+    if (!mkdtemp(top)) return 1;
+    char leaf[64], sub[96];
+    snprintf(leaf, sizeof(leaf), "%s/leaf", top);
+    snprintf(sub, sizeof(sub), "%s/sub", leaf);
+    ASSERT(mkdir(leaf, 0755) == 0);
+    ASSERT(mkdir(sub, 0755) == 0);
+
+    write_procs(top, "");                /* top: no internal processes */
+    write_procs(leaf, "1001\n1002\n");   /* payload in the child cgroup */
+    write_procs(sub, "1003\n");          /* and a grandchild */
+
+    pid_t pids[16];
+    int flat = procutil_read_cgroup_procs(top, pids, 16);
+    ASSERT(flat == 0);                   /* non-recursive misses the nested payload */
+
+    int rec = procutil_read_cgroup_procs_rec(top, pids, 16);
+    ASSERT(rec == 3);                    /* recursive captures the whole subtree */
+    int got1001 = 0, got1003 = 0;
+    for (int i = 0; i < rec; i++) {
+        if (pids[i] == 1001) got1001 = 1;
+        if (pids[i] == 1003) got1003 = 1;
+    }
+    ASSERT(got1001 && got1003);
+
+    /* cleanup */
+    char rmpath[128];
+    snprintf(rmpath, sizeof(rmpath), "%s/cgroup.procs", sub);  unlink(rmpath);
+    snprintf(rmpath, sizeof(rmpath), "%s/cgroup.procs", leaf); unlink(rmpath);
+    snprintf(rmpath, sizeof(rmpath), "%s/cgroup.procs", top);  unlink(rmpath);
+    rmdir(sub); rmdir(leaf); rmdir(top);
+    return 0;
+}
 
 int main(void)
 {
@@ -45,7 +95,9 @@ int main(void)
     ASSERT(procutil_read_proc_stat(getpid(), &ut, &st) == 0);
     /* utime+stime can legitimately be 0 for very fresh processes. */
 
-    printf("test-procutil: OK (disks=%d ifaces=%d total_jiffies=%lu)\n",
+    ASSERT(test_cgroup_procs_recursion() == 0);
+
+    printf("test-procutil: OK (disks=%d ifaces=%d total_jiffies=%lu, cgroup-recursion)\n",
            nd, nn, total);
     return 0;
 }

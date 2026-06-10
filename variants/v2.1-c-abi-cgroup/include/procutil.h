@@ -64,4 +64,13 @@ int procutil_read_proc_io(pid_t pid,
  * set. */
 int procutil_read_cgroup_procs(const char *cgroup_path, pid_t *out, size_t max);
 
+/* Like procutil_read_cgroup_procs, but recurses into descendant cgroups too.
+ * cgroup v2's "no internal processes" rule places a container's payload in LEAF
+ * cgroups (incus/lxc, nested k8s pods), so a non-recursive read of the targeted
+ * cgroup misses them. A task lives in exactly one cgroup, so the subtree union is
+ * disjoint (no dedup needed). Used for the per-task portable metrics (psp,
+ * per-PID schedlat) so they scope the whole container subtree, not just its root.
+ * The canonical resctrl path keeps the non-recursive reader (contract-preserving). */
+int procutil_read_cgroup_procs_rec(const char *cgroup_path, pid_t *out, size_t max);
+
 #endif /* INTP_PROCUTIL_H */

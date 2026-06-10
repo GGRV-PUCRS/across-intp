@@ -111,15 +111,16 @@ static int proc_stat_steal(unsigned long long *steal, unsigned long long *total)
     return rc;
 }
 
-/* Collect the target's current PIDs: re-scan cgroup.procs each call when a
- * cgroup is targeted (child-inclusive -- catches workers forked after start,
- * like the resctrl mon_group rescan), else the static --pids set. */
+/* Collect the target's current PIDs: re-scan the cgroup subtree each call when a
+ * cgroup is targeted (recursive -- catches workers forked after start AND payloads
+ * that live in CHILD cgroups, as incus/lxc and nested k8s pods place them under
+ * the cgroup v2 "no internal processes" rule), else the static --pids set. */
 static int collect_target_pids(pid_t *out, int max)
 {
     const intp_target_t *t = intp_target_get();
     if (!t) return 0;
     if (t->cgroup_path)
-        return procutil_read_cgroup_procs(t->cgroup_path, out, (size_t)max);
+        return procutil_read_cgroup_procs_rec(t->cgroup_path, out, (size_t)max);
     int n = t->n_pids < max ? t->n_pids : max;
     for (int i = 0; i < n; i++) out[i] = t->pids[i];
     return n;

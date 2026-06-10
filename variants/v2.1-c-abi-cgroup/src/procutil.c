@@ -5,10 +5,12 @@
 #include "procutil.h"
 
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 int procutil_read_file(const char *path, char *buf, size_t bufsize)
@@ -116,6 +118,44 @@ int procutil_read_cgroup_procs(const char *cgroup_path, pid_t *out, size_t max)
     while (n < max && fscanf(f, "%d", &pid) == 1) out[n++] = (pid_t)pid;
     fclose(f);
     return (int)n;
+}
+
+/* Recursive worker: append this cgroup's cgroup.procs, then descend into every
+ * child cgroup, carrying the running count `n`. Returns the new count. */
+static size_t read_cgroup_procs_rec(const char *cgroup_path, pid_t *out,
+                                    size_t max, size_t n, int depth)
+{
+    if (n >= max || depth > 16) return n;
+
+    char p[512];
+    snprintf(p, sizeof(p), "%s/cgroup.procs", cgroup_path);
+    FILE *f = fopen(p, "r");
+    if (f) {
+        int pid;
+        while (n < max && fscanf(f, "%d", &pid) == 1) out[n++] = (pid_t)pid;
+        fclose(f);
+    }
+
+    DIR *d = opendir(cgroup_path);
+    if (d) {
+        struct dirent *de;
+        while (n < max && (de = readdir(d)) != NULL) {
+            if (de->d_name[0] == '.') continue;   /* skip ".", "..", hidden */
+            char child[512];
+            snprintf(child, sizeof(child), "%s/%s", cgroup_path, de->d_name);
+            struct stat st;
+            if (stat(child, &st) == 0 && S_ISDIR(st.st_mode))
+                n = read_cgroup_procs_rec(child, out, max, n, depth + 1);
+        }
+        closedir(d);
+    }
+    return n;
+}
+
+int procutil_read_cgroup_procs_rec(const char *cgroup_path, pid_t *out, size_t max)
+{
+    if (!cgroup_path || !out || max == 0) return 0;
+    return (int)read_cgroup_procs_rec(cgroup_path, out, max, 0, 0);
 }
 
 int procutil_read_net_softirqs(unsigned long *net_tx, unsigned long *net_rx)
