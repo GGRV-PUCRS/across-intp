@@ -2,8 +2,11 @@
 #
 # pull-results.sh -- snapshot the remote testbed's consolidated results/ into the
 # local ./results/ as a timestamped tarball, for safety against loss of the
-# (ephemeral cloud) testbed. Meant to run BETWEEN big campaigns (and at monitoring
-# checkpoints during long ones) so a reclaimed/dead host never costs us data.
+# (ephemeral cloud) testbed. Run ONLY BETWEEN campaigns, when the remote host is
+# IDLE -- never mid-run: the tar's CPU/IO and reading a results/ tree that is being
+# written would perturb the in-flight benchmark. Run it after a campaign finishes
+# (host quiesced) and before the next one starts, so a reclaimed/dead host never
+# costs us a completed campaign's data.
 #
 # Pull-only: streams `tar` over the ssh channel (no scp/sftp push to the remote
 # required, and nothing is written on the remote). Idempotent -- each run drops a
