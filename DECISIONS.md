@@ -122,3 +122,31 @@ Anonymization) is left intact and cross-referenced rather than duplicated, plus
 a note that `hibench-sample-loss.py` is safe to re-run on the published tree
 (writes only `fragility-hibench-*.tsv`) whereas `extract-fragility.py` would
 rewrite the stall-bearing tables.
+
+## D10 — v2.1 + v3.3 ported-and-frozen into ggrv-intp/intp (2026-06-10)
+
+The production repository (`ggrv-intp/intp`, local `../intp`) ported
+the measured engines at freeze commit `2e87b30fc762` of
+`feat/container-based-interference`:
+
+- v2.1 (c-abi-cgroup) → the baseline backend set (per-metric files
+  under `src/backends/`, selection semantics from
+  `backend_registry.c`, detection/resctrl/perfev/procutil infra).
+- v3.3 (ebpf-core-cgroup) → the higher-priority eBPF backends
+  (`intp_agg.bpf.c` byte-frozen; `intp_agg.c` split into a refcounted
+  loader + per-metric shims).
+
+Contract (recorded in `../intp/SYNC.md`): the migration is one-way and
+frozen; the repositories evolve independently. Fixes to the production
+profiler belong in intp; this repository remains the experiment
+harness and the papers' record. Any future re-sync requires a new ADR
+on the intp side and a D-entry here. Cross-variant equivalence checks
+against the intp binary must EXEMPT per-cgroup `nets` (the byte-share
+proxy divergence, C2) and compare `blk` only within semantic model
+families (io_ticks vs svctm vs cgroup-throughput; see intp ADR-0010).
+
+The port was verified file-by-file against the originals (formulas,
+constants, vendor event codes, chain order, status assignments):
+zero behavioral drift; intentional additions are limited to RMID
+hygiene (stale mon_group reaping + a 75% num_rmids budget preflight)
+documented in the intp tree.
