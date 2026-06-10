@@ -3,10 +3,16 @@
 # publish them as packages: the container image to GHCR, and the VM qcow2 as a
 # GitHub release asset.
 #
+# NOTE (2026-06): the repo moved to github.com/Saccilotto/across-intp and the OLD
+# ghcr.io/ggrv-intp/intp-bench package + bench-vm release asset were DELETED. The
+# refs below target the new org; nothing in the harness depends on these packages
+# (container/k8s use public ubuntu:24.04 + on-the-fly install; vm-guest uses the
+# LOCAL qcow2), so the deletion does not affect any campaign — only re-publishing.
+#
 # ┌───────────────────────────────────────────────────────────────────────────┐
 # │  THIS SCRIPT IS OPERATOR-INVOKED. It is NOT run by the harness or CI.        │
 # │  The --publish path performs OUTWARD, AUTHENTICATED, BANDWIDTH-HEAVY actions:│
-# │    * docker push  ghcr.io/ggrv-intp/intp-bench:24.04   (needs GHCR login)    │
+# │    * docker push  ghcr.io/saccilotto/intp-bench:24.04   (needs GHCR login)    │
 # │    * gh release upload <tag> intp-bench-vm.qcow2       (needs gh auth + a    │
 # │                                                          multi-GB upload)    │
 # │  Without --publish it ONLY builds locally and PRINTS the push/upload         │
@@ -20,10 +26,10 @@
 #   bash bench/setup/publish-images.sh --vm --publish  # build both + push image + upload qcow2
 #
 # Env knobs:
-#   IMAGE_REF=ghcr.io/ggrv-intp/intp-bench:24.04   container image ref to build/push
+#   IMAGE_REF=ghcr.io/saccilotto/intp-bench:24.04   container image ref to build/push
 #   VM_OUT=/var/lib/intp/intp-bench-vm.qcow2       qcow2 produced by build-bench-vm.sh
 #   RELEASE_TAG=bench-images-v1                     GitHub release tag for the qcow2 asset
-#   RELEASE_REPO=ggrv-intp/across-intp              repo for `gh release`
+#   RELEASE_REPO=Saccilotto/across-intp              repo for `gh release`
 #
 # Requires: docker (build); for --publish also docker login to GHCR and `gh`
 # authenticated (`gh auth status`). For --vm: sudo + virt-customize toolchain
@@ -32,7 +38,7 @@
 set -u -o pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-IMAGE_REF="${IMAGE_REF:-ghcr.io/ggrv-intp/intp-bench:24.04}"
+IMAGE_REF="${IMAGE_REF:-ghcr.io/saccilotto/intp-bench:24.04}"
 VM_OUT="${VM_OUT:-/var/lib/intp/intp-bench-vm.qcow2}"
 RELEASE_TAG="${RELEASE_TAG:-bench-images-v1}"
 RELEASE_REPO="${RELEASE_REPO:-ggrv-intp/across-intp}"
