@@ -664,23 +664,84 @@ ensure_perf_paranoid() {
     fi
 }
 
+# Disjoint host-core ranges of ~1/3 each, for HARD CPU pinning so a pairwise
+# victim+aggressor each get dedicated cores and the host+profiler keep their own:
+#   A = solo / pairwise victim   B = pairwise aggressor   C = host + profiler
+# A workload instance is pinned to A (or B, set per-launch via INTP_CPUSET); this
+# removes vCPU-oversubscription as a confound so the victim-delta reflects shared
+# LLC / memory-bandwidth contention. Honors per-set operator overrides
+# (INTP_CPUSET_A/B/C); disabled (empty -> no pinning) via INTP_BENCH_PIN=0 or when
+# the host has <3 cores. Pinning changes only WHERE work runs, never the metric
+# code -> the canonical-7 + portable values are measured identically.
+CPUSET_A=""; CPUSET_B=""; CPUSET_C=""
+_compute_cpusets() {
+    local n="$1"
+    CPUSET_A="${INTP_CPUSET_A:-}"; CPUSET_B="${INTP_CPUSET_B:-}"; CPUSET_C="${INTP_CPUSET_C:-}"
+    [ "${INTP_BENCH_PIN:-1}" = 1 ] || { log "[resources] CPU pinning disabled (INTP_BENCH_PIN=0)"; return 0; }
+    local k=$(( n / 3 ))
+    if [ "$k" -lt 1 ]; then
+        warn "[resources] host has <3 cores ($n); CPU pinning disabled"
+        CPUSET_A=""; CPUSET_B=""; CPUSET_C=""; return 0
+    fi
+    [ -z "$CPUSET_A" ] && CPUSET_A="0-$((k-1))"
+    [ -z "$CPUSET_B" ] && CPUSET_B="$((k))-$((2*k-1))"
+    [ -z "$CPUSET_C" ] && CPUSET_C="$((2*k))-$((n-1))"
+}
+
+# Resolve the core-set for the CURRENT instance: pairwise aggressor launches set
+# INTP_CPUSET=$CPUSET_B; everything else (solo, pairwise victim) gets A.
+_current_cpuset() { printf '%s' "${INTP_CPUSET:-$CPUSET_A}"; }
+
+# Best-effort hard CPU pin: write this instance's core-set (cpuset.cpus) to the
+# cgroup v2 dir that owns $pid. For engines with no native cpuset flag (k8s pod):
+# resolve the deepest cgroup from /proc/<pid>/cgroup and pin it (covers current +
+# future forked tasks). cpuset.mems = all online nodes (we pin CPUs, not memory).
+_pin_cgroup_of_pid() {
+    local pid="$1"
+    local cpuset; cpuset="$(_current_cpuset)"
+    { [ -n "$cpuset" ] && [ -n "$pid" ]; } || return 0
+    local rel; rel="$(sed -n 's/^0:://p' "/proc/$pid/cgroup" 2>/dev/null | head -1)"
+    [ -n "$rel" ] || return 0
+    local cg="/sys/fs/cgroup${rel}"
+    [ -d "$cg" ] || return 0
+    if [ -f "$cg/cpuset.cpus" ]; then
+        local mems; mems="$(cat /sys/devices/system/node/online 2>/dev/null || echo 0)"
+        printf '%s\n' "$mems"   > "$cg/cpuset.mems" 2>/dev/null || true
+        printf '%s\n' "$cpuset" > "$cg/cpuset.cpus" 2>/dev/null \
+            && log "  [parity] pinned cgroup $cg -> cpus $cpuset" \
+            || warn "[parity] cpuset.cpus write failed for $cg"
+    else
+        warn "[parity] cpuset.cpus absent for $cg (cpuset controller not enabled; NOT pinned to $cpuset)"
+    fi
+}
+
 # Compute cross-env CPU / memory budget and pipe it through to the bare,
 # container, and VM launchers. Honors operator overrides (CLI flag,
-# INTP_BENCH_CPUS / INTP_BENCH_MEM env, INTP_BENCH_VM_CPUS / VM_MEM env)
-# and defaults to 2/3 of the host, leaving ~1/3 for the profiler, kernel,
-# qemu/docker daemons, and IO buffers.
+# INTP_BENCH_CPUS / INTP_BENCH_MEM env, INTP_BENCH_VM_CPUS / VM_MEM env).
+# Footprint (INTP_BENCH_FOOTPRINT): 'third' (DEFAULT) sizes one instance at 1/3
+# of the host so a pairwise victim+aggressor each get 1/3 and the host keeps 1/3
+# (and a solo baseline at 1/3 matches the pairwise victim -> clean victim-delta);
+# 'two-thirds' is the legacy single-tenant default (1/3 left for profiler/kernel/
+# qemu/docker). The 1/3 core COUNT pairs with the 1/3 core-SET pin above.
 _compute_default_resources() {
+    local nproc_total
+    nproc_total=$(nproc 2>/dev/null || echo 1)
+    local footprint="${INTP_BENCH_FOOTPRINT:-third}"
+    local num den
+    case "$footprint" in
+        third)      num=1; den=3 ;;
+        two-thirds) num=2; den=3 ;;
+        *) die "INTP_BENCH_FOOTPRINT must be 'third' or 'two-thirds' (got '$footprint')" ;;
+    esac
     if [ -z "$BENCH_CPUS" ]; then
-        local nproc_total
-        nproc_total=$(nproc 2>/dev/null || echo 1)
-        BENCH_CPUS=$(( nproc_total * 2 / 3 ))
+        BENCH_CPUS=$(( nproc_total * num / den ))
         [ "$BENCH_CPUS" -lt 1 ] && BENCH_CPUS=1
     fi
     if [ -z "$BENCH_MEM" ]; then
         local mem_kb mem_gb
         mem_kb=$(awk '/^MemTotal:/ {print $2; exit}' /proc/meminfo 2>/dev/null || echo 0)
         mem_gb=$(( mem_kb / 1024 / 1024 ))
-        local budget_gb=$(( mem_gb * 2 / 3 ))
+        local budget_gb=$(( mem_gb * num / den ))
         [ "$budget_gb" -lt 2 ] && budget_gb=2
         BENCH_MEM="${budget_gb}G"
     fi
@@ -698,7 +759,9 @@ _compute_default_resources() {
         ''|*[!0-9]*) die "VM_CPUS must be a positive integer (got '$VM_CPUS')" ;;
         0)           die "VM_CPUS must be >= 1" ;;
     esac
-    log "[resources] BENCH_CPUS=$BENCH_CPUS BENCH_MEM=$BENCH_MEM (VM_CPUS=$VM_CPUS VM_MEM=$VM_MEM)"
+    _compute_cpusets "$nproc_total"
+    log "[resources] footprint=$footprint BENCH_CPUS=$BENCH_CPUS BENCH_MEM=$BENCH_MEM (VM_CPUS=$VM_CPUS VM_MEM=$VM_MEM)"
+    log "[resources] cpuset A(solo/victim)='${CPUSET_A:-none}' B(aggressor)='${CPUSET_B:-none}' C(host/profiler)='${CPUSET_C:-none}'"
 }
 
 setup_cpu_env() {
@@ -1303,6 +1366,23 @@ _apply_bench_caps_to_cgroup() {
             ok=0
         fi
     fi
+    # Hard CPU pinning to this instance's core-set (1/3 footprint). cpuset.mems
+    # must be set for the cpuset to take effect; we pin CPUs only, so mems = all
+    # online memory nodes. Best-effort like cpu.max: warn (do not die) if the
+    # cpuset controller is not delegated to this cgroup.
+    local cpuset; cpuset="$(_current_cpuset)"
+    if [ -n "$cpuset" ]; then
+        if [ -f "$cg/cpuset.cpus" ]; then
+            local mems
+            mems="$(cat /sys/devices/system/node/online 2>/dev/null || echo 0)"
+            printf '%s\n' "$mems"   > "$cg/cpuset.mems" 2>/dev/null || true
+            printf '%s\n' "$cpuset" > "$cg/cpuset.cpus" 2>/dev/null \
+                || { warn "[parity/bare] cpuset.cpus write failed for $cg"; ok=0; }
+        else
+            warn "[parity/bare] cpuset.cpus absent for $cg (cpuset controller not delegated; workload NOT pinned to $cpuset)"
+            ok=0
+        fi
+    fi
     [ "$ok" = 1 ] && CURRENT_CAPS_APPLIED="yes" || CURRENT_CAPS_APPLIED="no"
 }
 
@@ -1497,6 +1577,10 @@ launch_workload_container() {
     local parity_args=()
     [ -n "$BENCH_CPUS" ] && parity_args+=( --cpus="$BENCH_CPUS" )
     [ -n "$BENCH_MEM" ]  && parity_args+=( --memory="$BENCH_MEM" )
+    # Hard CPU pinning: confine the container to this instance's disjoint core-set
+    # (1/3 footprint; pairwise aggressor gets set B via INTP_CPUSET).
+    local _cpuset; _cpuset="$(_current_cpuset)"
+    [ -n "$_cpuset" ] && parity_args+=( --cpuset-cpus="$_cpuset" )
 
     local caps_status="n/a"
     [ -n "$BENCH_CPUS$BENCH_MEM" ] && caps_status="yes"
@@ -1613,6 +1697,10 @@ launch_workload_container_podman() {
     local parity_args=()
     [ -n "$BENCH_CPUS" ] && parity_args+=( --cpus="$BENCH_CPUS" )
     [ -n "$BENCH_MEM" ]  && parity_args+=( --memory="$BENCH_MEM" )
+    # Hard CPU pinning: confine the container to this instance's disjoint core-set
+    # (1/3 footprint; pairwise aggressor gets set B via INTP_CPUSET).
+    local _cpuset; _cpuset="$(_current_cpuset)"
+    [ -n "$_cpuset" ] && parity_args+=( --cpuset-cpus="$_cpuset" )
 
     local caps_status="n/a"
     [ -n "$BENCH_CPUS$BENCH_MEM" ] && caps_status="yes"
@@ -1790,6 +1878,10 @@ YAML
         warn "container-k8s: could not resolve in-pod stress-ng host PID for $pod (see $logfile)"
         echo 0; return 1
     fi
+    # Hard-pin the pod to this instance's core-set: k8s has no native cpuset flag
+    # we pass at apply time, so write cpuset.cpus to the pod container's cgroup
+    # (resolved from the in-pod host PID). Best-effort (1/3 footprint).
+    _pin_cgroup_of_pid "$hostpid"
     # Echo the host-PID-namespace PID. C17's resolve_pid_cgroup self-resolves the
     # deep kubepods cgroup from it for v3.3; v2.1/v3.2 use it via --pids.
     echo "$hostpid"
@@ -1908,7 +2000,14 @@ launch_workload_container_lxc() {
     # LXD accepts a raw integer). Retry without them if the host rejects the
     # limit, mirroring the Docker launcher, so the rep still yields a sample.
     local parity_args=()
-    [ -n "$BENCH_CPUS" ] && parity_args+=( -c "limits.cpu=$BENCH_CPUS" )
+    # incus limits.cpu accepts a pinned core SET ("0-15") -> sizes AND hard-pins
+    # in one; fall back to the integer count if pinning is disabled.
+    local _cpuset; _cpuset="$(_current_cpuset)"
+    if [ -n "$_cpuset" ]; then
+        parity_args+=( -c "limits.cpu=$_cpuset" )
+    elif [ -n "$BENCH_CPUS" ]; then
+        parity_args+=( -c "limits.cpu=$BENCH_CPUS" )
+    fi
     if [ -n "$BENCH_MEM" ]; then
         local membytes; membytes=$(numfmt --from=iec "$BENCH_MEM" 2>/dev/null || echo "")
         [ -n "$membytes" ] && parity_args+=( -c "limits.memory=$membytes" )
@@ -2201,7 +2300,11 @@ EOF
         log "  VM tap path enabled: host tap iface=$tapif (v3.3/v2.1 will use --target-vm $tapif)"
     fi
 
-    qemu-system-x86_64 -enable-kvm -nographic \
+    # Hard-pin the VM's vCPU threads to this instance's core-set (taskset execs
+    # qemu, so $! stays the qemu PID). 1/3 footprint; pairwise aggressor -> set B.
+    local pin=(); local _cpuset; _cpuset="$(_current_cpuset)"
+    [ -n "$_cpuset" ] && pin=( taskset -c "$_cpuset" )
+    "${pin[@]}" qemu-system-x86_64 -enable-kvm -nographic \
         -name "$name" \
         -smp "$VM_CPUS" -m "$VM_MEM" \
         -drive "file=$overlay,if=virtio,format=qcow2" \
@@ -2309,7 +2412,11 @@ EOF
     # Without it the guest gets qemu64 with no PMU and llcmr degrades to 0.
     # (Real-NIC netp/nets via a TAP device is wired with the cross-env-net
     # dispatch; vm-guest keeps -netdev user for the SSH-based profiler launch.)
-    qemu-system-x86_64 -enable-kvm -nographic \
+    # Hard-pin the vCPU threads to this instance's core-set (taskset execs qemu,
+    # so $! stays the qemu PID). 1/3 footprint; pairwise aggressor VM -> set B.
+    local pin=(); local _cpuset; _cpuset="$(_current_cpuset)"
+    [ -n "$_cpuset" ] && pin=( taskset -c "$_cpuset" )
+    "${pin[@]}" qemu-system-x86_64 -enable-kvm -nographic \
         -name "$name" \
         -cpu host,pmu=on \
         -smp "$VM_CPUS" -m "$VM_MEM" \
@@ -2471,7 +2578,11 @@ EOF
     qemu-img create -q -f qcow2 -b "$INTP_FULL_VM_IMAGE" -F qcow2 "$overlay" \
         || die "qemu-img overlay create failed for vm-full $name (base: $INTP_FULL_VM_IMAGE)"
 
-    qemu-system-x86_64 -enable-kvm -nographic \
+    # Hard-pin the vCPU threads to this instance's core-set (taskset execs qemu,
+    # so $! stays the qemu PID). 1/3 footprint; pairwise aggressor VM -> set B.
+    local pin=(); local _cpuset; _cpuset="$(_current_cpuset)"
+    [ -n "$_cpuset" ] && pin=( taskset -c "$_cpuset" )
+    "${pin[@]}" qemu-system-x86_64 -enable-kvm -nographic \
         -name "$name" \
         -smp "$VM_CPUS" -m "$VM_MEM" \
         -drive "file=$overlay,if=virtio,format=qcow2" \
@@ -3702,7 +3813,7 @@ stage_pairwise() {
                         # QUIET machine; run_one triggers the aggressor's attack only once
                         # the victim is up + measuring (a saturating aggressor started at
                         # its own boot starves the victim VM's boot -> sshd refused).
-                        antag_pid=$(INTP_VMG_BOOT_ONLY=1 launch_workload "$env" "$antag_log" "$antag_dur" "$aargs" "$cname_a" 2>&1 | tail -1 || echo 0)
+                        antag_pid=$(INTP_VMG_BOOT_ONLY=1 INTP_CPUSET="$CPUSET_B" launch_workload "$env" "$antag_log" "$antag_dur" "$aargs" "$cname_a" 2>&1 | tail -1 || echo 0)
                         # The aggressor VM's SSH conn info is in $outdir/.vmg-state (written
                         # by its boot); capture it for run_one BEFORE the victim launch
                         # overwrites that file. INTP_VMG_ATTACK_* tells run_one to fire the
@@ -3717,7 +3828,7 @@ stage_pairwise() {
                                    INTP_VMG_ATTACK_DURATION="$antag_dur"
                         fi
                     else
-                        antag_pid=$(launch_workload "$env" "$antag_log" "$antag_dur" "$aargs" "$cname_a" || echo 0)
+                        antag_pid=$(INTP_CPUSET="$CPUSET_B" launch_workload "$env" "$antag_log" "$antag_dur" "$aargs" "$cname_a" || echo 0)
                         [ "$DRY_RUN" -eq 0 ] && sleep 3
                     fi
                     # Now run the victim measurement -- profiler attaches to victim
