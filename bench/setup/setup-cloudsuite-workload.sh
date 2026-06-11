@@ -129,16 +129,27 @@ else
 fi
 
 # web-search index volume: the dataset image DOWNLOADS index_14GB.tar.gz from
-# datasets.epfl.ch at run time (verified entrypoint) -- run it once with the
-# external volume mounted at /download; the server expects
-# /download/index_14GB/data (INDEX_MOUNT=/download in the driver .env).
+# datasets.epfl.ch at run time (verified entrypoint; the server throttles to
+# <1 MB/s -> hours) -- so prefer restoring a staged tarball of an
+# already-populated volume when one exists (export from a provisioned host:
+#   docker run --rm -v intp-cs-websearch-index:/d:ro ubuntu:24.04 \
+#       tar cf - -C /d . | zstd -T0 > intp-cs-websearch-index.tar.zst
+# and drop it under /var/lib/intp/staging/). Falls back to the slow download.
+# The server expects /download/index_14GB/data (INDEX_MOUNT=/download).
+WS_VOL_TAR="${INTP_STAGING_DIR:-/var/lib/intp/staging}/intp-cs-websearch-index.tar.zst"
 if [ "$NEED_WS_INDEX" = 1 ]; then
     if vol_populated "$WS_VOLUME" "index_14GB/data"; then
         say "volume ok: $WS_VOLUME"
     elif [ "$OFFLINE" = 1 ]; then
         say "MISSING volume: $WS_VOLUME"; missing=1
+    elif [ -f "$WS_VOL_TAR" ]; then
+        say "restoring $WS_VOLUME from staged tarball ($(du -h "$WS_VOL_TAR" | cut -f1))"
+        docker volume create "$WS_VOLUME" >/dev/null
+        zstd -dc "$WS_VOL_TAR" | docker run --rm -i -v "$WS_VOLUME":/d ubuntu:24.04 tar xf - -C /d \
+            || fail "staged index restore failed"
+        vol_populated "$WS_VOLUME" "index_14GB/data" || fail "$WS_VOLUME restore left no index"
     else
-        say "downloading the web-search index into $WS_VOLUME (~14 GB, one-time)"
+        say "downloading the web-search index into $WS_VOLUME (~14 GB; EPFL throttles -- hours)"
         docker volume create "$WS_VOLUME" >/dev/null
         docker run --rm -v "$WS_VOLUME":/download cloudsuite/web-search:dataset \
             || fail "web-search index download failed"
