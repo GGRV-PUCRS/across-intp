@@ -272,7 +272,13 @@ static int open_cache_counters(struct bpf_program *prog,
      * least one BPF invocation per interval. The kernel-side increment
      * scales by sample_period so the absolute count stays correct. */
     attr.sample_period = 1000;
-    attr.wakeup_events = 1;
+    /* wakeup_events deliberately NOT set (D11, 2026-06-11): the attached
+     * BPF program handles every overflow and the counts live in the
+     * counter maps -- nothing ever consumes this perf fd, so per-overflow
+     * wakeups are pure waste (~6.7k ctxsw/s on a hybrid client CPU,
+     * 6.84x on the amplification gate; invisible on the Sapphire Rapids
+     * testbed). Metric values are unchanged: the handler still runs per
+     * overflow, scaled by the period. */
     attr.disabled      = 0;
 
     pid_t pid_arg        = cgroup_fd >= 0 ? (pid_t)cgroup_fd : -1;

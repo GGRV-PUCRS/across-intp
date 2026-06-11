@@ -180,12 +180,11 @@ Fix applied on the production side (intp commit 6127c78): delete the
 construction (the BPF handler runs per overflow regardless); the
 amplification gate on the same laptop went 6.84 -> **1.06**.
 
-Recommendation for THIS repo (author's call, per the D10 freeze
-contract the port did not touch variant code):
-
-- The same one-line deletion applies to v3.2 and v3.3. If adopted,
-  re-run `make -C variants/v3.2-ebpf-core test-amplification` (and the
-  v3.3 equivalent) before the next campaign.
+Resolution (author-approved 2026-06-11): the deletion is APPLIED to
+both variants in this commit (with a D11-referencing comment at each
+attr site); both rebuild clean. PENDING before the next campaign:
+re-run `make -C variants/v3.2-ebpf-core test-amplification` (and the
+v3.3 equivalent) as root to re-gate.
 - **Measurement-consistency caveat:** any paper-2 overhead legs already
   executed measured v3.3 WITH the wakeup load. Fixing mid-campaign
   changes the overhead characteristics between legs — either re-run
