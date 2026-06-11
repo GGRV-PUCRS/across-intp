@@ -22,8 +22,10 @@ services:
       - server
     entrypoint: ["/bin/bash", "/driver/ws-load-loop.sh"]
     environment:
-      FABAN_WORKERS: "${FABAN_WORKERS:-8}"
-      FABAN_STEADY: "${FABAN_STEADY:-120}"
+      FABAN_WORKERS: "${FABAN_WORKERS:-16}"
+      FABAN_STEADY: "${FABAN_STEADY:-600}"
+      FABAN_INTERVAL_MIN: "${FABAN_INTERVAL_MIN:-200}"
+      FABAN_INTERVAL_MAX: "${FABAN_INTERVAL_MAX:-400}"
     volumes:
       - ./ws-load-loop.sh:/driver/ws-load-loop.sh:ro
 

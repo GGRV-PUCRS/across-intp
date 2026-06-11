@@ -59,11 +59,15 @@ command -v docker >/dev/null 2>&1 || fail "docker not installed"
 docker compose version >/dev/null 2>&1 || fail "docker compose v2 not available"
 
 # Auto-sizing: testbed-grade on big hosts, smoke-grade on the dev machine.
+# FABAN_*: web-search client pressure (CycleTime mode; C33) -- the CloudSuite
+# think-time defaults idle the server (<1% cpu, verified in the app20 micro).
 mem_gib=$(( $(awk '/MemTotal/{print $2}' /proc/meminfo) / 1024 / 1024 ))
 if [ "$mem_gib" -ge 64 ]; then
     : "${SOLR_HEAP:=12g}"; : "${SPARK_MEM:=6g}"; IMA_DATASET="/data/ml-latest"
+    FABAN_WORKERS=32; FABAN_IMIN=100; FABAN_IMAX=200
 else
     : "${SOLR_HEAP:=4g}";  : "${SPARK_MEM:=3g}"; IMA_DATASET="/data/ml-latest-small"
+    FABAN_WORKERS=16; FABAN_IMIN=200; FABAN_IMAX=400
 fi
 
 # web-search index policy: required on hosts (the campaign needs it), skipped
@@ -103,6 +107,10 @@ else
 # written by setup-cloudsuite-workload.sh (host-sized; re-run to refresh)
 SOLR_HEAP=$SOLR_HEAP
 INDEX_MOUNT=/download
+FABAN_WORKERS=$FABAN_WORKERS
+FABAN_STEADY=600
+FABAN_INTERVAL_MIN=$FABAN_IMIN
+FABAN_INTERVAL_MAX=$FABAN_IMAX
 EOF
     cat > "$DRIVERS/cloudsuite-in-memory-analytics/.env" <<EOF
 # written by setup-cloudsuite-workload.sh (host-sized; re-run to refresh)
