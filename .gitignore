@@ -66,3 +66,27 @@ venv/
 .understand-anything/
 # machine-local compose driver sizing (written by bench/setup/setup-cloudsuite-workload.sh)
 bench/workloads/compose/*/.env
+
+# Electron/VS Code user-data spilled into the repo root by an editor run with
+# its --user-data-dir pointed here (root-owned; see C33-era session notes).
+# Root-anchored so legitimate nested paths are unaffected. Safe to delete the
+# dirs with sudo once no editor is running from this directory.
+/Backups/
+/blob_storage/
+/Cache/
+/CachedConfigurations/
+/CachedData/
+/CachedProfilesData/
+/Code Cache/
+/Crashpad/
+/DawnGraphiteCache/
+/DawnWebGPUCache/
+/Dictionaries/
+/Dictionary/
+/GPUCache/
+/Local Storage/
+/logs/
+/Session Storage/
+/Shared Dictionary/
+/Storage/
+/User/
