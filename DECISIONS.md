@@ -150,3 +150,50 @@ constants, vendor event codes, chain order, status assignments):
 zero behavioral drift; intentional additions are limited to RMID
 hygiene (stale mon_group reaping + a 75% num_rmids budget preflight)
 documented in the intp tree.
+
+## D11 — latent per-overflow perf wakeup load in v3.2/v3.3 llcmr (observation from the intp port, 2026-06-11)
+
+While gating the production port (ggrv-intp/intp, see D10), the
+v3.3-inherited ctxsw-amplification acceptance test FAILED on a hybrid
+client CPU (Intel Core 7 240H, kernel 6.17) at **ratio 6.84** under a
+cpu-bound stress-ng load — despite the identical attr passing <= 1.10
+on the Sapphire Rapids testbed. A four-arm bisect (no-profiler floor
+0.95; pure-C 1.0-equivalent; eBPF minus llcmr 0.95; full default 6.84)
+isolated the amplifier to the **llcmr perf-overflow sampling path**:
+~6.7k extra context switches/s.
+
+Cause: `attr.wakeup_events = 1` on the sampled LLC events —
+
+- `variants/v3.3-ebpf-core-cgroup/src/intp_agg.c:275`
+- `variants/v3.2-ebpf-core/src/intp_agg.c:143`
+
+requests a perf-fd wakeup on every overflow, but in the v3.2/v3.3
+design **nothing ever consumes that fd**: the attached BPF program
+handles each overflow and the counts live in the counter maps, scaled
+by sample_period. The wakeups are pure waste. On the server testbed
+the load was invisible (absorbed by the much larger ctxsw baseline and
+a different PMU/overflow profile); on a quiet hybrid client CPU it
+dominates the ratio.
+
+Fix applied on the production side (intp commit 6127c78): delete the
+`attr.wakeup_events = 1;` line. Metric values are unchanged by
+construction (the BPF handler runs per overflow regardless); the
+amplification gate on the same laptop went 6.84 -> **1.06**.
+
+Recommendation for THIS repo (author's call, per the D10 freeze
+contract the port did not touch variant code):
+
+- The same one-line deletion applies to v3.2 and v3.3. If adopted,
+  re-run `make -C variants/v3.2-ebpf-core test-amplification` (and the
+  v3.3 equivalent) before the next campaign.
+- **Measurement-consistency caveat:** any paper-2 overhead legs already
+  executed measured v3.3 WITH the wakeup load. Fixing mid-campaign
+  changes the overhead characteristics between legs — either re-run
+  the affected overhead stages after the fix, or keep v3.3 as-is for
+  the remaining legs and annotate.
+- v3-ebpf-ring also sets the field (src/intp.c:296) but is retained
+  precisely as the documented-overhead predecessor; not a fix target.
+- Paper-2 angle: the finding itself is a portability observation for
+  the eBPF overhead claim — "<= 1.10x on the reference server" does
+  not transfer to client/hybrid CPUs while the wakeup load is present,
+  which sharpens the scope qualifier the overhead claims must carry.
