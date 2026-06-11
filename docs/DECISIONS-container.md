@@ -1020,3 +1020,53 @@ reproducible installer under `bench/setup/` (e.g. `setup-redis-workload.sh`, and
 CloudSuite + DeathStarBench) so provisioning a host, a container image, or the guest is one
 scripted command. Redis needs none of this — it is apt-native and already runs in all three
 classes (validated bare 2026-06-08).
+
+### C33 — Compose-suite workload type: one parent cgroup per app, 3-label coverage, idle-window staging (2026-06-11)
+
+C32's Tier-B/C real apps are now implemented as a first-class workload type in
+`run-intp-bench.sh`: `COMPOSE:<suite>:<load-profile>:<extra>` (app19–app21 =
+CloudSuite data-caching / web-search / in-memory-analytics, app22 = DSB
+social-network), with driver dirs under `bench/workloads/compose/` (contract
+documented there) and reproducible installers `setup-cloudsuite-workload.sh` +
+`setup-dsb-workload.sh`.
+
+**Scoping: the WHOLE multi-container app is ONE profiled workload.** A
+generated override parents every service under a per-rep systemd slice
+(`cgroup_parent:`; raw cgroup dir under the cgroupfs driver). v2.1's recursive
+`cgroup.procs` reader and v3.3's ancestor-cgroup-id gate (its default;
+`--exact` is the opt-in) both scope that subtree without profiler changes —
+service restarts included, which is what makes the looped in-memory-analytics
+batch (restart:always) profileable. Validated live (Docker 29 / Compose v5 /
+systemd driver): all services land under the slice; a paused load + outside
+stress-ng reads all-zero in-scope (no leakage), resumed load reads hot.
+
+**Load is never profiled.** In-project client containers follow a `load*`
+service-name convention → left outside the parent, pinned to the host third
+(CPUSET_C); host-side load (DSB wrk2 + graph init) is pinned the same way.
+Resource caps apply to the PARENT (slice properties / cgroup files), so the
+whole app shares one 1/3-footprint instance — `caps_applied` is recorded from
+the KERNEL files, not the systemctl rc.
+
+**Deployment classes (amends C32's "uniformly across bare/container/vm-guest"
+reading):** the suites run under all 3 LABELS, but `bare` executes
+compose-on-host (container-native apps have no truer bare form) and every such
+run records `notes=compose_on_host`; analyzers must treat bare-vs-container
+for app19–app22 as an engine-identity check, not a deployment contrast. Only
+Redis (app18) spans 3 true classes. podman/lxc/k8s refuse the spec (Tier-B/C
+is 3-class by design, C32).
+
+**vm-guest:** `_vmg_start_workload` now dispatches on the spec prefix
+(stress-ng | REDIS — closing the vm-guest Tier-B Redis gap — | COMPOSE). The
+COMPOSE leg requires the WITH_SUITES bench VM image
+(`build-bench-vm.sh WITH_SUITES=1` → `intp-bench-vm-suites.qcow2`: docker +
+compose + driver dirs at /opt/intp-suites + DSB clone/wrk2 + CloudSuite
+images baked; the 14 GB web-search index is EXCLUDED from the image by
+default — app20's vm-guest leg needs an in-guest
+`setup-cloudsuite-workload.sh --with-websearch-index` first).
+
+**Box-time discipline:** all provisioning is wrapped by
+`bench/setup/stage-next-campaigns.sh`, which REFUSES to run while a benchmark
+is in flight and is the single idle-window command (staged-tar loads,
+installers, on-box WITH_SUITES image build, verification, READY manifest with
+launch commands). Campaign chaining stays monitor-driven from the dev side
+(no remote queue daemon) per the operator's decision.

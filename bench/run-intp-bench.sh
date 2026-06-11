@@ -337,6 +337,19 @@ WORKLOADS=(
     #    Deps auto-provisioned by bench/setup/setup-redis-workload.sh.
     #    Format: REDIS:<port>:<redis-benchmark extra args>.
     "app18_redis_kv|kv-store|REDIS:7000:-c 50 -d 64 -t get,set,incr -P 8"
+
+    # ── Tier-B CloudSuite subset + Tier-C DeathStarBench (C32/C33). Compose-
+    #    based multi-container suites: the WHOLE app is profiled as one cgroup
+    #    subtree (parent slice/dir injected via a generated override), the load
+    #    generator runs unprofiled on the host third (CPUSET_C). 3 deployment
+    #    classes only (bare = compose-on-host, container, vm-guest); driver
+    #    dirs under bench/workloads/compose/, deps provisioned by
+    #    bench/setup/setup-{cloudsuite,dsb}-workload.sh.
+    #    Format: COMPOSE:<suite-dir>:<load-profile>:<extra load args>.
+    "app19_cs_datacaching|kv-cache|COMPOSE:cloudsuite-data-caching:default:"
+    "app20_cs_websearch|search|COMPOSE:cloudsuite-web-search:default:"
+    "app21_cs_imanalytics|analytics|COMPOSE:cloudsuite-in-memory-analytics:batch:"
+    "app22_dsb_socialnet|microservice|COMPOSE:dsb-social-network:mixed-workload:-t 4 -c 64 -R 500"
 )
 
 # Pairwise victim+antagonist pairs (id|victim_args|antagonist_args|expected_pressure)
@@ -1440,6 +1453,235 @@ launch_redis_workload() {
     echo "$redis_pid"
 }
 
+# ── Compose-based multi-container suites (Tier-B CloudSuite / Tier-C DSB, C33) ──
+# Spec: COMPOSE:<suite>:<load-profile>:<extra load args>. The suite driver lives
+# in bench/workloads/compose/<suite>/ (meta.env + compose file(s) + ready.sh +
+# load.sh; see the README there). ALL services are parented under ONE cgroup
+# (a systemd slice, or a raw cgroup dir under the cgroupfs driver), so the
+# cgroup-scoped profilers see the whole microservice tree as ONE workload:
+# v2.1 enumerates the parent's cgroup.procs subtree recursively and v3.3 gates
+# on the ancestor cgroup-id, so per-service scopes (and restarts -- e.g. the
+# in-memory-analytics batch loop under restart:always) are covered without any
+# profiler change. The load generator runs OUTSIDE the profiled cgroup, pinned
+# to the host third (CPUSET_C), so the fingerprint is the served application,
+# never the client. Resource caps (the instance third) are applied to the
+# PARENT cgroup -- the whole app shares one 1/3 footprint, matching the
+# bare/stress-ng resource model -- not per-service.
+
+# Deterministic project name from the per-rep container name, shared by the
+# launcher and stop_workload (mirrors _lxc_instance_name). Compose project
+# names must match [a-z0-9][a-z0-9_-]*.
+_compose_project_name() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-' | tr -s '-' | sed 's/-$//'
+}
+
+# systemd slice unit for the suite. Dashes in slice names denote NESTING
+# (intp-foo.slice lives under intp.slice/), so the unit name uses underscores
+# to stay a single leaf slice; dots in the variant ('v2.1') are also mapped.
+_compose_slice_name() {
+    printf 'intpsuite_%s.slice' "$(printf '%s' "$1" | tr -c 'a-zA-Z0-9' '_' | tr -s '_')"
+}
+
+# cgroup_parent value for the generated override: a slice unit under the
+# systemd cgroup driver (Ubuntu 24.04 docker default), a raw path otherwise.
+_compose_cgroup_parent() {
+    local name="$1" drv
+    drv=$(docker info --format '{{.CgroupDriver}}' 2>/dev/null || echo systemd)
+    if [ "$drv" = "systemd" ]; then
+        _compose_slice_name "$name"
+    else
+        printf '/intpsuite-%s' "$(_compose_project_name "$name")"
+    fi
+}
+
+# Emit an override compose file assigning cgroup_parent to EVERY service of the
+# suite (service list resolved from the suite's own compose file(s), so wrapped
+# third-party files -- DSB's socialNetwork compose -- need no hand-kept list).
+# CONVENTION: services named `load*` are in-project LOAD GENERATORS (CloudSuite
+# client images): they are left OUTSIDE the profiled parent and pinned to the
+# host third instead, so the fingerprint never includes the client.
+_compose_generate_override() {
+    local ovr="$1" cgparent="$2"; shift 2
+    local services s
+    services=$(docker compose "$@" config --services 2>/dev/null) || return 1
+    [ -n "$services" ] || return 1
+    local load_cpuset="${CPUSET_C:-}"
+    {
+        echo "services:"
+        while IFS= read -r s; do
+            [ -n "$s" ] || continue
+            case "$s" in
+                load*)
+                    [ -n "$load_cpuset" ] \
+                        && printf '  %s:\n    cpuset: "%s"\n' "$s" "$load_cpuset"
+                    ;;
+                *)
+                    printf '  %s:\n    cgroup_parent: "%s"\n' "$s" "$cgparent"
+                    ;;
+            esac
+        done <<< "$services"
+    } > "$ovr"
+}
+
+# Resolve the shared parent cgroup directory after `up`: anchor container PID
+# -> /proc/<pid>/cgroup -> the scope's parent dir (works for both drivers and
+# for slice nesting, no path reconstruction from unit names).
+_compose_resolve_parent_cgroup() {
+    local proj="$1" anchor="$2" cid pid rel
+    cid=$(docker compose -p "$proj" ps -q "$anchor" 2>/dev/null | head -1)
+    [ -n "$cid" ] || cid=$(docker ps -q --filter "label=com.docker.compose.project=$proj" 2>/dev/null | head -1)
+    [ -n "$cid" ] || return 1
+    pid=$(docker inspect -f '{{.State.Pid}}' "$cid" 2>/dev/null) || return 1
+    [ -n "$pid" ] && [ "$pid" != "0" ] || return 1
+    rel=$(awk -F: '$1=="0"{print $3}' "/proc/$pid/cgroup" 2>/dev/null)
+    [ -n "$rel" ] || return 1
+    dirname "/sys/fs/cgroup$rel"
+}
+
+# Cap the WHOLE app subtree to the instance third: systemd properties on the
+# slice (runtime, engine-owned cgroups must not be written directly), raw
+# cgroup-file writes under the cgroupfs driver (reuses the bare-path helper).
+# Echoes the caps_applied status (yes|no|n/a) for the P2 parity audit.
+_compose_apply_caps() {
+    local cgparent="$1" parent_dir="$2"
+    local _cpuset; _cpuset="$(_current_cpuset)"
+    [ -n "$BENCH_CPUS$BENCH_MEM$_cpuset" ] || { echo "n/a"; return 0; }
+    case "$cgparent" in
+        *.slice)
+            local ok=1 props=()
+            [ -n "$_cpuset" ]    && props+=( "AllowedCPUs=$_cpuset" )
+            [ -n "$BENCH_MEM" ]  && props+=( "MemoryMax=$BENCH_MEM" )
+            [ -n "$BENCH_CPUS" ] && props+=( "CPUQuota=$(( BENCH_CPUS * 100 ))%" )
+            systemctl set-property --runtime "$cgparent" "${props[@]}" 2>/dev/null || ok=0
+            # Trust the KERNEL, not the systemctl rc: verify the slice cgroup
+            # actually carries the caps (a systemd-less context can appear to
+            # succeed while applying nothing -- P2 parity audit must be honest).
+            if [ "$ok" = 1 ] && [ -n "$parent_dir" ] && [ -d "$parent_dir" ]; then
+                if [ -n "$_cpuset" ] && \
+                   [ "$(cat "$parent_dir/cpuset.cpus" 2>/dev/null)" != "$_cpuset" ]; then
+                    ok=0
+                fi
+                if [ -n "$BENCH_MEM" ]; then
+                    local want; want=$(numfmt --from=iec "$BENCH_MEM" 2>/dev/null || echo "")
+                    [ -n "$want" ] && \
+                    [ "$(cat "$parent_dir/memory.max" 2>/dev/null)" != "$want" ] && ok=0
+                fi
+            fi
+            if [ "$ok" = 1 ]; then
+                echo "yes"
+            else
+                warn "[parity/compose] slice caps not verifiably applied for $cgparent"
+                echo "no"
+            fi
+            ;;
+        *)
+            if [ -n "$parent_dir" ] && [ -d "$parent_dir" ]; then
+                CURRENT_CAPS_APPLIED=""
+                _apply_bench_caps_to_cgroup "$parent_dir"
+                echo "${CURRENT_CAPS_APPLIED:-n/a}"
+            else
+                warn "[parity/compose] no parent cgroup dir to cap"
+                echo "no"
+            fi
+            ;;
+    esac
+}
+
+launch_compose_workload() {
+    # COMPOSE:<suite>:<load-profile>:<extra>. Profiled = the whole compose app
+    # under one parent cgroup; load.sh = the unprofiled client on CPUSET_C.
+    # Echoes the anchor service's host PID (liveness + --pids fallback).
+    local logfile="$1" duration="$2" spec="$3" name="$4"
+    local _c suite profile extra
+    IFS=':' read -r _c suite profile extra <<< "$spec"
+    local sdir="$SCRIPT_DIR/workloads/compose/$suite"
+    [ -d "$sdir" ] || { warn "compose: suite driver missing: $sdir"; echo 0; return 1; }
+    [ -f "$sdir/meta.env" ] || { warn "compose: $sdir/meta.env missing"; echo 0; return 1; }
+
+    # Driver metadata: COMPOSE_FILES (relative to the driver dir, or absolute
+    # for wrapped clones like DSB), ANCHOR_SERVICE, READY_TIMEOUT, SETUP_HINT.
+    local COMPOSE_FILES="" ANCHOR_SERVICE="" READY_TIMEOUT=180 SETUP_HINT=""
+    # shellcheck disable=SC1091
+    . "$sdir/meta.env"
+    [ -n "$COMPOSE_FILES" ] && [ -n "$ANCHOR_SERVICE" ] \
+        || { warn "compose: meta.env incomplete for $suite (need COMPOSE_FILES + ANCHOR_SERVICE)"; echo 0; return 1; }
+
+    if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then
+        warn "compose: docker compose v2 not available"
+        echo 0; return 1
+    fi
+
+    local fargs=() f
+    for f in $COMPOSE_FILES; do
+        case "$f" in /*) ;; *) f="$sdir/$f" ;; esac
+        [ -f "$f" ] || { warn "compose: file missing: $f (run ${SETUP_HINT:-the suite installer in bench/setup/})"; echo 0; return 1; }
+        fargs+=( -f "$f" )
+    done
+
+    local proj cgparent ovr
+    proj="$(_compose_project_name "$name")"
+    cgparent="$(_compose_cgroup_parent "$name")"
+    ovr="$(dirname "$logfile")/compose.override.yml"
+    _compose_generate_override "$ovr" "$cgparent" "${fargs[@]}" \
+        || { warn "compose: override generation failed for $suite (compose config error?)"; echo 0; return 1; }
+    fargs+=( -f "$ovr" )
+
+    docker compose -p "$proj" down -v -t 5 --remove-orphans >/dev/null 2>&1 || true
+
+    log "  compose up [$suite proj=$proj cgparent=$cgparent]"
+    if ! docker compose -p "$proj" "${fargs[@]}" up -d --wait --quiet-pull > "$logfile" 2>&1; then
+        # --wait needs every service to reach running/healthy; fall back to a
+        # plain up + the suite's ready probe before declaring failure.
+        warn "compose: up --wait failed for $suite; retrying plain up + ready probe"
+        docker compose -p "$proj" "${fargs[@]}" up -d --quiet-pull >> "$logfile" 2>&1 \
+            || { warn "compose: up failed for $suite (see $logfile)"; echo 0; return 1; }
+    fi
+
+    if [ -f "$sdir/ready.sh" ]; then
+        local t=0 ok=0
+        while [ "$t" -lt "$READY_TIMEOUT" ]; do
+            if PROJECT="$proj" SUITE_DIR="$sdir" bash "$sdir/ready.sh" >/dev/null 2>&1; then ok=1; break; fi
+            sleep 3; t=$(( t + 3 ))
+        done
+        if [ "$ok" != 1 ]; then
+            warn "compose: $suite not ready after ${READY_TIMEOUT}s (see $logfile)"
+            docker compose -p "$proj" down -v -t 5 >/dev/null 2>&1 || true
+            echo 0; return 1
+        fi
+    fi
+
+    # Shared parent cgroup -> profiler scope (published via the sidecar; the
+    # bare precompute is skipped for COMPOSE specs in run_one).
+    local parent_dir
+    parent_dir=$(_compose_resolve_parent_cgroup "$proj" "$ANCHOR_SERVICE") || parent_dir=""
+    if [ -n "$parent_dir" ] && [ -d "$parent_dir" ]; then
+        CURRENT_WORKLOAD_CGROUP="$parent_dir"
+        _lxc_publish_cgroup "$logfile"
+    else
+        warn "compose: parent cgroup unresolved for $proj -- profiler falls back to PID scope"
+    fi
+
+    local caps; caps="$(_compose_apply_caps "$cgparent" "$parent_dir")"
+    _publish_caps_applied "$logfile" "$caps"
+
+    # Load generator (continuous, unprofiled, host third). Same lifetime model
+    # as the redis-benchmark loop: setsid + timeout over the whole window.
+    local total=$(( duration + WARMUP + COOLDOWN + 15 ))
+    if [ -f "$sdir/load.sh" ]; then
+        setsid timeout "$total" env \
+            PROJECT="$proj" SUITE_DIR="$sdir" DURATION="$total" \
+            CPUSET_LOAD="${CPUSET_C:-}" LOAD_PROFILE="$profile" LOAD_EXTRA="$extra" \
+            NETWORK="${proj}_default" \
+            bash "$sdir/load.sh" > "${logfile%.log}.load.log" 2>&1 < /dev/null &
+    fi
+
+    local cid apid
+    cid=$(docker compose -p "$proj" ps -q "$ANCHOR_SERVICE" 2>/dev/null | head -1)
+    apid=$(docker inspect -f '{{.State.Pid}}' "$cid" 2>/dev/null || echo 0)
+    [ -n "$apid" ] || apid=0
+    echo "$apid"
+}
+
 launch_workload_bare() {
     local logfile="$1" duration="$2" args="$3" name="$4"
     CURRENT_WORKLOAD_CGROUP=""
@@ -1453,6 +1695,19 @@ launch_workload_bare() {
             return 0
         fi
         launch_redis_workload "$logfile" "$duration" "$args" "$name"
+        return $?
+    fi
+
+    # Compose suite (Tier-B/C, C33). The bare LABEL runs compose-on-host --
+    # container-native apps have no truer bare form; run_one stamps
+    # notes=compose_on_host so the leg is honest in run.json.
+    if [[ "$args" == COMPOSE:* ]]; then
+        if [ "$DRY_RUN" -eq 1 ]; then
+            log "DRY: docker compose suite (bare label = compose-on-host) $name spec=$args duration=${duration}s -> $logfile"
+            echo $$
+            return 0
+        fi
+        launch_compose_workload "$logfile" "$duration" "$args" "$name"
         return $?
     fi
 
@@ -1504,6 +1759,8 @@ launch_workload_container() {
     if [ "$DRY_RUN" -eq 1 ]; then
         if [[ "$args" == VETH:* ]]; then
             log "DRY: docker veth $name spec=$args -> in-container iperf3 client (--network host) + host netns server"
+        elif [[ "$args" == COMPOSE:* ]]; then
+            log "DRY: docker compose suite $name spec=$args duration=${duration}s -> $logfile"
         else
             log "DRY: docker run ... stress-ng $args"
         fi
@@ -1514,6 +1771,13 @@ launch_workload_container() {
         warn "docker not installed -- container launch failed"
         echo 0; return 1
     fi
+
+    # Compose suite (Tier-B/C, C33): same host-compose path as the bare label.
+    if [[ "$args" == COMPOSE:* ]]; then
+        launch_compose_workload "$logfile" "$duration" "$args" "$name"
+        return $?
+    fi
+
     docker rm -f "$name" >/dev/null 2>&1 || true
 
     # Veth-routed network workload IN a container. With --network host the
@@ -1664,6 +1928,11 @@ launch_workload_container() {
 launch_workload_container_podman() {
     local logfile="$1" duration="$2" args="$3" name="$4"
     CURRENT_WORKLOAD_CGROUP=""
+    # Tier-B/C suites run on the 3 deployment classes only (C32/C33).
+    if [[ "$args" == COMPOSE:* ]]; then
+        warn "compose suites unsupported in container-podman (3-class coverage: bare/container/vm-guest)"
+        echo 0; return 1
+    fi
     if [ "$DRY_RUN" -eq 1 ]; then
         log "DRY: $PODMAN_BIN run ... stress-ng $args"
         echo $$
@@ -1753,6 +2022,11 @@ launch_workload_container_podman() {
 launch_workload_container_k8s() {
     local logfile="$1" duration="$2" args="$3" name="$4"
     CURRENT_WORKLOAD_CGROUP=""
+    # Tier-B/C suites run on the 3 deployment classes only (C32/C33).
+    if [[ "$args" == COMPOSE:* ]]; then
+        warn "compose suites unsupported in container-k8s (3-class coverage: bare/container/vm-guest)"
+        echo 0; return 1
+    fi
     # k8s object names must be RFC 1123 labels (lowercase alnum + '-', <=63 chars,
     # start/end alnum). The bench run name contains '_' (app10_search) and '.'
     # (v2.1) which are invalid, so sanitize: lowercase, map any non-[a-z0-9-] to
@@ -1926,28 +2200,98 @@ _vmg_publish_state() {
     } > "$(dirname "$logfile")/.vmg-state" 2>/dev/null || true
 }
 
-# Start the in-guest stress-ng workload over SSH into an ALREADY-BOOTED vm-guest.
+# Start the in-guest workload over SSH into an ALREADY-BOOTED vm-guest.
 # SPLIT from the boot (vs the old inline start) so the pairwise path can boot both
 # VMs idle and start the aggressor's attack ONLY AFTER the victim is up + measuring
 # -- a saturating aggressor started at its own boot starves the victim VM's boot
 # (sshd refused, no data; the documented vm-guest pairwise failure). Echoes the
 # in-guest workload PID. guest_cg scopes the in-guest profiler (T1).
+#
+# Dispatches on the spec prefix like the bare/container launchers (C33):
+#   default      -> stress-ng (the original path, unchanged)
+#   REDIS:*      -> in-guest redis-server in guest_cg + redis-benchmark load
+#                   OUTSIDE it (closes the vm-guest Tier-B Redis gap)
+#   COMPOSE:*    -> in-guest docker compose from the baked /opt/intp-suites/
+#                   driver dir (suites VM image, build-bench-vm.sh
+#                   WITH_SUITES=1); all services parented under the guest
+#                   slice guest_cg, load.sh outside it (unpinned -- the whole
+#                   VM is already the instance third)
 _vmg_start_workload() {
     local tmpdir="$1" sshport="$2" guest_cg="$3" args="$4" duration="$5"
-    ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        -i "$tmpdir/key" -p "$sshport" intp@127.0.0.1 "cat > /tmp/intp-wl-launch.sh" <<EOF || warn "vm-guest: staging workload launcher failed"
+    local _ssh=(ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+                -i "$tmpdir/key" -p "$sshport" intp@127.0.0.1)
+    local pid_wait=10
+
+    if [[ "$args" == REDIS:* ]]; then
+        local _r rport rb_extra
+        IFS=':' read -r _r rport rb_extra <<< "$args"
+        pid_wait=90   # may apt-install redis on the lean image first
+        "${_ssh[@]}" "cat > /tmp/intp-wl-launch.sh" <<EOF || warn "vm-guest: staging workload launcher failed"
+#!/bin/sh
+# Tier-B Redis in-guest: server profiled in $guest_cg, redis-benchmark load
+# outside it (mirrors the bare/container REDIS paths).
+command -v redis-server >/dev/null 2>&1 || \
+  sudo sh -c 'DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get install -y -qq redis-server redis-tools' >/dev/null 2>&1
+sudo systemctl disable --now redis-server >/dev/null 2>&1
+sudo mkdir -p $guest_cg 2>/dev/null
+sudo sh -c 'echo \$\$ > $guest_cg/cgroup.procs 2>/dev/null; exec redis-server --port $rport --save "" --appendonly no --protected-mode no --maxmemory 2gb --maxmemory-policy allkeys-lru' > /tmp/wl.log 2>&1 &
+i=0; while [ \$i -lt 50 ]; do redis-cli -p $rport ping 2>/dev/null | grep -q PONG && break; i=\$((i+1)); sleep 0.2; done
+pgrep -x redis-server | head -1 > /tmp/intp-wl.pid
+nohup sh -c 'while redis-cli -p $rport ping >/dev/null 2>&1; do redis-benchmark -p $rport -q -n 1000000 $rb_extra >/dev/null 2>&1 || break; done' > /tmp/wl-load.log 2>&1 &
+EOF
+    elif [[ "$args" == COMPOSE:* ]]; then
+        local _c suite profile extra
+        IFS=':' read -r _c suite profile extra <<< "$args"
+        local slice_unit="${guest_cg##*/}"   # /sys/fs/cgroup/<unit> -> <unit>
+        pid_wait=300  # compose up + readiness can take minutes
+        "${_ssh[@]}" "cat > /tmp/intp-wl-launch.sh" <<EOF || warn "vm-guest: staging workload launcher failed"
+#!/bin/bash
+# Tier-B/C compose suite in-guest (suites VM image: docker + /opt/intp-suites
+# baked). Same scoping convention as the host launcher: every non-load*
+# service parented under $slice_unit, load.sh outside it.
+set -u
+cd /opt/intp-suites/$suite || { echo "suite dir missing in guest (need the WITH_SUITES image)" > /tmp/wl.log; echo 0 > /tmp/intp-wl.pid; exit 1; }
+COMPOSE_FILES="compose.yml"; ANCHOR_SERVICE=""; READY_TIMEOUT=240
+. ./meta.env
+fargs=""
+for f in \$COMPOSE_FILES; do case "\$f" in /*) ;; *) f="\$PWD/\$f" ;; esac; fargs="\$fargs -f \$f"; done
+services=\$(sudo docker compose \$fargs config --services 2>/dev/null)
+[ -n "\$services" ] || { echo "compose config failed" > /tmp/wl.log; echo 0 > /tmp/intp-wl.pid; exit 1; }
+{ echo "services:"; for s in \$services; do case "\$s" in load*) ;; *) printf '  %s:\n    cgroup_parent: "%s"\n' "\$s" "$slice_unit" ;; esac; done; } > /tmp/intp-ovr.yml
+sudo docker compose -p intpwl \$fargs -f /tmp/intp-ovr.yml up -d --wait --quiet-pull > /tmp/wl.log 2>&1 \
+  || sudo docker compose -p intpwl \$fargs -f /tmp/intp-ovr.yml up -d --quiet-pull >> /tmp/wl.log 2>&1 \
+  || { echo 0 > /tmp/intp-wl.pid; exit 1; }
+if [ -f ./ready.sh ]; then
+  t=0; while [ \$t -lt \$READY_TIMEOUT ]; do
+    sudo env PROJECT=intpwl SUITE_DIR=\$PWD bash ./ready.sh >/dev/null 2>&1 && break
+    sleep 3; t=\$(( t + 3 ))
+  done
+fi
+cid=\$(sudo docker compose -p intpwl ps -q "\$ANCHOR_SERVICE" 2>/dev/null | head -1)
+sudo docker inspect -f '{{.State.Pid}}' "\$cid" 2>/dev/null > /tmp/intp-wl.pid || echo 0 > /tmp/intp-wl.pid
+if [ -f ./load.sh ]; then
+  nohup sudo env PROJECT=intpwl SUITE_DIR=\$PWD DURATION=$duration CPUSET_LOAD= LOAD_PROFILE="$profile" LOAD_EXTRA="$extra" NETWORK=intpwl_default bash ./load.sh > /tmp/wl-load.log 2>&1 &
+fi
+EOF
+    else
+        "${_ssh[@]}" "cat > /tmp/intp-wl-launch.sh" <<EOF || warn "vm-guest: staging workload launcher failed"
 #!/bin/sh
 sudo mkdir -p $guest_cg 2>/dev/null
 sudo sh -c 'echo \$\$ > $guest_cg/cgroup.procs 2>/dev/null; exec stress-ng $args --timeout ${duration}s --metrics-brief' > /tmp/wl.log 2>&1 &
 echo \$! > /tmp/intp-wl.pid
 EOF
-    ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        -i "$tmpdir/key" -p "$sshport" intp@127.0.0.1 \
-        "nohup sh /tmp/intp-wl-launch.sh >/dev/null 2>&1 &" \
-        || warn "ssh stress-ng dispatch failed"
-    sleep 1
-    ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-        -i "$tmpdir/key" -p "$sshport" intp@127.0.0.1 'cat /tmp/intp-wl.pid 2>/dev/null' 2>/dev/null || echo 0
+    fi
+
+    "${_ssh[@]}" "rm -f /tmp/intp-wl.pid; nohup sh /tmp/intp-wl-launch.sh >/dev/null 2>&1 &" \
+        || warn "ssh workload dispatch failed"
+    # The pid file lands when the launcher finishes starting the workload --
+    # ~1 s for stress-ng, minutes for a compose up; poll instead of sleeping.
+    local waited=0 gpid=""
+    while [ "$waited" -lt "$pid_wait" ]; do
+        gpid=$("${_ssh[@]}" 'cat /tmp/intp-wl.pid 2>/dev/null' 2>/dev/null) && [ -n "$gpid" ] && break
+        sleep 2; waited=$(( waited + 2 ))
+    done
+    echo "${gpid:-0}"
 }
 
 # Incus/LXD instance names allow only [a-zA-Z0-9-] (NO '.'/'_', unlike docker),
@@ -1983,6 +2327,11 @@ launch_workload_container_lxc() {
     local logfile="$1" duration="$2" args="$3" name="$4"
     name="$(_lxc_instance_name "$name")"   # incus name rules (see _lxc_instance_name)
     CURRENT_WORKLOAD_CGROUP=""
+    # Tier-B/C suites run on the 3 deployment classes only (C32/C33).
+    if [[ "$args" == COMPOSE:* ]]; then
+        warn "compose suites unsupported in container-lxc (3-class coverage: bare/container/vm-guest)"
+        echo 0; return 1
+    fi
     if [ "$DRY_RUN" -eq 1 ]; then
         log "DRY: $LXC_BIN launch $LXC_IMAGE $name && $LXC_BIN exec $name -- stress-ng $args --timeout ${duration}s"
         [ "$USE_CGROUP_TARGETING" = "1" ] && CURRENT_WORKLOAD_CGROUP="/sys/fs/cgroup/lxc.payload.$name"
@@ -2452,7 +2801,12 @@ EOF
     # so the pairwise path can boot the aggressor VM idle, boot the victim VM cleanly,
     # and only then trigger the aggressor attack (see stage_pairwise / run_one). For
     # solo + the victim, the workload still starts here, right after boot.
+    # COMPOSE suites scope via a guest systemd SLICE (the in-guest docker uses
+    # the systemd cgroup driver; the staged launcher parents every service
+    # under it) -- deterministic, so no return channel from the guest is
+    # needed. Other specs keep the plain delegated cgroup dir.
     local guest_cg="/sys/fs/cgroup/intp-vmg-wl"
+    [[ "$args" == COMPOSE:* ]] && guest_cg="/sys/fs/cgroup/intpvmgwl.slice"
     local gpid=0
     if [ "${INTP_VMG_BOOT_ONLY:-0}" = "1" ]; then
         log "  vm-guest $name: booted idle (boot-only); workload deferred to the attack trigger"
@@ -2643,6 +2997,21 @@ launch_workload() {
 stop_workload() {
     local env="$1" pid="$2" name="$3" cgroup_path="${4:-}"
     [ "$DRY_RUN" -eq 1 ] && return 0
+    # Compose suites (bare = compose-on-host, container): tear down the whole
+    # project by its label (project name is deterministic from $name, same fn
+    # the launcher used). -v wipes volumes so reps start from identical state.
+    if [ "$env" = "bare" ] || [ "$env" = "container" ]; then
+        local _proj; _proj="$(_compose_project_name "$name")"
+        if command -v docker >/dev/null 2>&1 && \
+           [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$_proj" 2>/dev/null)" ]; then
+            docker compose -p "$_proj" down -v -t 10 >/dev/null 2>&1 || true
+            # Reap the (now empty) parent: the slice under the systemd driver,
+            # the raw cgroup dir under cgroupfs. Both best-effort.
+            systemctl stop "$(_compose_slice_name "$name")" 2>/dev/null || true
+            [ -n "$cgroup_path" ] && rmdir "$cgroup_path" 2>/dev/null || true
+            return 0
+        fi
+    fi
     case "$env" in
         bare)
             terminate_pid_gracefully "$pid" "stop_workload/bare/$name"
@@ -3623,7 +3992,10 @@ run_one() {
 
     local wl_cgroup=""
     local target_scope
-    if [ "$env" = "bare" ] && [ "$USE_CGROUP_TARGETING" = "1" ]; then
+    # COMPOSE suites resolve their scoping cgroup only AFTER `up` (the engine
+    # creates it), so the bare precompute must not shadow the launcher's
+    # sidecar-published path (C33).
+    if [ "$env" = "bare" ] && [ "$USE_CGROUP_TARGETING" = "1" ] && [[ "$wl_args" != COMPOSE:* ]]; then
         wl_cgroup="/sys/fs/cgroup/intp-bench-$cname"
     fi
 
@@ -3637,17 +4009,27 @@ run_one() {
 
     local wl_pid
     wl_pid=$(launch_workload "$env" "$wl_log" "$total" "$wl_args" "$cname" 2>&1 | tail -1 || echo 0)
+    # Harden against multi-line/non-numeric launcher tails (seen as "0\n0" on a
+    # compose launch failure): keep the last numeric token, else 0.
+    wl_pid=$(printf '%s\n' "$wl_pid" | awk '{t=$NF} END{ if (t ~ /^[0-9]+$/) print t; else print 0 }')
     if [ "$wl_pid" = "0" ] || [ -z "$wl_pid" ]; then
         notes="workload_launch_failed"
         record_index "$env" "$variant" "$stage" "$wl_id" "$rep" "$start_iso" 0 1 "" "" "$notes" "skip"
         return 0
     fi
 
-    # Envs that resolve their cgroup only after launch (container-lxc) publish
-    # it via a per-rep sidecar, since launch_workload runs in a subshell.
+    # Envs that resolve their cgroup only after launch (container-lxc, compose
+    # suites) publish it via a per-rep sidecar, since launch_workload runs in a
+    # subshell.
     if [ -z "$wl_cgroup" ] && [ "$USE_CGROUP_TARGETING" = "1" ] && [ -f "$outdir/.workload-cgroup" ]; then
         wl_cgroup=$(cat "$outdir/.workload-cgroup" 2>/dev/null || echo "")
         rm -f "$outdir/.workload-cgroup" 2>/dev/null || true
+    fi
+
+    # The bare LABEL for a compose suite executes compose-on-host (C33): the
+    # honest record in run.json (the leg is kept for the 3-label symmetry).
+    if [ "$env" = "bare" ] && [[ "$wl_args" == COMPOSE:* ]]; then
+        notes="${notes:+$notes;}compose_on_host"
     fi
 
     # vm-guest publishes its SSH connection state (tmpdir/sshport/guest PID) via
