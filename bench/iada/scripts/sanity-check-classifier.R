@@ -46,16 +46,33 @@ INFER_COLS <- c("nets", "netp", "blk", "mbw", "llcmr", "llcocc", "cpu")
 # "unknown" is intentionally permissive: profiles whose workload name
 # does not match any class are scored as plausibility="unknown" rather
 # than mismatch, so we don't penalise mixed/control workloads.
+#
+# Deliberately UNMAPPED appNN families (return "unknown" BEFORE the hint
+# loop) — expecting a class for these would test the wrong thing:
+#   classification (app08/09)  mixed CPU+memory by design
+#   ordering       (app06/07)  qsort/malloc straddle Meyer's mem/cache split
+#   oversub        (app16)     scheduling-regime profile: the 7-metric
+#   pressure       (app17)     classifier definitionally lacks psp/psi —
+#                              that gap is P3's thesis, not a sanity failure
+#   sort_net       (app11/12)  loopback sockets; v2+ filters `lo`, so the
+#                              canonical profile carries no net signal
+#   redis/_cs_/dsb (app18+)    real apps = mixed fingerprints
+AMBIGUOUS_PATTERNS <- c("classification", "ordering", "oversub", "pressure",
+                        "sort_net", "redis", "_cs_", "dsb")
+
 WORKLOAD_HINTS <- list(
-  cpu   = c("^cpu", "cpu_", "stress_cpu", "iperf_cpu"),
+  cpu   = c("^cpu", "cpu_", "stress_cpu", "iperf_cpu", "search"),
   mem   = c("^mem", "memory", "stress_mem", "stress_vm"),
-  disk  = c("^disk", "io_", "fio", "stress_io", "hdd"),
+  disk  = c("^disk", "io_", "fio", "stress_io", "hdd", "query"),
   net   = c("^net", "tcp", "udp", "iperf", "netperf"),
-  cache = c("cache", "llc", "stream_cache")
+  cache = c("cache", "llc", "stream_cache", "streaming")
 )
 
 infer_expected_class <- function(workload) {
   w <- tolower(workload)
+  for (pat in AMBIGUOUS_PATTERNS) {
+    if (grepl(pat, w)) return("unknown")
+  }
   for (cls in names(WORKLOAD_HINTS)) {
     for (pat in WORKLOAD_HINTS[[cls]]) {
       if (grepl(pat, w)) return(cls)
