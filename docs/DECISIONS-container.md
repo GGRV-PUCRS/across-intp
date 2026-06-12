@@ -1121,3 +1121,19 @@ W5 dodged this: the colocation campaign was aborted pre-data (its v2.1
 victim-scoped mbw under a noisy neighbour would have been system-wide =
 victim+aggressor — the worst case of this bug). W5 relaunch is gated on the
 same D12 sync + smoke.
+
+**C34 addendum — ceiling audit closed; re-run launched (2026-06-12).** The
+42 656 MB/s ceiling in the banked campaign was intp-detect.sh's hard-coded
+DDR4-fallback, captured into the campaign's capabilities.env when the
+dmidecode path failed at campaign time. A fresh detect on the testbed now
+derives the correct 281 600 MB/s (4400 MT/s x 64 bit x 8 channels from 16
+DIMMs), and the campaign dir's capabilities.env already carries it (refreshed
+by the aborted W5 attempt's detect stage), so new runs in that dir inherit
+the right scale with no code change. Consequence for the BANKED v3.3 mbw
+column: values were normalized against the low fallback -> multiply by
+42 656/281 600 ~= 0.151 for absolute claims (app05 "320" ~= 48 %); env-vs-bare
+ratios within v3.3 are unaffected (the ceiling cancels). The D12 smoke passed
+both gates on the rebuilt v2.1 (idle cgroup mbw=0; heavy stream cgroup
+mbw=30 with llcocc=86-96 concurrently), and the 420-cell targeted v2.1
+re-run (5 host envs x 7 workloads x 12 reps, ~18 h) is running into the
+campaign dir; vm-guest v2.1 and all v3.3 cells stay banked.
