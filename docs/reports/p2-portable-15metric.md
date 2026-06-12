@@ -1,4 +1,4 @@
-# Portable-metrics faithfulness adjudication — results/p2-15metric-xdeploy
+# Portable-metrics faithfulness adjudication — results/p2-15metric-xdeploy-1of3 (1/3 footprint + hard CPU pinning; supersedes the 2/3 run)
 
 Cells with data: 60 | reps/cell: min 12 max 12 | scipy: yes
 
@@ -33,12 +33,12 @@ Cells with data: 60 | reps/cell: min 12 max 12 | scipy: yes
 | variant | portable | vs GT | n | ρ | p | verdict |
 |---|---|---|---|---|---|---|
 | v2.1 | membw_est | gt_mbw_bps | 0 | - | - | n<3 / no spread |
-| v2.1 | membw_est | gt_llc_miss | 30 | 0.948 | 0.000 | faithful |
-| v2.1 | schedlat | gt_llcmr | 30 | -0.471 | 0.009 | weak |
+| v2.1 | membw_est | gt_llc_miss | 30 | 0.915 | 0.000 | faithful |
+| v2.1 | schedlat | gt_llcmr | 30 | -0.879 | 0.000 | weak |
 | v2.1 | psi_mem | gt_llc_miss | 30 | - | - | n<3 / no spread |
 | v3.3 | membw_est | gt_mbw_bps | 0 | - | - | n<3 / no spread |
-| v3.3 | membw_est | gt_llc_miss | 30 | 0.896 | 0.000 | faithful |
-| v3.3 | schedlat | gt_llcmr | 30 | -0.792 | 0.000 | weak |
+| v3.3 | membw_est | gt_llc_miss | 30 | 0.916 | 0.000 | faithful |
+| v3.3 | schedlat | gt_llcmr | 30 | -0.887 | 0.000 | weak |
 | v3.3 | psi_mem | gt_llc_miss | 30 | - | - | n<3 / no spread |
 
 - **membw_est vs gt_mbw_bps** — INDEPENDENT validation vs resctrl MBM bandwidth — expect STRONG + (often n<3: resctrl mbw GT is '--' by CMT design, C24)
@@ -53,18 +53,18 @@ Per (env,variant) the cell with the highest `membw_est`. If `membw_est` is high 
 
 | env | variant | workload | membw_est (MB/s) | psi_mem (%) | schedlat (%) | finding |
 |---|---|---|---|---|---|---|
-| bare | v2.1 | app05_streaming | 6174 | 0.000 | 0.000 | blind CONFIRMED |
-| container | v2.1 | app05_streaming | 6610 | 0.000 | 0.000 | blind CONFIRMED |
-| container-podman | v2.1 | app05_streaming | 5902 | 0.000 | 0.000 | blind CONFIRMED |
-| container-lxc | v2.1 | app05_streaming | 6380 | 0.000 | 0.000 | blind CONFIRMED |
-| container-k8s | v2.1 | app05_streaming | 7136 | 0.000 | 0.000 | blind CONFIRMED |
-| vm-guest | v2.1 | app05_streaming | 79818 | 0.000 | 0.000 | blind CONFIRMED |
-| bare | v3.3 | app05_streaming | 6218 | 0.000 | 0.000 | blind CONFIRMED |
-| container | v3.3 | app05_streaming | 5657 | 0.000 | 0.000 | blind CONFIRMED |
-| container-podman | v3.3 | app05_streaming | 5847 | 0.000 | 0.000 | blind CONFIRMED |
-| container-lxc | v3.3 | app05_streaming | 5852 | 0.000 | 0.000 | blind CONFIRMED |
-| container-k8s | v3.3 | app05_streaming | 6394 | 0.000 | 0.000 | blind CONFIRMED |
-| vm-guest | v3.3 | app05_streaming | 75318 | 0.000 | 0.000 | blind CONFIRMED |
+| bare | v2.1 | app05_streaming | 6570 | 0.000 | 0.000 | blind CONFIRMED |
+| container | v2.1 | app05_streaming | 6404 | 0.000 | 0.000 | blind CONFIRMED |
+| container-podman | v2.1 | app05_streaming | 6675 | 0.000 | 0.000 | blind CONFIRMED |
+| container-lxc | v2.1 | app05_streaming | 6858 | 0.000 | 0.000 | blind CONFIRMED |
+| container-k8s | v2.1 | app05_streaming | 6792 | 0.000 | 0.000 | blind CONFIRMED |
+| vm-guest | v2.1 | app05_streaming | 79994 | 0.000 | 0.000 | blind CONFIRMED |
+| bare | v3.3 | app05_streaming | 6694 | 0.000 | 0.000 | blind CONFIRMED |
+| container | v3.3 | app05_streaming | 6448 | 0.000 | 0.000 | blind CONFIRMED |
+| container-podman | v3.3 | app05_streaming | 6284 | 0.000 | 0.000 | blind CONFIRMED |
+| container-lxc | v3.3 | app05_streaming | 6448 | 0.000 | 0.000 | blind CONFIRMED |
+| container-k8s | v3.3 | app05_streaming | 6008 | 0.000 | 0.000 | blind CONFIRMED |
+| vm-guest | v3.3 | app05_streaming | 75342 | 0.000 | 0.000 | blind CONFIRMED |
 
 **psi_mem capacity-only:** CONFIRMED on ≥1 cell (needs a saturating-bandwidth workload with ample free RAM, e.g. app05_streaming).
 
@@ -74,18 +74,9 @@ Per (env,variant) the cell with the highest `membw_est`. If `membw_est` is high 
 
 | env | variant | workload | membw_est | mbw | llcmr | corroborated? |
 |---|---|---|---|---|---|---|
-| bare | v2.1 | app11_sort_net | 10.0 | 0.000 | 0.000 | **uncorroborated (net-path)** |
-| bare | v3.3 | app11_sort_net | 55.0 | 0.000 | 0.000 | **uncorroborated (net-path)** |
-| container | v2.1 | app11_sort_net | 12.5 | 0.000 | 0.000 | **uncorroborated (net-path)** |
-| container | v3.3 | app11_sort_net | 57.5 | 0.000 | 0.000 | **uncorroborated (net-path)** |
-| container-podman | v2.1 | app11_sort_net | 17.0 | 0.000 | 0.000 | **uncorroborated (net-path)** |
-| container-podman | v3.3 | app11_sort_net | 50.5 | 0.000 | 0.000 | **uncorroborated (net-path)** |
-| container-lxc | v2.1 | app11_sort_net | 13.5 | 0.000 | 0.000 | **uncorroborated (net-path)** |
-| container-lxc | v3.3 | app11_sort_net | 36.0 | 0.000 | 0.000 | **uncorroborated (net-path)** |
-| container-k8s | v2.1 | app11_sort_net | 5.0 | 0.000 | 0.000 | **uncorroborated (net-path)** |
-| container-k8s | v3.3 | app11_sort_net | 40.5 | 0.000 | 0.000 | **uncorroborated (net-path)** |
+| — | — | — | — | — | — | all membw_est readings corroborated by mbw/llcmr |
 
-_10 cell(s) flagged: RDT present but mbw≈0 and llcmr≈0 while membw_est>0. The v2.1↔v3.3 gap on these is the eBPF net-path footprint, not workload bandwidth (C31). vm-guest is excluded here (mbw is structurally `--`; see the §2 scope caveat)._
+_0 cell(s) flagged: RDT present but mbw≈0 and llcmr≈0 while membw_est>0. The v2.1↔v3.3 gap on these is the eBPF net-path footprint, not workload bandwidth (C31). vm-guest is excluded here (mbw is structurally `--`; see the §2 scope caveat)._
 
 ## §5 vm-guest confirmation
 
@@ -93,8 +84,8 @@ Portable medians in-guest (across workloads), and the canonical RDT metrics that
 
 | variant | schedlat | psi_mem | membw_est | psi_io | schedthr | steal | psp | idle_preempt | mbw | llcocc | llcmr |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| v2.1 | 0.000 | 0.000 | 119 | 0.000 | 0.000 | 0.000 | 10.0 | -- | -- | 0.000 | 1.0 |
-| v3.3 | 0.000 | 0.000 | 102 | 0.000 | 0.000 | 0.000 | 11.0 | 101 | -- | -- | 0.000 |
+| v2.1 | 50.0 | 0.000 | 524 | 0.000 | 0.000 | 0.000 | 2262 | -- | -- | 1.0 | 2.0 |
+| v3.3 | 50.0 | 0.000 | 586 | 0.000 | 0.000 | 0.000 | 2238 | 0.000 | -- | -- | 1.0 |
 
 If the portable columns are numeric while mbw/llcocc/llcmr are `--`, the portable benchmark recovers scheduling + memory dimensions in a stock KVM guest where the RDT/LL-PMU fingerprint cannot (C26).
 
@@ -102,64 +93,64 @@ If the portable columns are numeric while mbw/llcocc/llcmr are `--`, the portabl
 
 | env | variant | workload | schedlat[directional] | psi_mem[descriptive] | membw_est[descriptive] | psi_io[descriptive] | schedthr[descriptive(guard)] | steal[descriptive(vm-only)] | psp[directional] | idle_preempt[directional] |
 |---|---|---|---|---|---|---|---|---|---|---|
-| bare | v2.1 | app01_ml_llc | 21.0 | 0.000 | 76.0 | 0.000 | 0.000 | 0.000 | 1952 | - |
-| bare | v2.1 | app05_streaming | 0.000 | 0.000 | 6174 | 0.000 | 0.000 | 0.000 | 28.0 | - |
-| bare | v2.1 | app10_search | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 39.0 | - |
-| bare | v2.1 | app11_sort_net | 0.000 | 0.000 | 10.0 | 0.000 | 0.000 | 0.000 | 79.0 | - |
-| bare | v2.1 | app13_query_scan | 0.000 | 0.000 | 70.0 | 79.0 | 0.000 | 0.000 | 9.0 | - |
-| bare | v3.3 | app01_ml_llc | 21.0 | 0.000 | 84.0 | 0.000 | 0.000 | 0.000 | 2004 | 52.0 |
-| bare | v3.3 | app05_streaming | 0.000 | 0.000 | 6218 | 0.000 | 0.000 | 0.000 | 29.0 | 1.0 |
-| bare | v3.3 | app10_search | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 39.0 | 1.0 |
-| bare | v3.3 | app11_sort_net | 1.0 | 0.000 | 55.0 | 0.000 | 0.000 | 0.000 | 82.5 | 229950 |
-| bare | v3.3 | app13_query_scan | 0.000 | 0.000 | 69.0 | 78.5 | 0.000 | 0.000 | 9.0 | 1366 |
-| container | v2.1 | app01_ml_llc | 21.0 | 0.000 | 76.5 | 0.000 | 0.000 | 0.000 | 1914 | - |
-| container | v2.1 | app05_streaming | 0.000 | 0.000 | 6610 | 0.000 | 0.000 | 0.000 | 31.0 | - |
-| container | v2.1 | app10_search | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 37.5 | - |
-| container | v2.1 | app11_sort_net | 0.000 | 0.000 | 12.5 | 0.000 | 0.000 | 0.000 | 80.5 | - |
-| container | v2.1 | app13_query_scan | 0.000 | 0.000 | 69.0 | 78.0 | 0.000 | 0.000 | 8.0 | - |
-| container | v3.3 | app01_ml_llc | 21.0 | 0.000 | 81.5 | 0.000 | 0.000 | 0.000 | 1985 | 52.0 |
-| container | v3.3 | app05_streaming | 0.000 | 0.000 | 5657 | 0.000 | 0.000 | 0.000 | 29.0 | 0.000 |
-| container | v3.3 | app10_search | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 40.0 | 1.0 |
-| container | v3.3 | app11_sort_net | 1.0 | 0.000 | 57.5 | 0.000 | 0.000 | 0.000 | 86.0 | 217948 |
-| container | v3.3 | app13_query_scan | 0.000 | 0.000 | 69.0 | 79.0 | 0.000 | 0.000 | 8.0 | 1367 |
-| container-podman | v2.1 | app01_ml_llc | 21.5 | 0.000 | 78.5 | 0.000 | 0.000 | 0.000 | 1910 | - |
-| container-podman | v2.1 | app05_streaming | 0.000 | 0.000 | 5902 | 0.000 | 0.000 | 0.000 | 29.0 | - |
-| container-podman | v2.1 | app10_search | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 38.0 | - |
-| container-podman | v2.1 | app11_sort_net | 0.000 | 0.000 | 17.0 | 0.000 | 0.000 | 0.000 | 80.5 | - |
-| container-podman | v2.1 | app13_query_scan | 0.000 | 0.000 | 68.0 | 79.0 | 0.000 | 0.000 | 8.0 | - |
-| container-podman | v3.3 | app01_ml_llc | 21.0 | 0.000 | 84.0 | 0.000 | 0.000 | 0.000 | 1934 | 52.0 |
-| container-podman | v3.3 | app05_streaming | 0.000 | 0.000 | 5847 | 0.000 | 0.000 | 0.000 | 30.0 | 1.0 |
-| container-podman | v3.3 | app10_search | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 42.0 | 2.0 |
-| container-podman | v3.3 | app11_sort_net | 1.0 | 0.000 | 50.5 | 0.000 | 0.000 | 0.000 | 84.0 | 219378 |
-| container-podman | v3.3 | app13_query_scan | 0.000 | 0.000 | 61.5 | 81.5 | 0.000 | 0.000 | 7.5 | 1366 |
-| container-lxc | v2.1 | app01_ml_llc | 28.0 | 0.000 | 87.5 | 0.000 | 0.000 | 0.000 | 0.000 | - |
-| container-lxc | v2.1 | app05_streaming | 0.000 | 0.000 | 6380 | 0.000 | 0.000 | 0.000 | 0.000 | - |
-| container-lxc | v2.1 | app10_search | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | - | - |
-| container-lxc | v2.1 | app11_sort_net | 2.0 | 0.000 | 13.5 | 0.000 | 0.000 | 0.000 | - | - |
-| container-lxc | v2.1 | app13_query_scan | 0.000 | 0.000 | 69.0 | 79.0 | 0.000 | 0.000 | - | - |
-| container-lxc | v3.3 | app01_ml_llc | 24.0 | 0.000 | 94.0 | 0.000 | 0.000 | 0.000 | 2702 | 820 |
-| container-lxc | v3.3 | app05_streaming | 0.000 | 0.000 | 5852 | 0.000 | 0.000 | 0.000 | 736 | 703 |
-| container-lxc | v3.3 | app10_search | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 856 | 816 |
-| container-lxc | v3.3 | app11_sort_net | 1.0 | 0.000 | 36.0 | 0.000 | 0.000 | 0.000 | 2441 | 288077 |
-| container-lxc | v3.3 | app13_query_scan | 0.000 | 0.000 | 68.5 | 79.0 | 0.000 | 0.000 | 112 | 1476 |
-| container-k8s | v2.1 | app01_ml_llc | 21.0 | 0.000 | 78.5 | 0.000 | 0.000 | 0.000 | 1998 | - |
-| container-k8s | v2.1 | app05_streaming | 0.000 | 0.000 | 7136 | 0.000 | 0.000 | 0.000 | 31.5 | - |
-| container-k8s | v2.1 | app10_search | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 40.0 | - |
-| container-k8s | v2.1 | app11_sort_net | 0.000 | 0.000 | 5.0 | 0.000 | 0.000 | 0.000 | 73.5 | - |
-| container-k8s | v2.1 | app13_query_scan | 0.000 | 0.000 | 55.5 | 84.0 | 0.000 | 0.000 | 7.0 | - |
-| container-k8s | v3.3 | app01_ml_llc | 21.0 | 0.000 | 83.5 | 0.000 | 0.000 | 0.000 | 1944 | 52.0 |
-| container-k8s | v3.3 | app05_streaming | 0.000 | 0.000 | 6394 | 0.000 | 0.000 | 0.000 | 31.5 | 0.000 |
-| container-k8s | v3.3 | app10_search | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 41.0 | 1.0 |
-| container-k8s | v3.3 | app11_sort_net | 1.0 | 0.000 | 40.5 | 0.000 | 0.000 | 0.000 | 77.0 | 254770 |
-| container-k8s | v3.3 | app13_query_scan | 0.000 | 0.000 | 54.0 | 82.5 | 0.000 | 0.000 | 6.0 | 1310 |
-| vm-guest | v2.1 | app01_ml_llc | 33.0 | 0.000 | 10.0 | 0.000 | 0.000 | 0.000 | 2178 | - |
-| vm-guest | v2.1 | app05_streaming | 0.000 | 0.000 | 79818 | 0.000 | 0.000 | 0.000 | 10.0 | - |
-| vm-guest | v2.1 | app10_search | 0.000 | 0.000 | 1.0 | 0.000 | 0.000 | 0.000 | 8.5 | - |
-| vm-guest | v2.1 | app11_sort_net | 0.000 | 0.000 | 122 | 0.000 | 0.000 | 0.000 | 792 | - |
-| vm-guest | v2.1 | app13_query_scan | 0.000 | 0.000 | 874 | 12.0 | 0.000 | 0.000 | 1.0 | - |
-| vm-guest | v3.3 | app01_ml_llc | 33.0 | 0.000 | 13.0 | 0.000 | 0.000 | 0.000 | 2208 | 102 |
-| vm-guest | v3.3 | app05_streaming | 0.000 | 0.000 | 75318 | 0.000 | 0.000 | 0.000 | 10.5 | 0.000 |
-| vm-guest | v3.3 | app10_search | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 8.0 | 0.000 |
-| vm-guest | v3.3 | app11_sort_net | 1.0 | 0.000 | 102 | 0.000 | 0.000 | 0.000 | 84.5 | 171516 |
-| vm-guest | v3.3 | app13_query_scan | 0.000 | 0.000 | 818 | 14.0 | 0.000 | 0.000 | 1.0 | 102 |
+| bare | v2.1 | app01_ml_llc | 31.0 | 0.000 | 98.5 | 0.000 | 0.000 | 0.000 | 1922 | - |
+| bare | v2.1 | app05_streaming | 0.000 | 0.000 | 6570 | 0.000 | 0.000 | 0.000 | 29.0 | - |
+| bare | v2.1 | app10_search | 17.0 | 0.000 | 2.0 | 0.000 | 1.0 | 0.000 | 2671 | - |
+| bare | v2.1 | app11_sort_net | 20.0 | 0.000 | 4100 | 0.000 | 0.000 | 0.000 | 29731 | - |
+| bare | v2.1 | app13_query_scan | 0.000 | 0.000 | 59.0 | 82.0 | 0.000 | 0.000 | 7.0 | - |
+| bare | v3.3 | app01_ml_llc | 31.0 | 0.000 | 107 | 0.000 | 0.000 | 0.000 | 1866 | 33.5 |
+| bare | v3.3 | app05_streaming | 0.000 | 0.000 | 6694 | 0.000 | 0.000 | 0.000 | 29.5 | 0.000 |
+| bare | v3.3 | app10_search | 17.0 | 0.000 | 2.0 | 0.000 | 1.0 | 0.000 | 2690 | 12.5 |
+| bare | v3.3 | app11_sort_net | 20.0 | 0.000 | 4224 | 0.000 | 0.000 | 0.000 | 17386 | 22104 |
+| bare | v3.3 | app13_query_scan | 0.000 | 0.000 | 55.0 | 82.5 | 0.000 | 0.000 | 6.5 | 1381 |
+| container | v2.1 | app01_ml_llc | 32.0 | 0.000 | 102 | 0.000 | 0.000 | 0.000 | 1760 | - |
+| container | v2.1 | app05_streaming | 0.000 | 0.000 | 6404 | 0.000 | 0.000 | 0.000 | 30.0 | - |
+| container | v2.1 | app10_search | 17.0 | 0.000 | 2.0 | 0.000 | 1.0 | 0.000 | 2680 | - |
+| container | v2.1 | app11_sort_net | 21.0 | 0.000 | 2940 | 0.000 | 0.000 | 0.000 | 32644 | - |
+| container | v2.1 | app13_query_scan | 0.000 | 0.000 | 61.0 | 82.0 | 0.000 | 0.000 | 7.0 | - |
+| container | v3.3 | app01_ml_llc | 32.0 | 0.000 | 108 | 0.000 | 0.000 | 0.000 | 1776 | 33.0 |
+| container | v3.3 | app05_streaming | 0.000 | 0.000 | 6448 | 0.000 | 0.000 | 0.000 | 30.0 | 0.000 |
+| container | v3.3 | app10_search | 17.0 | 0.000 | 2.0 | 0.000 | 1.0 | 0.000 | 2690 | 12.5 |
+| container | v3.3 | app11_sort_net | 19.0 | 0.000 | 4700 | 0.000 | 0.000 | 0.000 | 19984 | 19188 |
+| container | v3.3 | app13_query_scan | 0.000 | 0.000 | 47.5 | 84.5 | 0.000 | 0.000 | 6.0 | 1318 |
+| container-podman | v2.1 | app01_ml_llc | 31.0 | 0.000 | 106 | 0.000 | 0.000 | 0.000 | 1917 | - |
+| container-podman | v2.1 | app05_streaming | 0.000 | 0.000 | 6675 | 0.000 | 0.000 | 0.000 | 29.0 | - |
+| container-podman | v2.1 | app10_search | 17.0 | 0.000 | 2.0 | 0.000 | 0.500 | 0.000 | 2691 | - |
+| container-podman | v2.1 | app11_sort_net | 19.5 | 0.000 | 2910 | 0.000 | 0.000 | 0.000 | 34465 | - |
+| container-podman | v2.1 | app13_query_scan | 0.000 | 0.000 | 43.5 | 85.0 | 0.000 | 0.000 | 5.5 | - |
+| container-podman | v3.3 | app01_ml_llc | 31.0 | 0.000 | 110 | 0.000 | 0.000 | 0.000 | 1852 | 32.0 |
+| container-podman | v3.3 | app05_streaming | 0.000 | 0.000 | 6284 | 0.000 | 0.000 | 0.000 | 31.0 | 0.000 |
+| container-podman | v3.3 | app10_search | 17.0 | 0.000 | 2.0 | 0.000 | 0.000 | 0.000 | 2680 | 20.5 |
+| container-podman | v3.3 | app11_sort_net | 19.0 | 0.000 | 4403 | 0.000 | 0.000 | 0.000 | 21289 | 19076 |
+| container-podman | v3.3 | app13_query_scan | 0.000 | 0.000 | 64.0 | 80.5 | 0.000 | 0.000 | 7.0 | 1429 |
+| container-lxc | v2.1 | app01_ml_llc | 32.0 | 0.000 | 105 | 0.000 | 0.000 | 0.000 | 2562 | - |
+| container-lxc | v2.1 | app05_streaming | 0.000 | 0.000 | 6858 | 0.000 | 0.000 | 0.000 | 1104 | - |
+| container-lxc | v2.1 | app10_search | 17.0 | 0.000 | 2.0 | 0.000 | 0.000 | 0.000 | 3748 | - |
+| container-lxc | v2.1 | app11_sort_net | 24.0 | 0.000 | 1319 | 0.000 | 0.000 | 0.000 | 73259 | - |
+| container-lxc | v2.1 | app13_query_scan | 0.000 | 0.000 | 65.0 | 80.0 | 0.000 | 0.000 | 67.0 | - |
+| container-lxc | v3.3 | app01_ml_llc | 32.0 | 0.000 | 110 | 0.000 | 0.000 | 0.000 | 2564 | 814 |
+| container-lxc | v3.3 | app05_streaming | 0.000 | 0.000 | 6448 | 0.000 | 0.000 | 0.000 | 1024 | 994 |
+| container-lxc | v3.3 | app10_search | 17.0 | 0.000 | 2.0 | 0.000 | 0.000 | 0.000 | 3977 | 1394 |
+| container-lxc | v3.3 | app11_sort_net | 24.0 | 0.000 | 1438 | 0.000 | 0.000 | 0.000 | 37838 | 30867 |
+| container-lxc | v3.3 | app13_query_scan | 0.000 | 0.000 | 66.0 | 81.0 | 0.000 | 0.000 | 74.5 | 1478 |
+| container-k8s | v2.1 | app01_ml_llc | 31.0 | 0.000 | 102 | 0.000 | 0.000 | 0.000 | 1920 | - |
+| container-k8s | v2.1 | app05_streaming | 0.000 | 0.000 | 6792 | 0.000 | 0.000 | 0.000 | 29.0 | - |
+| container-k8s | v2.1 | app10_search | 17.0 | 0.000 | 2.0 | 0.000 | 1.0 | 0.000 | 2690 | - |
+| container-k8s | v2.1 | app11_sort_net | 24.0 | 0.000 | 1236 | 0.000 | 0.000 | 0.000 | 71953 | - |
+| container-k8s | v2.1 | app13_query_scan | 0.000 | 0.000 | 63.5 | 81.0 | 0.000 | 0.000 | 7.0 | - |
+| container-k8s | v3.3 | app01_ml_llc | 31.0 | 0.000 | 110 | 0.000 | 0.000 | 0.000 | 1896 | 33.0 |
+| container-k8s | v3.3 | app05_streaming | 0.000 | 0.000 | 6008 | 0.000 | 0.000 | 0.000 | 30.0 | 0.000 |
+| container-k8s | v3.3 | app10_search | 17.0 | 0.000 | 2.0 | 0.000 | 1.0 | 0.000 | 2692 | 20.5 |
+| container-k8s | v3.3 | app11_sort_net | 24.0 | 0.000 | 1402 | 0.000 | 0.000 | 0.000 | 42395 | 29858 |
+| container-k8s | v3.3 | app13_query_scan | 0.000 | 0.000 | 64.0 | 81.5 | 0.000 | 0.000 | 7.0 | 1392 |
+| vm-guest | v2.1 | app01_ml_llc | 87.5 | 0.000 | 12.0 | 0.000 | 0.000 | 0.000 | 2262 | - |
+| vm-guest | v2.1 | app05_streaming | 0.000 | 0.000 | 79994 | 0.000 | 0.000 | 0.000 | 11.0 | - |
+| vm-guest | v2.1 | app10_search | 50.0 | 0.000 | 4.0 | 0.000 | 0.000 | 0.000 | 2693 | - |
+| vm-guest | v2.1 | app11_sort_net | 81.0 | 0.000 | 524 | 0.000 | 0.000 | 0.000 | 420921 | - |
+| vm-guest | v2.1 | app13_query_scan | 0.000 | 0.000 | 1280 | 15.5 | 0.000 | 1.0 | 1.0 | - |
+| vm-guest | v3.3 | app01_ml_llc | 88.5 | 0.000 | 13.0 | 0.000 | 0.000 | 0.000 | 2238 | 80.0 |
+| vm-guest | v3.3 | app05_streaming | 0.000 | 0.000 | 75342 | 0.000 | 0.000 | 0.000 | 11.5 | 0.000 |
+| vm-guest | v3.3 | app10_search | 50.0 | 0.000 | 0.000 | 0.000 | 0.000 | 0.000 | 2693 | 0.000 |
+| vm-guest | v3.3 | app11_sort_net | 82.0 | 0.000 | 589 | 0.000 | 0.000 | 0.000 | 200201 | 0.000 |
+| vm-guest | v3.3 | app13_query_scan | 0.000 | 0.000 | 1203 | 13.5 | 0.000 | 0.500 | 1.0 | 93.0 |
 
