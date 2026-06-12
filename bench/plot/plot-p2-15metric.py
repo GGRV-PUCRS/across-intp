@@ -139,8 +139,9 @@ def fig_fingerprint(cells, out: Path):
     norm_only = {"membw_est", "psp"}   # not 0-100-clamped -> panel-normalized
 
     fig, axes = plt.subplots(len(variants), len(envs),
-                             figsize=(7.2 * len(envs), 0.42 * len(wls) * len(variants) + 3.2),
-                             squeeze=False)
+                             figsize=(7.6 * len(envs), 0.52 * len(wls) * len(variants) + 3.6),
+                             squeeze=False,
+                             gridspec_kw={"wspace": 0.06, "hspace": 0.18})
     for r, var in enumerate(variants):
         for c, env in enumerate(envs):
             ax = axes[r][c]
@@ -179,11 +180,18 @@ def fig_fingerprint(cells, out: Path):
                     if (var, metrics[xi]) in C34_INVALID:
                         ax.add_patch(plt.Rectangle((xi - 0.5, yi - 0.5), 1, 1,
                                      fill=False, edgecolor="crimson", lw=1.2))
+            # outer-edge tick labels only, so panels never collide
             ax.set_xticks(range(len(metrics)))
-            labels = [m + ("*" if m in norm_only else "") for m in metrics]
-            ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=7)
+            if r == len(variants) - 1:
+                labels = [m + ("*" if m in norm_only else "") for m in metrics]
+                ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=7)
+            else:
+                ax.set_xticklabels([])
             ax.set_yticks(range(len(wls)))
-            ax.set_yticklabels([w.replace("_", " ") for w in wls], fontsize=7)
+            if c == 0:
+                ax.set_yticklabels([w.replace("_", " ") for w in wls], fontsize=7)
+            else:
+                ax.set_yticklabels([])
             ax.set_title(f"{ENV_SHORT[env]} / {vlabel(var)}", fontsize=10)
             ax.axvline(6.5, color="k", lw=1.0)
             ax.axvline(12.5, color="k", lw=1.0)
@@ -229,9 +237,6 @@ def fig_ratio(df: pd.DataFrame, out: Path):
             ax.set_title(f"{vlabel(var)} — {m}", fontsize=10)
             if col == 1:
                 ax.set_ylabel("ratio vs bare (1.0 = identical)")
-            ax.annotate("kvm-guest ≈ 3x = the 1/3-core guest capacity,\nnot profiler error",
-                        xy=(0.02, 0.94), xycoords="axes fraction", fontsize=7,
-                        va="top", color="#444444")
     handles, labels = axes[0][0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=len(ENV_ORDER),
                fontsize=8, frameon=False, bbox_to_anchor=(0.5, -0.04))
@@ -259,13 +264,14 @@ def fig_claimclass(df: pd.DataFrame, out: Path):
                     continue   # blank = metric unavailable in this env ('--')
                 cls = s.claim_class.iloc[0]
                 best = max((SIG_ORDER.get(x, 0) for x in s.signif), default=0)
-                ax.add_patch(plt.Rectangle((xi, yi), 0.94, 0.94,
-                                           color=cls_color.get(cls, "#eeeeee"),
-                                           alpha=0.35 + 0.2 * min(best, 3) / 3))
-                txt = {3: "***", 2: "**", 1: "*", 0: "n.s.", -1: ""}[best]
                 if (var, m) in C34_INVALID:
-                    txt = "C34!"
-                ax.text(xi + 0.47, yi + 0.47, txt, ha="center", va="center", fontsize=8)
+                    ax.add_patch(plt.Rectangle((xi, yi), 0.94, 0.94,
+                                               facecolor="white", edgecolor="crimson",
+                                               hatch="///", lw=0.8))
+                else:
+                    ax.add_patch(plt.Rectangle((xi, yi), 0.94, 0.94,
+                                               color=cls_color.get(cls, "#eeeeee"),
+                                               alpha=0.35 + 0.2 * min(best, 3) / 3))
         ax.set_xlim(0, len(ENV_ORDER)); ax.set_ylim(0, len(all_metrics))
         ax.set_xticks(np.arange(len(ENV_ORDER)) + 0.5)
         ax.set_xticklabels([ENV_SHORT[e] for e in ENV_ORDER], fontsize=8)
@@ -274,13 +280,14 @@ def fig_claimclass(df: pd.DataFrame, out: Path):
         ax.set_title(f"{vlabel(var)}", fontsize=10)
         ax.invert_yaxis()
     handles = ([plt.Rectangle((0, 0), 1, 1, color=v, alpha=0.55) for v in cls_color.values()]
-               + [plt.Rectangle((0, 0), 1, 1, facecolor="white", edgecolor="#999999")])
-    labels = list(cls_color.keys()) + ["blank = metric unavailable in env ('--')"]
-    fig.legend(handles, labels, loc="lower center", ncol=4, fontsize=8, frameon=False,
+               + [plt.Rectangle((0, 0), 1, 1, facecolor="white", edgecolor="#999999"),
+                  plt.Rectangle((0, 0), 1, 1, facecolor="white", edgecolor="crimson", hatch="///")])
+    labels = list(cls_color.keys()) + ["blank = metric unavailable in env ('--')",
+                                       "v2.1 mbw — invalid (pre-D12 scope bug)"]
+    fig.legend(handles, labels, loc="lower center", ncol=3, fontsize=8, frameon=False,
                bbox_to_anchor=(0.5, -0.02))
-    fig.suptitle("F2 — Claim class x best vs-bare significance per (env, metric)\n"
-                 "stars = BH-FDR-corrected Mann-Whitney significance of the env-vs-bare delta; "
-                 "'C34!' = v2.1 mbw invalid pre-re-run", fontsize=11)
+    fig.suptitle("F2 — Claim class per (env, metric); shading intensity = strength of the "
+                 "env-vs-bare evidence", fontsize=11)
     fig.tight_layout(rect=(0, 0.05, 1, 0.92))
     fig.savefig(out / "F2-claim-class-matrix.png", dpi=160, bbox_inches="tight")
     plt.close(fig)
@@ -372,16 +379,7 @@ def fig_psi(cells, out: Path):
     ax.set_xticks(np.arange(len(envs)))
     ax.set_xticklabels([ENV_SHORT[e] for e in envs], fontsize=9)
     ax.set_ylabel("membw_est on app05_streaming (MB/s, log)")
-    note = ("psi_mem = 0 % in EVERY (env, variant) cell\nwhile membw_est is saturated\n"
-            "→ PSI is blind to bandwidth contention;\nmembw_est carries that dimension")
-    if not psi_all_zero:
-        note = "psi_mem ≤ 0.5 % in all but flagged cells (see report §3)"
-    ax.annotate(note, xy=(0.03, 0.93), xycoords="axes fraction", fontsize=9,
-                va="top", ha="left",
-                bbox=dict(boxstyle="round", facecolor="#fff3cd", edgecolor="#b8860b"))
-    ax.annotate("kvm-guest reads ~10x higher: the in-guest estimator\nderives from guest-side counters (scale, not error)",
-                xy=(0.62, 0.10), xycoords="axes fraction", fontsize=7.5, color="#444444")
-    ax.legend(fontsize=9, loc="upper right")
+    ax.legend(fontsize=9, loc="upper left")
     ax.set_title("F5 — Falsification: PSI memory pressure cannot see bandwidth saturation\n"
                  "(app05_streaming pins the memory channels; psi_mem only reacts to CAPACITY reclaim)",
                  fontsize=10)
@@ -425,12 +423,9 @@ def fig_psp(df: pd.DataFrame, out: Path):
                     continue
                 sig = s.signif.iloc[0] != "n.s." and s.signif.iloc[0] != "n/a"
                 val = _fmt_delta(s.delta.iloc[0]) if pd.notna(s.delta.iloc[0]) else "?"
-                ax.text(xi, yi - 0.16, val, ha="center", va="center", fontsize=8,
+                ax.text(xi, yi, val, ha="center", va="center", fontsize=9,
                         fontweight="bold" if sig else "normal",
                         color="white" if abs(grid[yi, xi]) > 0.6 else "black")
-                ax.text(xi, yi + 0.24, s.signif.iloc[0], ha="center", va="center",
-                        fontsize=6.5,
-                        color="white" if abs(grid[yi, xi]) > 0.6 else "#444444")
         ax.set_xticks(range(len(ENV_ORDER)))
         ax.set_xticklabels([ENV_SHORT[e] for e in ENV_ORDER], fontsize=8)
         ax.set_yticks(range(len(wls)))
@@ -439,9 +434,8 @@ def fig_psp(df: pd.DataFrame, out: Path):
         cb = fig.colorbar(im, ax=ax, fraction=0.045)
         cb.set_label("Cliff's δ (effect size of env vs bare)", fontsize=8)
     fig.suptitle("F6 — Scheduling-regime metric psp (involuntary preemptions/s of the profiled workload)\n"
-                 "cell number = median Δ vs bare (events/s; bold = significant after BH-FDR);  "
-                 "red = MORE preemptions than bare, blue = fewer;\n"
-                 "'***/**/*' = corrected p < 0.001 / 0.01 / 0.05;  'n.s.' = not significant",
+                 "cell = median Δ vs bare in events/s (bold = statistically significant); "
+                 "red = MORE preemptions than bare, blue = fewer",
                  fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.88))
     fig.savefig(out / "F6-psp-directional.png", dpi=160, bbox_inches="tight")
