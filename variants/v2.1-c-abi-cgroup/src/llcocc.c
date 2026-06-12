@@ -23,14 +23,11 @@
 
 extern double intp_llcmr_last_value(void);  /* defined in llcmr.c */
 
-#define OCC_GROUP_PREFIX "intp_v2_occ"
-#define RESCTRL_ROOT_SENTINEL "<root>"
 
 static struct {
     int   valid;
     char  group[64];
     long  llc_size_bytes;
-    int   rescan_n;
 } st;
 
 static long resolve_llc_bytes(void)
@@ -56,17 +53,17 @@ static int resctrl_init_(void)
 {
     /* Same logic as mbw.c: scoped mon_group when --pid is set, root group
      * otherwise, so co-runners are visible when the profiler runs system-wide. */
+    /* Share the per-target mon_group with mbw.c (D12): both read the same
+     * RMID's mon_data, and a cgroup/PID target's tasks can be in only one
+     * RMID, so a private group would steal them from mbw (or vice versa). */
     const intp_target_t *t = intp_target_get();
-    if (t && t->n_pids > 0) {
-        snprintf(st.group, sizeof(st.group), "%s_%d", OCC_GROUP_PREFIX, getpid());
-        if (resctrl_create_mongroup(st.group) != 0) return -1;
-        resctrl_assign_pids(st.group, t->pids, (size_t)t->n_pids);
-    } else {
-        snprintf(st.group, sizeof(st.group), "%s", RESCTRL_ROOT_SENTINEL);
-        if (resctrl_create_mongroup(st.group) != 0) return -1;
-    }
+    if (resctrl_target_group_acquire(t ? t->pids : NULL,
+                                     t ? (size_t)t->n_pids : 0,
+                                     t ? t->cgroup_path : NULL,
+                                     st.group, sizeof(st.group)) != 0)
+        return -1;
     long b = resctrl_read_llc_occupancy(st.group);
-    if (b < 0) return -1;
+    if (b < 0) { resctrl_target_group_release(); return -1; }
     st.llc_size_bytes = resolve_llc_bytes();
     st.valid = 1;
     return 0;
@@ -77,7 +74,7 @@ static int resctrl_read_(metric_sample_t *out, double interval_sec)
     (void)interval_sec;
     if (!st.valid || st.llc_size_bytes <= 0) return -1;
     /* Re-sync the mon_group with the cgroup's live members (cadence-gated). */
-    resctrl_rescan_cgroup(st.group, intp_target_get()->cgroup_path, st.rescan_n++);
+    resctrl_target_group_rescan(intp_target_get()->cgroup_path);
     long b = resctrl_read_llc_occupancy(st.group);
     if (b < 0) return -1;
     double v = (double)b / (double)st.llc_size_bytes * 100.0;
@@ -93,7 +90,7 @@ static int resctrl_read_(metric_sample_t *out, double interval_sec)
 static void resctrl_cleanup_(void)
 {
     if (st.valid) {
-        resctrl_remove_mongroup(st.group);
+        resctrl_target_group_release();
         st.valid = 0;
     }
 }

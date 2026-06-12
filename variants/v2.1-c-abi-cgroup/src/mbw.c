@@ -23,8 +23,6 @@
 #include <unistd.h>
 #include <stdint.h>
 
-#define MBW_GROUP_PREFIX "intp_v2_mbw"
-#define RESCTRL_ROOT_SENTINEL "<root>"
 
 static long resolve_mem_bw_bps(void)
 {
@@ -40,7 +38,6 @@ static struct {
     char  group[64];
     long  prev_bytes;
     long  max_bps;
-    int   rescan_n;
 } mb;
 
 static int resctrl_probe(void)
@@ -56,17 +53,17 @@ static int resctrl_init_(void)
     /* With explicit --pid: own mon_group scoped to those tasks.
      * Without --pid: read the resctrl root group (system-wide) so a
      * stress-ng co-runner on neighbouring CPUs is captured. */
+    /* Share the per-target mon_group with llcocc.c (D12): a cgroup/PID
+     * target's tasks can be in only one RMID, so a private group here
+     * would steal them from llcocc (or vice versa) and the loser reads 0. */
     const intp_target_t *t = intp_target_get();
-    if (t && t->n_pids > 0) {
-        snprintf(mb.group, sizeof(mb.group), "%s_%d", MBW_GROUP_PREFIX, getpid());
-        if (resctrl_create_mongroup(mb.group) != 0) return -1;
-        resctrl_assign_pids(mb.group, t->pids, (size_t)t->n_pids);
-    } else {
-        snprintf(mb.group, sizeof(mb.group), "%s", RESCTRL_ROOT_SENTINEL);
-        if (resctrl_create_mongroup(mb.group) != 0) return -1;
-    }
+    if (resctrl_target_group_acquire(t ? t->pids : NULL,
+                                     t ? (size_t)t->n_pids : 0,
+                                     t ? t->cgroup_path : NULL,
+                                     mb.group, sizeof(mb.group)) != 0)
+        return -1;
     long b = resctrl_read_mbm_total(mb.group);
-    if (b < 0) return -1;
+    if (b < 0) { resctrl_target_group_release(); return -1; }
     mb.prev_bytes = b;
     mb.max_bps    = resolve_mem_bw_bps();
     mb.valid      = 1;
@@ -78,7 +75,7 @@ static int resctrl_read_(metric_sample_t *out, double interval_sec)
     if (!mb.valid || interval_sec <= 0) return -1;
     /* Keep the mon_group current with the cgroup's live members (late-spawned
      * workers, migrations) -- cadence-gated, cheap, no-op when system-wide. */
-    resctrl_rescan_cgroup(mb.group, intp_target_get()->cgroup_path, mb.rescan_n++);
+    resctrl_target_group_rescan(intp_target_get()->cgroup_path);
     long now = resctrl_read_mbm_total(mb.group);
     if (now < 0) return -1;
     long delta = now - mb.prev_bytes;
@@ -97,7 +94,7 @@ static int resctrl_read_(metric_sample_t *out, double interval_sec)
 static void resctrl_cleanup_(void)
 {
     if (mb.valid) {
-        resctrl_remove_mongroup(mb.group);
+        resctrl_target_group_release();
         mb.valid = 0;
     }
 }
@@ -168,11 +165,25 @@ static void pu_cleanup(void)
     pu.valid = 0;
 }
 
+/* The uncore memory-controller PMUs (Intel IMC, AMD Data Fabric, ARM CMN)
+ * count TOTAL socket DRAM traffic -- they physically cannot attribute
+ * bandwidth to a cgroup or a PID set. Reject them for any sub-system
+ * target so the resctrl mbm backend (per-RMID, isolatable) is selected
+ * instead (D12: before this guard, a cgroup target's mbw was silently
+ * the SYSTEM-WIDE figure -- an idle cgroup read ~58% while the kernel's
+ * own per-RMID mon_group read 0%). */
+static int uncore_target_is_system_wide(void)
+{
+    const intp_target_t *t = intp_target_get();
+    return !t || (!t->cgroup_path && t->n_pids == 0);
+}
+
 /* ---- backend 2: Intel uncore IMC --------------------------------------- */
 
 static int imc_probe(void)
 {
     const system_capabilities_t *c = detect_cached();
+    if (!uncore_target_is_system_wide()) return -1;
     if (c->vendor != VENDOR_INTEL)     return -1;
     if (!c->perf_uncore_imc)           return -1;
     if (c->perf_paranoid > -1 && geteuid() != 0) return -1;
@@ -187,6 +198,7 @@ static int imc_init(void)  { return pu_init_with(perfev_open_uncore_imc_intel,
 static int amd_df_probe(void)
 {
     const system_capabilities_t *c = detect_cached();
+    if (!uncore_target_is_system_wide()) return -1;
     if (c->vendor != VENDOR_AMD) return -1;
     if (!c->perf_amd_df)          return -1;
     if (c->perf_paranoid > -1 && geteuid() != 0) return -1;
@@ -201,6 +213,7 @@ static int amd_df_init(void) { return pu_init_with(perfev_open_amd_df,
 static int arm_cmn_probe(void)
 {
     const system_capabilities_t *c = detect_cached();
+    if (!uncore_target_is_system_wide()) return -1;
     if (c->vendor != VENDOR_ARM) return -1;
     if (!c->perf_arm_cmn)         return -1;
     if (c->perf_paranoid > -1 && geteuid() != 0) return -1;

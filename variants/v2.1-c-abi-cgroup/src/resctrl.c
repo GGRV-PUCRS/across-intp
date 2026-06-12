@@ -307,3 +307,62 @@ int resctrl_rescan_cgroup(const char *name, const char *cgroup_path, int sample_
      * re-assigning already-tracked PIDs is a harmless no-op. */
     return resctrl_assign_pids(name, pids, (size_t)n);
 }
+
+
+/* ---- shared per-target monitoring group (mbw + llcocc, D12) ------------ */
+
+#define RDT_GROUP_PREFIX "intp_v2_rdt"
+#define RESCTRL_ROOT_SENTINEL_ "<root>"
+
+static struct {
+    char name[64];
+    int  refcount;
+    int  is_root;
+    int  rescan_n;
+} g_tgt;
+
+int resctrl_target_group_acquire(const pid_t *pids, size_t n_pids,
+                                 const char *cgroup_path,
+                                 char *out, size_t out_sz)
+{
+    if (g_tgt.refcount > 0) {
+        /* Reuse the group the first backend created so mbw and llcocc read
+         * the same RMID instead of stealing the target's tasks from each
+         * other. */
+        snprintf(out, out_sz, "%s", g_tgt.name);
+        g_tgt.refcount++;
+        return 0;
+    }
+    if (n_pids > 0 || cgroup_path) {
+        snprintf(g_tgt.name, sizeof(g_tgt.name), "%s_%d",
+                 RDT_GROUP_PREFIX, (int)getpid());
+        if (resctrl_create_mongroup(g_tgt.name) != 0) return -1;
+        if (n_pids > 0) resctrl_assign_pids(g_tgt.name, pids, n_pids);
+        /* cgroup live members are kept current by rescan(). */
+        g_tgt.is_root = 0;
+    } else {
+        snprintf(g_tgt.name, sizeof(g_tgt.name), "%s", RESCTRL_ROOT_SENTINEL_);
+        if (resctrl_create_mongroup(g_tgt.name) != 0) return -1;
+        g_tgt.is_root = 1;
+    }
+    g_tgt.rescan_n = 0;
+    g_tgt.refcount = 1;
+    snprintf(out, out_sz, "%s", g_tgt.name);
+    return 0;
+}
+
+void resctrl_target_group_rescan(const char *cgroup_path)
+{
+    if (g_tgt.refcount <= 0 || g_tgt.is_root) return;
+    resctrl_rescan_cgroup(g_tgt.name, cgroup_path, g_tgt.rescan_n++);
+}
+
+void resctrl_target_group_release(void)
+{
+    if (g_tgt.refcount <= 0) return;
+    if (--g_tgt.refcount == 0) {
+        if (!g_tgt.is_root) resctrl_remove_mongroup(g_tgt.name);
+        g_tgt.name[0]  = '\0';
+        g_tgt.rescan_n = 0;
+    }
+}

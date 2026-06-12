@@ -196,3 +196,65 @@ v3.3 equivalent) as root to re-gate.
   the eBPF overhead claim — "<= 1.10x on the reference server" does
   not transfer to client/hybrid CPUs while the wakeup load is present,
   which sharpens the scope qualifier the overhead claims must carry.
+
+## D12 — v2.1 per-cgroup/PID mbw was silently system-wide; shared RMID group; test robustness back-ports (2026-06-12)
+
+Found while closing the intp v0.9.0 release gate on the RDT testbed
+(kernel ground truth via a manual resctrl mon_group) and back-ported
+here after evaluation, per the alignment review.
+
+**1. v2.1 mbw scope bug (FIXED).** The mbw chain preferred the uncore
+memory-controller PMUs (Intel IMC / AMD DF / ARM CMN) unconditionally,
+but those count TOTAL socket DRAM traffic and physically cannot
+attribute to a cgroup or PID set — so for `--cgroup`/`--pids` targets
+v2.1 reported the SYSTEM-WIDE figure as the target's mbw (an idle
+cgroup read ~58% while the kernel's own per-RMID mon_group read 0%).
+This contradicted v2.1's own scoped-mon_group intent in
+`mbw.c:resctrl_init_` and `bench/validate-attribution.sh`'s
+`SEPARABLE_METRICS` claim that mbw is "per-cgroup attributable in
+v2.1". Fix: the uncore probes now reject non-system targets so the
+resctrl mbm backend (per-RMID, isolatable) is selected for
+cgroup/PID targets; system-wide keeps IMC (its most accurate source).
+
+**2. v2.1 single-RMID clash (FIXED, required by 1).** With resctrl
+selected for a target, mbw and llcocc each created their own mon_group
+(`intp_v2_mbw_*` / `intp_v2_occ_*`) and assigned the SAME tasks — but a
+task can be in only one RMID, so the loser's group read 0. Both
+counters live in one mon_group's mon_data; they now share a refcounted
+`intp_v2_rdt_<pid>` group (`resctrl_target_group_acquire/rescan/
+release`). Verified on the testbed: one group, heavy cgroup reads mbw
+72–99 AND llcocc 74–96 concurrently, idle cgroup mbw isolates to 0.
+
+**Measurement caveats:**
+- Any prior per-cgroup or per-PID v2.1 row recorded mbw as the
+  system-wide value. `--pids` mbw semantics change from
+  IMC-system-wide to task-scoped resctrl (the correct reading of "this
+  workload's mbw", and now the same scope v3.3 reports). Re-run or
+  annotate affected legs; system-wide rows are unaffected.
+- v3.3 needed NO product change (single shared `intp-v3.3` group +
+  resctrl for cgroup mbw already — it was right all along; D11's
+  "v3.3 mbw over-read" observations vs v2.1/intp were in fact v3.3
+  being correctly cgroup-scoped while the others read system-wide).
+
+**3. v3.2/v3.3 test-load-attach robustness (FIXED).** The leak check
+compared global `bpftool prog show | wc -l` before/after — on a busy
+multi-tenant host the system-wide count churns (the testbed now runs
+k3s with ~111 BPF programs; the test false-fails there today), and BPF
+teardown is asynchronous (tp_btf programs linger <0.5s post-exit).
+Now counts only the variant's OWN program names and polls up to 5 s
+for the async drain. Per-variant name lists (v3.2 has
+tp_sched_process_* and no cg_skb/tp_schedlat). Verified 3/3 PASS on
+the k3s-busy testbed.
+
+**Evaluated and deliberately NOT changed:**
+- `shared/validate-cross-variant.sh` — already sequential and
+  PID-targeted; the system-wide/concurrent parity bugs existed only in
+  intp's port of it, fixed there (intp 7c19e21).
+- `bench/validate-attribution.sh` — FLAG: its intra leg profiles
+  heavy/idle/slice-TOTAL with three CONCURRENT v2.1 instances whose
+  cgroups OVERLAP (total ⊇ heavy+idle). With per-target mon_groups,
+  the instances steal each other's tasks via the same single-RMID
+  physics as (2) — per-(metric, instance) values can read ~0 or flap
+  with the rescan cadence. Needs sequential windows or disjoint legs
+  before its resctrl rows are trusted; left to the paper-2 analysis
+  pass rather than a mechanical rewrite here.

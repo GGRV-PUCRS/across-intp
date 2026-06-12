@@ -62,4 +62,17 @@ long resctrl_sum_paths(char paths[][RESCTRL_PATH_MAX], int n_paths);
  * resctrl_assign_pids. Returns 0 when nothing was done or assignment succeeded. */
 int resctrl_rescan_cgroup(const char *name, const char *cgroup_path, int sample_idx);
 
+/* Shared per-target monitoring group (D12). mbm_total_bytes and
+ * llc_occupancy both live in ONE mon_group's mon_data, and a task can be
+ * in only one RMID -- so the mbw and llcocc backends must SHARE a single
+ * group per target, or each steals the cgroup/PID tasks from the other
+ * and the loser reads 0. Refcounted: first acquire creates+populates,
+ * second reuses, removed when the last releases. With no pids and no
+ * cgroup it yields the root group (no RMID cost). */
+int  resctrl_target_group_acquire(const pid_t *pids, size_t n_pids,
+                                  const char *cgroup_path,
+                                  char *out, size_t out_sz);
+void resctrl_target_group_rescan(const char *cgroup_path);
+void resctrl_target_group_release(void);
+
 #endif /* INTP_RESCTRL_H */
