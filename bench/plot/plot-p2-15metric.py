@@ -1,20 +1,23 @@
 #!/usr/bin/env python3
 """plot-p2-15metric.py — P2 validation figure set from a 15-metric campaign.
 
-Renders the FIGURES-PLAN.md "ready today" set (F1-F6) from a cross-deployment
+Renders the FIGURES-PLAN.md "ready today" set from a cross-deployment
 campaign directory:
 
-  F1  ratio-vs-bare (absolute metrics) dot+CI panel        <- cross-deployment.tsv
-  F2  claim-class x significance matrix                    <- cross-deployment.tsv
-  F3  availability grid (portable vs RDT canonicals)       <- portable.tsv scan
-  F4  membw_est vs GT LLC-miss scatter + Spearman rho      <- portable+groundtruth
-  F5  PSI bandwidth-blindness falsification (app05)        <- portable.tsv scan
-  F6  psp directional delta heatmap (Cliff's delta + sig)  <- cross-deployment.tsv
+  F0  per-(env, variant) 15-metric workload fingerprint heatmaps — the
+      direct extension of the SBAC-PAD paper's Figs. 1/2 across the
+      deployment stack                                    <- portable.tsv scan
+  F1  cpu ratio-vs-bare dot+CI panel (absolute metrics)   <- cross-deployment.tsv
+  F2  claim-class x significance matrix                   <- cross-deployment.tsv
+  F3  availability grid with in-figure WHY footnotes      <- portable.tsv scan
+  F4  membw_est validation scatter vs ground truth        <- portable+groundtruth
+  F5  PSI bandwidth-blindness falsification (app05)       <- portable.tsv scan
+  F6  psp delta-vs-bare heatmap (values + effect size)    <- cross-deployment.tsv
 
 Stats come from the analyzer TSV wherever one exists (never recomputed here);
-the raw-capture scans (F3-F5) only take medians. Variant tags map to the
-canonical descriptive labels. The C34 caveat (v2.1 mbw invalid pre-re-run) is
-rendered as a hatched overlay on affected cells, so a reader cannot miss it.
+the raw-capture scans only take medians. Variant tags map to the canonical
+descriptive labels. The C34 caveat (v2.1 mbw invalid pre-re-run) renders as
+red-bordered cells so it travels with the figure.
 
 Usage:
     python3 bench/plot/plot-p2-15metric.py <campaign_dir> [--out DIR]
@@ -35,7 +38,7 @@ import pandas as pd
 
 try:
     from scipy.stats import spearmanr
-except ImportError:  # rho panel degrades gracefully
+except ImportError:
     spearmanr = None
 
 VARIANT_LABELS = {
@@ -45,7 +48,10 @@ VARIANT_LABELS = {
 ENV_ORDER = ["container", "container-podman", "container-lxc", "container-k8s", "vm-guest"]
 ENV_SHORT = {"container": "docker", "container-podman": "podman", "container-lxc": "lxc/incus",
              "container-k8s": "k8s", "vm-guest": "kvm-guest", "bare": "bare"}
-# C34: v2.1 mbw values predate the D12 scope fix -> render hatched/annotated.
+METRICS_CANON = ["netp", "nets", "blk", "mbw", "llcmr", "llcocc", "cpu"]
+METRICS_PORTABLE = ["schedlat", "psi_mem", "membw_est", "psi_io", "schedthr", "steal"]
+METRICS_REGIME = ["psp", "idle_preempt"]
+# C34: v2.1 mbw values predate the D12 scope fix -> red-bordered cells.
 C34_INVALID = {("v2.1", "mbw")}
 
 SIG_ORDER = {"***": 3, "**": 2, "*": 1, "n.s.": 0, "n/a": -1}
@@ -55,8 +61,11 @@ def vlabel(v: str) -> str:
     return VARIANT_LABELS.get(v, v)
 
 
+# ── capture parsing ──────────────────────────────────────────────────────────
+
 def load_capture(path: Path) -> dict[str, float]:
-    """Median per metric of one portable.tsv (header-mapped, ts-offset aware)."""
+    """Median per metric of one portable.tsv (header-mapped, ts-offset aware).
+    '--' columns are absent from the result (metric unavailable)."""
     hdr, cols = None, {}
     for line in path.open(encoding="utf-8", errors="replace"):
         s = line.strip()
@@ -89,9 +98,14 @@ def scan_cells(base: Path):
     return cells
 
 
+def cell_median(cells, env, var, wl, metric):
+    reps = cells.get((env, var, wl), [])
+    vals = [r[metric] for r in reps if metric in r]
+    return statistics.median(vals) if vals else None
+
+
 def gt_llc_miss(rep_dir: Path) -> float | None:
-    """Median GT llc_miss/s for the rep (groundtruth.tsv: ts cpu_busy_pct ...
-    llc_ref llc_miss ...; median over the window, robust to warmup spill)."""
+    """Median GT llc_miss/s over the rep window (groundtruth.tsv)."""
     gt = rep_dir / "groundtruth.tsv"
     if not gt.exists():
         return None
@@ -111,45 +125,119 @@ def gt_llc_miss(rep_dir: Path) -> float | None:
     return statistics.median(vals) if vals else None
 
 
-# ── F1: ratio vs bare (absolute) ────────────────────────────────────────────
+# ── F0: 15-metric fingerprint heatmaps (paper Fig. 1/2 style) ───────────────
+
+def fig_fingerprint(cells, out: Path):
+    """Workload x metric heatmap with inline values, one panel per (env,
+    variant); the SBAC-PAD Figs. 1/2 layout extended to 15 metrics and the
+    deployment stack. %-metrics are raw; membw_est and psp (different units)
+    are normalized to the panel maximum and flagged with '*'."""
+    envs = ["bare", "container", "vm-guest"]
+    variants = sorted({k[1] for k in cells})
+    wls = sorted({k[2] for k in cells})
+    metrics = METRICS_CANON + METRICS_PORTABLE + METRICS_REGIME
+    norm_only = {"membw_est", "psp"}   # not 0-100-clamped -> panel-normalized
+
+    fig, axes = plt.subplots(len(variants), len(envs),
+                             figsize=(7.2 * len(envs), 0.42 * len(wls) * len(variants) + 3.2),
+                             squeeze=False)
+    for r, var in enumerate(variants):
+        for c, env in enumerate(envs):
+            ax = axes[r][c]
+            grid = np.full((len(wls), len(metrics)), np.nan)
+            raw = {}
+            for yi, wl in enumerate(wls):
+                for xi, m in enumerate(metrics):
+                    v = cell_median(cells, env, var, wl, m)
+                    if v is not None:
+                        raw[(yi, xi)] = v
+            # normalize the unbounded metrics to panel max -> 0-100
+            for xi, m in enumerate(metrics):
+                if m in norm_only:
+                    col = [raw[(yi, xi)] for yi in range(len(wls)) if (yi, xi) in raw]
+                    mx = max(col) if col else 1.0
+                    for yi in range(len(wls)):
+                        if (yi, xi) in raw:
+                            grid[yi, xi] = 100.0 * raw[(yi, xi)] / mx if mx > 0 else 0.0
+                else:
+                    for yi in range(len(wls)):
+                        if (yi, xi) in raw:
+                            grid[yi, xi] = min(raw[(yi, xi)], 100.0)
+            masked = np.ma.masked_invalid(grid)
+            cmap = plt.cm.Blues.copy()
+            cmap.set_bad("#d9d9d9")    # grey = metric unavailable ('--')
+            im = ax.imshow(masked, cmap=cmap, vmin=0, vmax=100, aspect="auto")
+            for yi in range(len(wls)):
+                for xi in range(len(metrics)):
+                    if not np.isnan(grid[yi, xi]):
+                        v = grid[yi, xi]
+                        if v >= 1:
+                            ax.text(xi, yi, f"{v:.0f}", ha="center", va="center",
+                                    fontsize=6.5,
+                                    color="white" if v > 55 else "#08306b")
+                    # C34 invalid cells: red border
+                    if (var, metrics[xi]) in C34_INVALID:
+                        ax.add_patch(plt.Rectangle((xi - 0.5, yi - 0.5), 1, 1,
+                                     fill=False, edgecolor="crimson", lw=1.2))
+            ax.set_xticks(range(len(metrics)))
+            labels = [m + ("*" if m in norm_only else "") for m in metrics]
+            ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=7)
+            ax.set_yticks(range(len(wls)))
+            ax.set_yticklabels([w.replace("_", " ") for w in wls], fontsize=7)
+            ax.set_title(f"{ENV_SHORT[env]} / {vlabel(var)}", fontsize=10)
+            ax.axvline(6.5, color="k", lw=1.0)
+            ax.axvline(12.5, color="k", lw=1.0)
+    cbar = fig.colorbar(im, ax=axes, fraction=0.015, pad=0.01)
+    cbar.set_label("interference (%)")
+    fig.suptitle("F0 — Per-(env, variant) 15-metric workload fingerprint "
+                 "(canonical 7 | portable 6 | scheduling-regime 2)\n"
+                 "grey = metric unavailable ('--');  * = panel-normalized to max "
+                 "(membw_est MB/s, psp events/s);  red border = v2.1 mbw invalid pre-D12 re-run (C34)",
+                 fontsize=11)
+    fig.savefig(out / "F0-fingerprint-heatmap.png", dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+
+# ── F1: cpu ratio vs bare (absolute) ────────────────────────────────────────
 
 def fig_ratio(df: pd.DataFrame, out: Path):
     d = df[df.claim_class == "absolute"].copy()
     metrics = sorted(d.metric.unique())
     variants = sorted(d.variant.unique())
-    fig, axes = plt.subplots(len(variants), len(metrics),
-                             figsize=(3.2 * len(metrics), 3.0 * len(variants)),
+    # one row, variants side by side (per review: no column stacking)
+    fig, axes = plt.subplots(1, len(variants) * len(metrics),
+                             figsize=(5.4 * len(variants) * len(metrics), 3.6),
                              sharey=True, squeeze=False)
-    for r, var in enumerate(variants):
-        for c, m in enumerate(metrics):
-            ax = axes[r][c]
+    col = 0
+    for m in metrics:
+        for var in variants:
+            ax = axes[0][col]; col += 1
             sub = d[(d.variant == var) & (d.metric == m)]
+            wls = sorted(sub.workload.unique())
             for i, env in enumerate(ENV_ORDER):
-                s = sub[sub.env == env]
-                if s.empty:
-                    continue
-                x = np.arange(len(s)) + i * 0.13 - 0.26
-                # The bootstrap CI can exclude the point ratio (median-of-
-                # medians vs resampled); clamp the bar arms at 0 for render.
+                s = sub[sub.env == env].set_index("workload").reindex(wls)
+                x = np.arange(len(wls)) + (i - 2) * 0.14
                 lo = np.clip(s.ratio - s.ci_lo, 0, None)
                 hi = np.clip(s.ci_hi - s.ratio, 0, None)
-                ax.errorbar(x, s.ratio, yerr=[lo, hi],
-                            fmt="o", ms=4, capsize=2, label=ENV_SHORT[env])
-            ax.axhspan(0.8, 1.25, color="green", alpha=0.08)
-            ax.axhline(1.0, color="k", lw=0.6, ls=":")
-            ax.set_yscale("log")
-            ax.set_title(f"{vlabel(var)} — {m}", fontsize=9)
-            wls = sorted(sub.workload.unique())
+                ax.errorbar(x, s.ratio, yerr=[lo.fillna(0), hi.fillna(0)],
+                            fmt="o", ms=4.5, capsize=2, label=ENV_SHORT[env])
+            ax.axhspan(0.8, 1.25, color="green", alpha=0.10)
+            ax.axhline(1.0, color="k", lw=0.7, ls=":")
             ax.set_xticks(range(len(wls)))
-            ax.set_xticklabels([w.split("_")[0] for w in wls], rotation=45, fontsize=7)
-            if (var, m) in C34_INVALID:
-                ax.text(0.5, 0.5, "C34: INVALID\n(pre-D12 scope)", transform=ax.transAxes,
-                        ha="center", va="center", fontsize=11, color="crimson",
-                        bbox=dict(facecolor="white", alpha=0.85), rotation=15)
-            if r == 0 and c == len(metrics) - 1:
-                ax.legend(fontsize=6, loc="upper left")
-    fig.suptitle("F1 — Overhead vs bare, ABSOLUTE metrics (ratio + bootstrap CI; band = W4 0.8–1.25x)", y=1.0)
-    fig.tight_layout()
+            ax.set_xticklabels([w.split("_")[0] for w in wls], fontsize=8)
+            ax.set_ylim(0, 3.8)
+            ax.set_title(f"{vlabel(var)} — {m}", fontsize=10)
+            if col == 1:
+                ax.set_ylabel("ratio vs bare (1.0 = identical)")
+            ax.annotate("kvm-guest ≈ 3x = the 1/3-core guest capacity,\nnot profiler error",
+                        xy=(0.02, 0.94), xycoords="axes fraction", fontsize=7,
+                        va="top", color="#444444")
+    handles, labels = axes[0][0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", ncol=len(ENV_ORDER),
+               fontsize=8, frameon=False, bbox_to_anchor=(0.5, -0.04))
+    fig.suptitle("F1 — ABSOLUTE metrics: ratio vs bare with bootstrap CI "
+                 "(green band = W4 equivalence 0.8–1.25x)", fontsize=11)
+    fig.tight_layout(rect=(0, 0.04, 1, 0.94))
     fig.savefig(out / "F1-ratio-vs-bare.png", dpi=160, bbox_inches="tight")
     plt.close(fig)
 
@@ -158,51 +246,53 @@ def fig_ratio(df: pd.DataFrame, out: Path):
 
 def fig_claimclass(df: pd.DataFrame, out: Path):
     variants = sorted(df.variant.unique())
-    fig, axes = plt.subplots(1, len(variants), figsize=(7.2 * len(variants), 4.6), squeeze=False)
+    fig, axes = plt.subplots(1, len(variants), figsize=(7.2 * len(variants), 5.0), squeeze=False)
     cls_color = {"absolute": "#2c7fb8", "directional": "#fdae61", "descriptive": "#bdbdbd"}
+    all_metrics = sorted(df.metric.unique())
     for c, var in enumerate(variants):
         ax = axes[0][c]
         sub = df[df.variant == var]
-        metrics = sorted(sub.metric.unique())
-        for yi, m in enumerate(metrics):
+        for yi, m in enumerate(all_metrics):
             for xi, env in enumerate(ENV_ORDER):
                 s = sub[(sub.metric == m) & (sub.env == env)]
                 if s.empty:
-                    continue
+                    continue   # blank = metric unavailable in this env ('--')
                 cls = s.claim_class.iloc[0]
                 best = max((SIG_ORDER.get(x, 0) for x in s.signif), default=0)
                 ax.add_patch(plt.Rectangle((xi, yi), 0.94, 0.94,
                                            color=cls_color.get(cls, "#eeeeee"),
                                            alpha=0.35 + 0.2 * min(best, 3) / 3))
-                stars = {3: "***", 2: "**", 1: "*", 0: "n.s.", -1: ""}[best]
-                txt = stars
+                txt = {3: "***", 2: "**", 1: "*", 0: "n.s.", -1: ""}[best]
                 if (var, m) in C34_INVALID:
                     txt = "C34!"
                 ax.text(xi + 0.47, yi + 0.47, txt, ha="center", va="center", fontsize=8)
-        ax.set_xlim(0, len(ENV_ORDER)); ax.set_ylim(0, len(metrics))
+        ax.set_xlim(0, len(ENV_ORDER)); ax.set_ylim(0, len(all_metrics))
         ax.set_xticks(np.arange(len(ENV_ORDER)) + 0.5)
         ax.set_xticklabels([ENV_SHORT[e] for e in ENV_ORDER], fontsize=8)
-        ax.set_yticks(np.arange(len(metrics)) + 0.5)
-        ax.set_yticklabels(metrics, fontsize=8)
+        ax.set_yticks(np.arange(len(all_metrics)) + 0.5)
+        ax.set_yticklabels(all_metrics, fontsize=8)
         ax.set_title(f"{vlabel(var)}", fontsize=10)
         ax.invert_yaxis()
-    handles = [plt.Rectangle((0, 0), 1, 1, color=v, alpha=0.55) for v in cls_color.values()]
-    axes[0][-1].legend(handles, cls_color.keys(), fontsize=7, loc="upper right",
-                       bbox_to_anchor=(1.0, -0.08), ncol=3)
-    fig.suptitle("F2 — Claim class x best vs-bare significance (env x metric); 'C34!' = v2.1 mbw invalid pre-re-run")
-    fig.tight_layout()
+    handles = ([plt.Rectangle((0, 0), 1, 1, color=v, alpha=0.55) for v in cls_color.values()]
+               + [plt.Rectangle((0, 0), 1, 1, facecolor="white", edgecolor="#999999")])
+    labels = list(cls_color.keys()) + ["blank = metric unavailable in env ('--')"]
+    fig.legend(handles, labels, loc="lower center", ncol=4, fontsize=8, frameon=False,
+               bbox_to_anchor=(0.5, -0.02))
+    fig.suptitle("F2 — Claim class x best vs-bare significance per (env, metric)\n"
+                 "stars = BH-FDR-corrected Mann-Whitney significance of the env-vs-bare delta; "
+                 "'C34!' = v2.1 mbw invalid pre-re-run", fontsize=11)
+    fig.tight_layout(rect=(0, 0.05, 1, 0.92))
     fig.savefig(out / "F2-claim-class-matrix.png", dpi=160, bbox_inches="tight")
     plt.close(fig)
 
 
-# ── F3: availability grid ───────────────────────────────────────────────────
+# ── F3: availability grid with WHY footnotes ────────────────────────────────
 
 def fig_availability(cells, out: Path):
-    metrics = ["schedlat", "psi_mem", "membw_est", "psi_io", "schedthr", "steal",
-               "psp", "idle_preempt", "mbw", "llcocc", "llcmr"]
+    metrics = METRICS_PORTABLE + METRICS_REGIME + ["mbw", "llcocc", "llcmr"]
     variants = sorted({k[1] for k in cells})
     envs = ["bare"] + ENV_ORDER
-    fig, axes = plt.subplots(1, len(variants), figsize=(6.4 * len(variants), 3.6), squeeze=False)
+    fig, axes = plt.subplots(1, len(variants), figsize=(6.8 * len(variants), 4.6), squeeze=False)
     for c, var in enumerate(variants):
         ax = axes[0][c]
         for yi, env in enumerate(envs):
@@ -212,8 +302,8 @@ def fig_availability(cells, out: Path):
                 color = "#41ab5d" if ok else "#d9d9d9"
                 ax.add_patch(plt.Rectangle((xi, yi), 0.92, 0.92, color=color))
                 ax.text(xi + 0.46, yi + 0.46, "ok" if ok else "--",
-                        ha="center", va="center", fontsize=7,
-                        color="white" if ok else "#636363")
+                        ha="center", va="center",
+                        fontsize=7.5, color="white" if ok else "#636363")
         ax.set_xlim(0, len(metrics)); ax.set_ylim(0, len(envs))
         ax.set_xticks(np.arange(len(metrics)) + 0.5)
         ax.set_xticklabels(metrics, rotation=45, ha="right", fontsize=8)
@@ -221,26 +311,25 @@ def fig_availability(cells, out: Path):
         ax.set_yticklabels([ENV_SHORT[e] for e in envs], fontsize=8)
         ax.invert_yaxis()
         ax.axvline(8, color="k", lw=1.2)
-        ax.set_title(f"{vlabel(var)}   (left: portable+regime | right: RDT canonicals)", fontsize=9)
-    fig.suptitle("F3 — Availability: the portable set stays numeric in kvm-guest where the RDT canonicals go '--'")
-    fig.tight_layout()
+        ax.set_title(f"{vlabel(var)}   (left: portable + regime | right: RDT canonicals)", fontsize=9)
+    fig.suptitle("F3 — Availability across the deployment stack: the portable set stays numeric in "
+                 "kvm-guest where the RDT canonicals go '--'", fontsize=11)
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
     fig.savefig(out / "F3-availability-grid.png", dpi=160, bbox_inches="tight")
     plt.close(fig)
 
 
-# ── F4/F5: faithfulness + PSI falsification ─────────────────────────────────
+# ── F4: validation scatter ──────────────────────────────────────────────────
 
-def fig_faithfulness(base: Path, cells, out: Path):
+def fig_validation(base: Path, cells, out: Path):
     variants = sorted({k[1] for k in cells})
-    fig, axes = plt.subplots(1, 2, figsize=(11, 4.4))
-
-    ax = axes[0]
+    fig, ax = plt.subplots(figsize=(6.4, 4.8))
     for var in variants:
         xs, ys = [], []
         for f in glob.glob(str(base / "*/v*/solo/*/rep*/portable.tsv")):
             p = Path(f)
             env, v, wl = p.parts[-6], p.parts[-5], p.parts[-3]
-            if v != var or env == "vm-guest":   # host-side GT only (scope caveat)
+            if v != var or env == "vm-guest":   # GT is host-side; guest rows excluded
                 continue
             cap = load_capture(p)
             gt = gt_llc_miss(p.parent)
@@ -248,45 +337,76 @@ def fig_faithfulness(base: Path, cells, out: Path):
                 xs.append(gt); ys.append(cap["membw_est"])
         if xs:
             rho = spearmanr(xs, ys)[0] if spearmanr else float("nan")
-            ax.scatter(xs, ys, s=12, alpha=0.55, label=f"{vlabel(var)}  ρ={rho:.3f} (n={len(xs)})")
+            ax.scatter(xs, ys, s=14, alpha=0.55, label=f"{vlabel(var)}   ρ = {rho:.2f}  (n={len(xs)} reps)")
     ax.set_xscale("log"); ax.set_yscale("log")
-    ax.set_xlabel("GT cache-misses (host perf, per rep)"); ax.set_ylabel("membw_est (MB/s)")
-    ax.set_title("F4 — membw_est vs ground truth")
-    ax.legend(fontsize=8)
-
-    ax = axes[1]
-    envs = ["bare"] + ENV_ORDER
-    width = 0.38
-    for vi, var in enumerate(variants):
-        mb, psi = [], []
-        for env in envs:
-            reps = cells.get((env, var, "app05_streaming"), [])
-            mb.append(statistics.median([r.get("membw_est", 0) for r in reps]) if reps else 0)
-            psi.append(statistics.median([r.get("psi_mem", 0) for r in reps]) if reps else 0)
-        x = np.arange(len(envs)) + (vi - 0.5) * width
-        ax.bar(x, mb, width * 0.9, label=f"{vlabel(var)} membw_est")
-        for xi, p in zip(x, psi):
-            ax.text(xi, max(mb) * 1.02, f"psi={p:.0f}", rotation=90, fontsize=6, ha="center")
-    ax.set_yscale("log")
-    ax.set_xticks(np.arange(len(envs)))
-    ax.set_xticklabels([ENV_SHORT[e] for e in envs], fontsize=8)
-    ax.set_ylabel("membw_est MB/s (log)")
-    ax.set_title("F5 — PSI bandwidth-blindness (app05): membw_est high, psi_mem flat")
-    ax.legend(fontsize=7)
-
+    ax.set_xlabel("ground truth: LLC misses/s seen by host perf (median of the rep window)")
+    ax.set_ylabel("membw_est (MB/s, median of the rep window)")
+    ax.set_title("F4 — Validation: membw_est tracks true memory traffic\n"
+                 "each point = one rep (host envs, all 7 workloads); ρ = Spearman rank correlation;\n"
+                 "log-log because the workloads span three decades of memory intensity", fontsize=10)
+    ax.legend(fontsize=9)
+    ax.grid(alpha=0.2, which="both")
     fig.tight_layout()
-    fig.savefig(out / "F4F5-faithfulness-psi.png", dpi=160, bbox_inches="tight")
+    fig.savefig(out / "F4-membw-validation.png", dpi=160, bbox_inches="tight")
     plt.close(fig)
 
 
-# ── F6: psp directional heatmap ─────────────────────────────────────────────
+# ── F5: PSI falsification ───────────────────────────────────────────────────
+
+def fig_psi(cells, out: Path):
+    variants = sorted({k[1] for k in cells})
+    envs = ["bare"] + ENV_ORDER
+    fig, ax = plt.subplots(figsize=(7.6, 4.4))
+    width = 0.38
+    psi_all_zero = True
+    for vi, var in enumerate(variants):
+        mb = []
+        for env in envs:
+            mb.append(cell_median(cells, env, var, "app05_streaming", "membw_est") or 0)
+            psi = cell_median(cells, env, var, "app05_streaming", "psi_mem")
+            if psi and psi > 0.5:
+                psi_all_zero = False
+        x = np.arange(len(envs)) + (vi - 0.5) * width
+        ax.bar(x, mb, width * 0.9, label=f"{vlabel(var)}")
+    ax.set_yscale("log")
+    ax.set_xticks(np.arange(len(envs)))
+    ax.set_xticklabels([ENV_SHORT[e] for e in envs], fontsize=9)
+    ax.set_ylabel("membw_est on app05_streaming (MB/s, log)")
+    note = ("psi_mem = 0 % in EVERY (env, variant) cell\nwhile membw_est is saturated\n"
+            "→ PSI is blind to bandwidth contention;\nmembw_est carries that dimension")
+    if not psi_all_zero:
+        note = "psi_mem ≤ 0.5 % in all but flagged cells (see report §3)"
+    ax.annotate(note, xy=(0.03, 0.93), xycoords="axes fraction", fontsize=9,
+                va="top", ha="left",
+                bbox=dict(boxstyle="round", facecolor="#fff3cd", edgecolor="#b8860b"))
+    ax.annotate("kvm-guest reads ~10x higher: the in-guest estimator\nderives from guest-side counters (scale, not error)",
+                xy=(0.62, 0.10), xycoords="axes fraction", fontsize=7.5, color="#444444")
+    ax.legend(fontsize=9, loc="upper right")
+    ax.set_title("F5 — Falsification: PSI memory pressure cannot see bandwidth saturation\n"
+                 "(app05_streaming pins the memory channels; psi_mem only reacts to CAPACITY reclaim)",
+                 fontsize=10)
+    fig.tight_layout()
+    fig.savefig(out / "F5-psi-bandwidth-blindness.png", dpi=160, bbox_inches="tight")
+    plt.close(fig)
+
+
+# ── F6: psp directional heatmap with values ─────────────────────────────────
+
+def _fmt_delta(d: float) -> str:
+    if abs(d) >= 10000:
+        return f"{d/1000:+.0f}k"
+    if abs(d) >= 1000:
+        return f"{d/1000:+.1f}k"
+    return f"{d:+.0f}"
+
 
 def fig_psp(df: pd.DataFrame, out: Path):
     d = df[df.metric == "psp"].copy()
     if d.empty:
         return
+    d["delta"] = pd.to_numeric(d["delta"], errors="coerce")
     variants = sorted(d.variant.unique())
-    fig, axes = plt.subplots(1, len(variants), figsize=(5.6 * len(variants), 3.8), squeeze=False)
+    fig, axes = plt.subplots(1, len(variants), figsize=(6.4 * len(variants), 4.4), squeeze=False)
     for c, var in enumerate(variants):
         ax = axes[0][c]
         sub = d[d.variant == var]
@@ -301,16 +421,29 @@ def fig_psp(df: pd.DataFrame, out: Path):
         for yi, wl in enumerate(wls):
             for xi, env in enumerate(ENV_ORDER):
                 s = sub[(sub.workload == wl) & (sub.env == env)]
-                if not s.empty:
-                    ax.text(xi, yi, s.signif.iloc[0], ha="center", va="center", fontsize=7)
+                if s.empty:
+                    continue
+                sig = s.signif.iloc[0] != "n.s." and s.signif.iloc[0] != "n/a"
+                val = _fmt_delta(s.delta.iloc[0]) if pd.notna(s.delta.iloc[0]) else "?"
+                ax.text(xi, yi - 0.16, val, ha="center", va="center", fontsize=8,
+                        fontweight="bold" if sig else "normal",
+                        color="white" if abs(grid[yi, xi]) > 0.6 else "black")
+                ax.text(xi, yi + 0.24, s.signif.iloc[0], ha="center", va="center",
+                        fontsize=6.5,
+                        color="white" if abs(grid[yi, xi]) > 0.6 else "#444444")
         ax.set_xticks(range(len(ENV_ORDER)))
         ax.set_xticklabels([ENV_SHORT[e] for e in ENV_ORDER], fontsize=8)
         ax.set_yticks(range(len(wls)))
-        ax.set_yticklabels([w.split("_")[0] for w in wls], fontsize=8)
+        ax.set_yticklabels([w.replace("_", " ") for w in wls], fontsize=8)
         ax.set_title(f"{vlabel(var)}", fontsize=10)
-        fig.colorbar(im, ax=ax, label="Cliff's δ (psp vs bare)")
-    fig.suptitle("F6 — Scheduling-regime psp: direction/effect of env vs bare (cells = BH-FDR significance)")
-    fig.tight_layout()
+        cb = fig.colorbar(im, ax=ax, fraction=0.045)
+        cb.set_label("Cliff's δ (effect size of env vs bare)", fontsize=8)
+    fig.suptitle("F6 — Scheduling-regime metric psp (involuntary preemptions/s of the profiled workload)\n"
+                 "cell number = median Δ vs bare (events/s; bold = significant after BH-FDR);  "
+                 "red = MORE preemptions than bare, blue = fewer;\n"
+                 "'***/**/*' = corrected p < 0.001 / 0.01 / 0.05;  'n.s.' = not significant",
+                 fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
     fig.savefig(out / "F6-psp-directional.png", dpi=160, bbox_inches="tight")
     plt.close(fig)
 
@@ -332,10 +465,12 @@ def main() -> int:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     cells = scan_cells(base)
+    fig_fingerprint(cells, out)
     fig_ratio(df, out)
     fig_claimclass(df, out)
     fig_availability(cells, out)
-    fig_faithfulness(base, cells, out)
+    fig_validation(base, cells, out)
+    fig_psi(cells, out)
     fig_psp(df, out)
     for f in sorted(out.glob("*.png")):
         print(f)
