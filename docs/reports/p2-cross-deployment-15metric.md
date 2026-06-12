@@ -1,5 +1,13 @@
 # Cross-deployment paired-delta (vs bare) — results/p2-15metric-xdeploy-1of3 (1/3 footprint + hard CPU pinning; supersedes the 2/3 run)
 
+> **CAVEAT (C34/D12, 2026-06-12):** every **v2.1 `mbw`** value in this report
+> predates the D12 scope fix (per-cgroup mbw silently read a partial/system
+> uncore source; ~13-20x below the correctly scoped v3.3 on bandwidth-heavy
+> workloads). Treat v2.1 mbw rows as INVALID pending the targeted v2.1 re-run
+> (docs/DECISIONS-container.md C34). v3.3 mbw, all other metrics, and all
+> vm-guest cells are unaffected; llcocc is unaffected in this banked data.
+
+
 Deployment axis: bare -> container -> container-podman -> container-lxc -> container-k8s -> vm-guest. Variants: v2.1, v3.3. Stage: solo. Metrics with data: 15/13. scipy: yes.
 
 Statistic is claim-class-gated (intp_metrics.CLAIM_CLASS): **absolute** = ratio vs bare + bootstrap CI, W4 band 0.8-1.25; **directional** = delta + effect size, RANK-ONLY (no absolute-overhead claim); **descriptive** = median+IQR delta vs bare. Every env-vs-bare pair carries Mann-Whitney U p (BH-FDR across the env family) + Cliff's delta.

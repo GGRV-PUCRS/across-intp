@@ -1,5 +1,13 @@
 # Portable-metrics faithfulness adjudication — results/p2-15metric-xdeploy-1of3 (1/3 footprint + hard CPU pinning; supersedes the 2/3 run)
 
+> **CAVEAT (C34/D12, 2026-06-12):** every **v2.1 `mbw`** value in this report
+> predates the D12 scope fix (per-cgroup mbw silently read a partial/system
+> uncore source; ~13-20x below the correctly scoped v3.3 on bandwidth-heavy
+> workloads). Treat v2.1 mbw rows as INVALID pending the targeted v2.1 re-run
+> (docs/DECISIONS-container.md C34). v3.3 mbw, all other metrics, and all
+> vm-guest cells are unaffected; llcocc is unaffected in this banked data.
+
+
 Cells with data: 60 | reps/cell: min 12 max 12 | scipy: yes
 
 ## §1 Availability matrix (portable metrics render numeric vs '--')

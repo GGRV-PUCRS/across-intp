@@ -1070,3 +1070,54 @@ is in flight and is the single idle-window command (staged-tar loads,
 installers, on-box WITH_SUITES image build, verification, READY manifest with
 launch commands). Campaign chaining stays monitor-driven from the dev side
 (no remote queue daemon) per the operator's decision.
+
+### C34 — D12 impact on the banked P2 campaigns: v2.1 mbw column invalid; targeted v2.1 re-run required; ceiling question (2026-06-12)
+
+Upstream D12 (DECISIONS.md, 2026-06-12) fixed v2.1's mbw chain: for
+`--cgroup`/`--pids` targets it had silently preferred the uncore IMC PMUs
+(system-total by physics) and, once routed to resctrl, the mbw/llcocc
+single-RMID clash (both now share one refcounted `intp_v2_rdt_<pid>` group).
+v3.3 needed no change — it was correctly cgroup-scoped all along.
+
+**Impact on the banked Tier-A 1/3 campaign (results/p2-15metric-xdeploy-1of3,
+reports at 0eaa86c):** every v2.1 cell ran cgroup-targeted, so every v2.1
+`mbw` value is from the pre-fix chain. Quantified against v3.3 (the correct
+scope) on the banked snapshot, per-cell medians:
+
+| workload | v2.1 mbw (median) | v3.3 mbw (median) | ratio |
+|---|---|---|---|
+| app05_streaming | 17 | 318–340 | ~19x |
+| app17_mem_pressure | 6–7 | 119–134 | ~18x |
+| app11_sort_net | 1–2 | 25–49 | ~20x |
+| app01_ml_llc | 2 | 24–35 | ~13x |
+| app13_query_scan | 1 | 12–16 | ~13x |
+| app10_search / app16 | 0 | 0–6 | — |
+
+The discrepancy is structural (likely a partial uncore-box read on this
+host), not a small background bias — the banked v2.1 mbw column supports NO
+absolute, ratio, or cross-variant claim. llcocc is NOT affected in the banked
+data (pre-fix mbw never claimed a resctrl group, so no RMID clash occurred);
+all other columns are untouched. vm-guest v2.1 is unaffected (mbw is
+structurally `--` in-guest). D11's "v3.3 mbw over-read vs v2.1" reading
+inverts: v3.3 was right.
+
+**Decision: targeted re-run, not annotation.** Re-collect v2.1 x 5 host-side
+envs x 7 workloads x 12 reps (420 cells, ~14 h) into the SAME campaign dir,
+replacing the v2.1 cells wholesale (replacing only the mbw column would mix
+runs). v3.3 cells stay banked. Gate the re-run on a post-sync D12 smoke on
+the testbed (idle-cgroup mbw=0; app05 cgroup mbw high WITH llcocc concurrent
+— the D12 verification pair) after rebuilding the v2.1 binary there.
+
+**Open question to settle BEFORE the re-run — the mbw ceiling.** v3.3
+medians >100 (app05 ~320) mean the detected host ceiling (42 656 MB/s per
+the campaign log) is ~6x below the machine's achievable bandwidth, so mbw%
+saturates/clamps and loses dynamic range exactly where the metric matters;
+in-guest detection on the same box derives 281 600 MB/s. Audit
+intp-detect.sh's derivation (and the v2.1/v3.3 normalize+clamp paths) and
+either fix the ceiling source or re-derive it empirically (STREAM peak)
+before spending the 14 h — otherwise the re-run inherits a saturated scale.
+
+W5 dodged this: the colocation campaign was aborted pre-data (its v2.1
+victim-scoped mbw under a noisy neighbour would have been system-wide =
+victim+aggressor — the worst case of this bug). W5 relaunch is gated on the
+same D12 sync + smoke.
