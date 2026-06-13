@@ -1137,3 +1137,20 @@ both gates on the rebuilt v2.1 (idle cgroup mbw=0; heavy stream cgroup
 mbw=30 with llcocc=86-96 concurrently), and the 420-cell targeted v2.1
 re-run (5 host envs x 7 workloads x 12 reps, ~18 h) is running into the
 campaign dir; vm-guest v2.1 and all v3.3 cells stay banked.
+
+**C34 closure — re-run done + merged (2026-06-13).** The 420-cell re-run
+finished clean (DONE 13:08, ~17 h). It was folded into the canonical campaign
+by `bench/merge-and-render-p2.sh`, which keeps a three-folder contract: the
+previous run is archived untouched as `...-prerun-banked` (base of truth), the
+fresh pull lands in `...-rerun`, and the canonical `...-xdeploy-1of3` is
+rebuilt as base + only the 5 host-env v2.1 subtrees overlaid from the re-run.
+An integrity diff confirmed that outside the re-run scope the merged tree is
+byte-identical to the fresh pull (v3.3 everywhere + vm-guest/v2.1 -> no drift).
+The scope fix is visible end-to-end: v2.1 `app05_streaming` mbw moved 17 ->
+33 (matching the D12 smoke's heavy-stream 30, and within ~1.5x of the banked
+v3.3 ~320 once that is rescaled by 0.151 to ~48 on the audited ceiling) -- the
+old ~19x v2.1/v3.3 gap is gone. Reports were regenerated (the v2.1-mbw-INVALID
+caveat dropped; a smaller ceiling note retained for the v3.3 absolute
+asymmetry), and the figure set re-rendered (`C34_INVALID` is now empty -> the
+crimson hatch/borders are gone). Next: W5 relaunch -- now unblocked on the D12
+sync and running the correctly-scoped v2.1 binary.

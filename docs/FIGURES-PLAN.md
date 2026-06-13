@@ -4,8 +4,8 @@ Specification of the paper figure set, each figure tied to its **claim**, its
 **data source** (campaign + file), and the **plot script** that renders it
 (existing under `bench/plot/`, or the named gap). The Ready column tracks
 whether the figure can be rendered from data banked today
-(`results/p2-15metric-xdeploy-1of3`, snapshot 20260612T112030Z) or is blocked
-by a queued campaign / the C34 v2.1 re-run.
+(`results/p2-15metric-xdeploy-1of3`, the canonical campaign with the C34 v2.1
+re-run merged in on 2026-06-13) or is blocked by a queued campaign.
 
 Conventions: variant labels use the descriptive names (stap-legacy / hybrid-c
 / ebpf-agg …) per the canonical map, not bare vN tags; every figure that
@@ -16,13 +16,13 @@ the analyzer TSVs (never recomputed in the plot layer).
 
 | id | Claim the figure carries | Data | Script | Ready |
 |---|---|---|---|---|
-| F1 | Containers preserve the canonical 7 (ratio≈1 in the W4 band); the VM boundary does not | `cross-deployment.tsv` (absolute rows: ratio + CI vs bare) | `plot-cross-environment.py` (omnibus/boxplots) — feed the analyzer TSV, facet env x metric | ready, EXCEPT v2.1 mbw cells (C34 re-run) |
+| F1 | Containers preserve the canonical 7 (ratio≈1 in the W4 band); the VM boundary does not | `cross-deployment.tsv` (absolute rows: ratio + CI vs bare) | `plot-cross-environment.py` (omnibus/boxplots) — feed the analyzer TSV, facet env x metric | ready (C34 v2.1 re-run merged 2026-06-13) |
 | F2 | Claim-class taxonomy at a glance: absolute / directional / descriptive per metric x env | `cross-deployment.tsv` (claim_class + signif columns) | gap: small matrix/heatmap renderer (`plot-claim-class-matrix.py`) | ready (class structure unaffected by C34) |
 | F3 | Availability matrix: what the VM destroys (mbw/llcocc -> `--`) vs what the portable set keeps | portable report §1 (re-derive from portable.tsv availability) | gap: availability-grid renderer (boolean heatmap, v2.1/v3.3 panels) | ready |
 | F4 | membw_est is faithful (rho≈0.92 vs GT LLC misses), so the bandwidth dimension survives where RDT is absent | portable.tsv + groundtruth.tsv pairs (solo, traffic-gated) | gap: scatter+rho panel (`plot-portable-faithfulness.py`) | ready |
 | F5 | PSI is bandwidth-blind (falsification): membw_est high while psi_mem flat, every env | portable report §3 cells (app05) | same script as F4 (second panel) | ready |
 | F6 | Scheduling-regime pair: psp fires in solo under oversubscription (app16) and separates envs directionally; idle_preempt is eBPF-only | `cross-deployment.tsv` directional rows (psp, idle_preempt) | `plot-cross-environment.py` directional facet; verify psp y-scale (events/s, log) | ready |
-| F7 | 15-metric fingerprint geometry: the added dimensions are non-redundant (PCA + correlation circle per variant) | per-rep portable.tsv vectors | `plot-pca-correlation-circle.py` + `plot_pca_dendro.py` (verify 15-col input) | ready, mbw axis caveat until C34 re-run |
+| F7 | 15-metric fingerprint geometry: the added dimensions are non-redundant (PCA + correlation circle per variant) | per-rep portable.tsv vectors | `plot-pca-correlation-circle.py` + `plot_pca_dendro.py` (verify 15-col input) | ready (C34 re-run merged; v3.3 mbw axis on pre-audit ceiling — x0.151, see report note) |
 
 ## P2 §overhead — cadence sweep (queued campaign)
 
@@ -47,13 +47,14 @@ the analyzer TSVs (never recomputed in the plot layer).
 
 ## Cross-cutting blockers and order-of-operations
 
-1. **C34 v2.1 re-run gates F1/F7 final renders** (mbw axis). Render
-   everything else from the banked data now; re-render those two after the
-   re-run replaces the v2.1 cells.
-2. **mbw ceiling audit gates the re-run itself** (C34 open question): v3.3
-   medians >100 mean the detected ceiling under-reads the machine ~6x; fix
-   `intp-detect.sh`'s derivation (or re-derive empirically via a STREAM peak)
-   first, otherwise F1's mbw panel saturates at the clamp.
+1. **C34 v2.1 re-run — DONE (2026-06-13).** The re-run completed and was
+   merged into the canonical campaign (`bench/merge-and-render-p2.sh`); F1/F7
+   are re-rendered with corrected v2.1 mbw cells. No longer a blocker.
+2. **mbw ceiling audit — CLOSED.** The 42 656 MB/s was intp-detect.sh's
+   DDR4 fallback; the audited machine ceiling is 281 600 MB/s. The v2.1 re-run
+   inherited the correct ceiling; banked v3.3 mbw absolute values carry the
+   pre-audit ceiling (multiply by 0.151), flagged in the report ceiling note —
+   within-variant ratios are ceiling-invariant.
 3. The **figure-set dry run on banked data** (F1–F7) is the cheapest way to
    surface plot-layer gaps (axis scales, 15-column parsing, label maps)
    BEFORE the queued campaigns multiply the data volume — render first,

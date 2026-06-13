@@ -51,8 +51,9 @@ ENV_SHORT = {"container": "docker", "container-podman": "podman", "container-lxc
 METRICS_CANON = ["netp", "nets", "blk", "mbw", "llcmr", "llcocc", "cpu"]
 METRICS_PORTABLE = ["schedlat", "psi_mem", "membw_est", "psi_io", "schedthr", "steal"]
 METRICS_REGIME = ["psp", "idle_preempt"]
-# C34: v2.1 mbw values predate the D12 scope fix -> red-bordered cells.
-C34_INVALID = {("v2.1", "mbw")}
+# C34: v2.1 mbw predated the D12 scope fix; the targeted re-run (2026-06-13)
+# replaced those cells with correctly-scoped values, so no cells are invalid.
+C34_INVALID = set()
 
 SIG_ORDER = {"***": 3, "**": 2, "*": 1, "n.s.": 0, "n/a": -1}
 
