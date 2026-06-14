@@ -1,28 +1,14 @@
-# W5 colocation victim-delta (pairwise − solo) — results/vmg-w5-96g
+# W5 vm-guest victim-delta — superseded
 
-Envs: vm-guest. Variants: v2.1, v3.3. Pairs: 5. scipy: yes.
+The vm-guest W5 colocation leg is now reported in
+[w5-victim-delta.md](w5-victim-delta.md) alongside bare and container, all run at
+the unified 1/3 footprint (16 vCPU / 83 GiB per instance, hard CPU pinning,
+correct 281600 MB/s mbw ceiling) on 2026-06-14.
 
-**Victim-delta = median(pairwise victim) − median(solo victim)** per metric. PRIMARY contention signals (should RISE under a noisy neighbour): `schedlat, psi_mem, psi_io, membw_est`. GUARDS (own-quota/steal, not contention): `schedthr, steal`. Significance = Mann-Whitney U (pairwise vs solo) + Cliff's δ, BH-FDR across the metric family per (env,variant,pair). Under colocation `cpu` is DIRECTIONAL not absolute (cgroup profiler vs system-wide GT — C29).
-
-### v2.1 — vm-guest  *(primary contention signals; Δ = pairwise − solo)*
-
-| victim — vs aggressor | schedlat Δ (q,δ) | psi_mem Δ (q,δ) | psi_io Δ (q,δ) | membw_est Δ (q,δ) | cpu Δ (q,δ) | contention |
-|---|---|---|---|---|---|---|
-| app01_ml_llc — vs app05_membw | 4.5 (**,1.0) | 0.000 (n/a,0.000) | 0.000 (n/a,0.000) | 3115 (**,1.0) | -4.5 (**,-1.0) | **schedlat+membw_est** ↑ / ⚠STARVING |
-| app07_ordering — vs app05_membw | 0.000 (n.s.,0.333) | 0.000 (n/a,0.000) | 0.000 (n/a,0.000) | -5128 (**,-1.0) | 0.000 (n.s.,-0.333) | membw_est ↓ |
-| app10_search — vs app05_membw | 0.000 (n/a,0.000) | 0.000 (n/a,0.000) | 0.000 (n/a,0.000) | 363 (**,1.0) | 0.000 (n/a,0.000) | **membw_est** ↑ |
-| app11_sort_net — vs app05_membw | 1.0 (*,0.667) | 0.000 (n/a,0.000) | 0.000 (n/a,0.000) | 4383 (**,1.0) | 0.000 (n/a,0.000) | **schedlat+membw_est** ↑ |
-| app13_query_scan — vs app05_membw | 0.000 (n/a,0.000) | 0.000 (n/a,0.000) | 7.5 (*,1.0) | 276 (n.s.,0.500) | 1.0 (n.s.,0.583) | **psi_io** ↑ |
-
-### v3.3 — vm-guest  *(primary contention signals; Δ = pairwise − solo)*
-
-| victim — vs aggressor | schedlat Δ (q,δ) | psi_mem Δ (q,δ) | psi_io Δ (q,δ) | membw_est Δ (q,δ) | cpu Δ (q,δ) | contention |
-|---|---|---|---|---|---|---|
-| app01_ml_llc — vs app05_membw | 6.0 (**,1.0) | 0.000 (n/a,0.000) | 0.000 (n/a,0.000) | 3439 (**,1.0) | -5.5 (**,-1.0) | **schedlat+membw_est** ↑ / ⚠STARVING |
-| app07_ordering — vs app05_membw | 0.000 (n.s.,0.000) | 0.000 (n.s.,0.167) | 0.000 (n.s.,0.167) | -5032 (*,-1.0) | 0.000 (n.s.,-0.306) | membw_est ↓ |
-| app10_search — vs app05_membw | 0.000 (n/a,0.000) | 0.000 (n/a,0.000) | 0.000 (n/a,0.000) | 330 (**,1.0) | 0.000 (n.s.,-0.194) | **membw_est** ↑ |
-| app11_sort_net — vs app05_membw | 1.0 (*,0.667) | 0.000 (n/a,0.000) | 0.000 (n/a,0.000) | 5518 (**,1.0) | 0.000 (n/a,0.000) | **schedlat+membw_est** ↑ |
-| app13_query_scan — vs app05_membw | 0.000 (n/a,0.000) | 0.000 (n/a,0.000) | 7.0 (**,1.0) | 313 (**,1.0) | 2.2 (**,0.972) | **psi_io+membw_est** ↑ |
-
-
-_Machine-readable rows: results/vmg-w5-96g/w5-victim-delta.tsv (115 victim-delta cells)._
+This file previously held a separate vm-guest table because the earlier run sized
+each co-located KVM guest at 96 GiB (so two fit in host RAM), giving it a
+different solo baseline that could not be merged with the bare/container table.
+The 2026-06-14 W5 run removes that mismatch — victim and aggressor VMs each take
+one host third — so the separate report is retired. The portable signals
+(membw_est, schedlat) behave consistently across all three environments; see the
+unified report.

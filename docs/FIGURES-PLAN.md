@@ -31,12 +31,12 @@ the analyzer TSVs (never recomputed in the plot layer).
 | F8 | Fidelity vs sampling cadence (frequency-response curve per metric class) + the cadence knee | cadence sweep dirs + `sweep-manifest.tsv` | `analyze-cadence.py` output -> gap: curve renderer (`plot-cadence-curves.py`) | blocked: campaign not run |
 | F9 | Profiler overhead vs cadence (Volpert D) per variant | same sweep, overhead stage | same renderer, second panel | blocked: campaign not run |
 
-## P2/P3 §colocation — W5 victim-delta (deferred campaign)
+## P2/P3 §colocation — W5 victim-delta (run 2026-06-14, 1/3 footprint, all 3 envs)
 
 | id | Claim | Data | Script | Ready |
 |---|---|---|---|---|
-| F10 | Victim-delta forest plot: schedlat/psi_*/membw_est RISE under a noisy neighbour; schedthr/steal guards stay flat | W5 pairwise vs solo (same dir), analyzer `--w5` output | gap: forest/dot plot per (env, victim) (`plot-w5-victim-delta.py`) | blocked: W5 deferred; ALSO gated on D12 sync (C34) |
-| F11 | The 7-metric fingerprint misses the contention the portable set sees in vm-guest (the P2 punchline) | W5 vm-guest leg | same script, vm-guest facet | blocked: same |
+| F10 | Victim-delta forest plot: schedlat/psi_*/membw_est RISE under a noisy neighbour; schedthr/steal guards stay flat | W5 pairwise vs solo (same dir), analyzer `--w5` output → `w5-victim-delta.tsv` (420 cells) | gap: forest/dot plot per (env, victim) (`plot-w5-victim-delta.py`) | data ready (W5 run 2026-06-14; confirmed: membw_est Δ up to 6460, guards ≈0) — renderer is the gap |
+| F11 | The 7-metric fingerprint misses the contention the portable set sees in vm-guest (the P2 punchline) | W5 vm-guest leg (now in the unified run) | same script, vm-guest facet | data ready (vm-guest membw_est/schedlat rise where RDT mbw/llcocc are `--`) — renderer is the gap |
 
 ## P3 §realism — Tier-B/C real workloads (queued)
 
