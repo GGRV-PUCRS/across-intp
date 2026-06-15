@@ -78,7 +78,11 @@ def main():
     density = defaultdict(lambda: defaultdict(list))
     present_metrics = set()
 
-    for iv, tag, cdir in man:
+    for iv, tag, _box_cdir in man:
+        # Reconstruct the cadence dir from the LOCAL sweep_dir + tag. The
+        # manifest's output_dir column records the generation-time (remote)
+        # absolute path, which is wrong once the sweep is pulled to another host.
+        cdir = os.path.join(args.sweep_dir, f"cadence-{tag}")
         for cap in find_captures(cdir):
             _, variant, _, wl, _ = cap_meta(cap, cdir)
             if variant is None:
