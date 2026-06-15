@@ -204,6 +204,7 @@ def fig_fingerprint(cells, out: Path):
                  "(membw_est MB/s, psp events/s);  red border = v2.1 mbw invalid pre-D12 re-run (C34)",
                  fontsize=11)
     fig.savefig(out / "F0-fingerprint-heatmap.png", dpi=160, bbox_inches="tight")
+    fig.savefig(out / "F0-fingerprint-heatmap.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
@@ -245,6 +246,7 @@ def fig_ratio(df: pd.DataFrame, out: Path):
                  "(green band = W4 equivalence 0.8–1.25x)", fontsize=11)
     fig.tight_layout(rect=(0, 0.04, 1, 0.94))
     fig.savefig(out / "F1-ratio-vs-bare.png", dpi=160, bbox_inches="tight")
+    fig.savefig(out / "F1-ratio-vs-bare.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
@@ -291,6 +293,7 @@ def fig_claimclass(df: pd.DataFrame, out: Path):
                  "env-vs-bare evidence", fontsize=11)
     fig.tight_layout(rect=(0, 0.05, 1, 0.92))
     fig.savefig(out / "F2-claim-class-matrix.png", dpi=160, bbox_inches="tight")
+    fig.savefig(out / "F2-claim-class-matrix.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
@@ -324,6 +327,7 @@ def fig_availability(cells, out: Path):
                  "kvm-guest where the RDT canonicals go '--'", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.93))
     fig.savefig(out / "F3-availability-grid.png", dpi=160, bbox_inches="tight")
+    fig.savefig(out / "F3-availability-grid.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
@@ -356,6 +360,7 @@ def fig_validation(base: Path, cells, out: Path):
     ax.grid(alpha=0.2, which="both")
     fig.tight_layout()
     fig.savefig(out / "F4-membw-validation.png", dpi=160, bbox_inches="tight")
+    fig.savefig(out / "F4-membw-validation.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
@@ -386,6 +391,7 @@ def fig_psi(cells, out: Path):
                  fontsize=10)
     fig.tight_layout()
     fig.savefig(out / "F5-psi-bandwidth-blindness.png", dpi=160, bbox_inches="tight")
+    fig.savefig(out / "F5-psi-bandwidth-blindness.pdf", bbox_inches="tight")
     plt.close(fig)
 
 
@@ -440,6 +446,7 @@ def fig_psp(df: pd.DataFrame, out: Path):
                  fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.88))
     fig.savefig(out / "F6-psp-directional.png", dpi=160, bbox_inches="tight")
+    fig.savefig(out / "F6-psp-directional.pdf", bbox_inches="tight")
     plt.close(fig)
 
 

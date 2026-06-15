@@ -28,7 +28,7 @@ the analyzer TSVs (never recomputed in the plot layer).
 
 | id | Claim | Data | Script | Ready |
 |---|---|---|---|---|
-| F8 | Fidelity vs sampling cadence (frequency-response curve per metric class) + the cadence knee | `cadence-fidelity.tsv` (analyzer `--tsv`) + `sweep-manifest.tsv` | `analyze-cadence.py` + `plot-cadence-curves.py` -> `F8-cadence-fidelity.png` | DONE (sweep 2026-06-15; knee: app05 psp -87% at 5s, app16 cache/membw ~-25%; steady metrics robust; density ~1/interval) |
+| F8 | Fidelity vs sampling cadence (frequency-response curve per metric class) + the cadence knee | `cadence-fidelity.tsv` (analyzer `--tsv`) + `sweep-manifest.tsv` | `analyze-cadence.py` + `plot-cadence-curves.py` -> `F8-cadence-fidelity` (knee curves + density) and `F8-cadence-sensitivity` (per-metric max\|Δref\| heatmap), png+pdf | DONE (sweep 2026-06-15; knee: app05 psp -87% at 5s, app16 cache/membw ~-25%; steady metrics robust; density ~1/interval; v2.1≈v3.3) |
 | F9 | Profiler overhead vs cadence (Volpert D) per variant | same sweep, overhead stage | `plot-cadence-curves.py` can add the panel | deferred: F8 sweep was solo-only; needs a focused `--stages overhead` cadence run |
 
 ## P2/P3 §colocation — W5 victim-delta (run 2026-06-14, 1/3 footprint, all 3 envs)
