@@ -65,6 +65,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("sweep_dir")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--tsv", default=None,
+                    help="machine-readable rows for the plot layer "
+                         "(default <sweep_dir>/cadence-fidelity.tsv)")
     args = ap.parse_args()
 
     man = read_manifest(args.sweep_dir)
@@ -98,6 +101,9 @@ def main():
     metrics = [m for m in METRICS_ALL if m in present_metrics]
     keys = sorted({(v, w) for (v, w, _) in samples})
 
+    # machine-readable rows for the plot layer (plot-cadence-curves.py).
+    tsv_rows = ["variant\tworkload\tmetric\tclass\tinterval_s\tcadence_tag\tmedian\tdref"]
+
     lines = []
     lines.append(f"# Cadence sweep: fidelity & sample density vs sampling interval — {args.sweep_dir}\n")
     lines.append(f"Cadences (interval s): {', '.join(f'{iv_by_tag[t]:g}' for t in tags)}. "
@@ -118,6 +124,8 @@ def main():
         for t in tags:
             rc = density[(v, w)].get(t, [])
             cells.append(str(int(_median(rc))) if rc else "—")
+            if rc:
+                tsv_rows.append(f"{v}\t{w}\t_density_rows_\tmeta\t{iv_by_tag[t]:g}\t{t}\t{_median(rc):.6g}\t")
         lines.append(f"| {v} — {w} | " + " | ".join(cells) + " |")
     lines.append("")
 
@@ -132,6 +140,7 @@ def main():
             per_tag = samples.get((v, w, m), {})
             meds = {t: (_median(per_tag[t]) if per_tag.get(t) else None) for t in tags}
             ref = meds.get(ref_tag)
+            cls = {"absolute": "abs", "directional": "dir"}.get(CLAIM_CLASS.get(m, "descriptive"), "desc")
             cells = []
             max_dev = 0.0
             for t in tags:
@@ -140,15 +149,22 @@ def main():
                     cells.append("—")
                     continue
                 cell = _fmt(mv)
+                dev = None
                 if ref not in (None, 0) and t != ref_tag:
                     dev = (mv - ref) / abs(ref)
                     max_dev = max(max_dev, abs(dev))
                     cell += f" ({dev:+.0%})"
                 cells.append(cell)
-            cls = {"absolute": "abs", "directional": "dir"}.get(CLAIM_CLASS.get(m, "descriptive"), "desc")
+                tsv_rows.append(f"{v}\t{w}\t{m}\t{cls}\t{iv_by_tag[t]:g}\t{t}\t{mv:.6g}\t"
+                                + ("" if dev is None else f"{dev:.6g}"))
             mxd = f"{max_dev:.0%}" if ref not in (None, 0) else "—"
             lines.append(f"| {m} ({cls}) | " + " | ".join(cells) + f" | {mxd} |")
         lines.append("")
+
+    tsv_path = args.tsv or os.path.join(args.sweep_dir, "cadence-fidelity.tsv")
+    with open(tsv_path, "w") as fh:
+        fh.write("\n".join(tsv_rows) + "\n")
+    print(f"[wrote {tsv_path} ({len(tsv_rows) - 1} rows)]")
 
     report = "\n".join(lines)
     if args.out:
