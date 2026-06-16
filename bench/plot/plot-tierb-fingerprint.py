@@ -74,6 +74,23 @@ def short(a):
     return a.replace("app", "").replace("_", " ")
 
 
+def is_low_drive(med, envs_show, variants, a):
+    """App under-driven on every host env (cpu<5, no net, membw_est<50) — its low
+    class-count is a load-gen artifact, flagged with ⚠ (mirrors analyze-tierb)."""
+    hosts = [e for e in envs_show if e not in ("vm-guest", "vm")] or envs_show
+    for e in hosts:
+        for v in variants:
+            g = med[(e, v, a)].get
+            if (g("cpu") or 0) >= 5 or max(g("netp") or 0, g("nets") or 0) >= 10 \
+               or (g("membw_est") or 0) >= 50:
+                return False
+    return True
+
+
+def alabel(med, envs_show, variants, a):
+    return short(a) + (" ⚠" if is_low_drive(med, envs_show, variants, a) else "")
+
+
 _CLS = {}
 def _class_of(m):
     return _CLS.get(m, "regime")
@@ -90,7 +107,7 @@ def _class_spans(metrics):
         i += len(ms)
 
 
-def heatmap_panel(ax, med, key, apps, metrics, norm_max,
+def heatmap_panel(ax, med, key, apps, applabels, metrics, norm_max,
                   show_y, show_x, show_classlabels):
     """One env·variant heatmap: apps (rows) × metrics (cols). Colour normalized
     per metric to norm_max[metric] (env-scoped). Label visibility is controlled
@@ -112,8 +129,7 @@ def heatmap_panel(ax, med, key, apps, metrics, norm_max,
     ax.set_xticklabels(metrics if show_x else [""] * len(metrics),
                        rotation=90, fontsize=7)
     ax.set_yticks(range(len(apps)))
-    ax.set_yticklabels([short(a) for a in apps] if show_y else [""] * len(apps),
-                       fontsize=8)
+    ax.set_yticklabels(applabels if show_y else [""] * len(apps), fontsize=8)
     for ri in range(len(apps)):
         for ci in range(len(metrics)):
             if not np.isnan(raw[ri, ci]):
@@ -145,6 +161,7 @@ def fig_fingerprint(med, cls, apps, envs_show, variants, out):
         for m in metrics:
             vals = [med[(e, v, a)].get(m) for v in variants for a in apps]
             norm_max[(e, m)] = max([abs(x) for x in vals if x is not None], default=0.0)
+    applabels = [alabel(med, envs_show, variants, a) for a in apps]
     nr, nc = len(envs_show), len(variants)
     fig, axes = plt.subplots(nr, nc, squeeze=False,
                              figsize=(0.52 * len(metrics) * nc + 2.5, 2.6 * nr + 1.6))
@@ -153,7 +170,7 @@ def fig_fingerprint(med, cls, apps, envs_show, variants, out):
         for ci, v in enumerate(variants):
             ax = axes[ri][ci]
             nm = {m: norm_max[(e, m)] for m in metrics}
-            im = heatmap_panel(ax, med, (e, v), apps, metrics, nm,
+            im = heatmap_panel(ax, med, (e, v), apps, applabels, metrics, nm,
                                show_y=(ci == 0), show_x=(ri == nr - 1),
                                show_classlabels=(ri == 0))
             if ri == 0:                      # variant column header (above class row)
@@ -165,10 +182,11 @@ def fig_fingerprint(med, cls, apps, envs_show, variants, out):
                              fontsize=12, fontweight="bold", color="#333333")
     cb = fig.colorbar(im, ax=axes, fraction=0.018, pad=0.02)
     cb.set_label("intensity (per metric, ÷ max across apps within environment)", fontsize=8)
-    fig.suptitle("F12 — real-application 15-metric fingerprints are MIXED across "
-                 "resource classes\n(rows = environment, columns = profiler variant; "
-                 "cell = raw median; colour normalized per metric within each "
-                 "environment; 1/3 footprint, solo)", fontsize=11)
+    fig.suptitle("F12 — real-application 15-metric fingerprints span multiple "
+                 "resource classes when driven\n(rows = environment, columns = "
+                 "profiler variant; cell = raw median; colour normalized per metric "
+                 "within each environment; ⚠ = under-driven at the 1/3 footprint; "
+                 "solo)", fontsize=11)
     fig.subplots_adjust(left=0.12, right=0.9, top=0.86, bottom=0.14,
                         hspace=0.30, wspace=0.06)
     save(fig, out, "F12-fingerprint")
@@ -201,8 +219,8 @@ def fig_activation(med, apps, envs_show, variants, out):
             ax.set_xticklabels(classes if ri == nr - 1 else [""] * len(classes),
                                fontsize=9, rotation=30, ha="right")
             ax.set_yticks(range(len(apps)))
-            ax.set_yticklabels([short(a) for a in apps] if ci == 0
-                               else [""] * len(apps), fontsize=8)
+            ax.set_yticklabels([alabel(med, envs_show, variants, a) for a in apps]
+                               if ci == 0 else [""] * len(apps), fontsize=8)
             for ai in range(len(apps)):
                 for cj in range(len(classes)):
                     ax.text(cj, ai, "✓" if M[ai, cj] else "·", ha="center",
@@ -218,9 +236,10 @@ def fig_activation(med, apps, envs_show, variants, out):
         axes[ri][0].annotate(e, xy=(-0.5, 0.5), xycoords="axes fraction",
                              ha="center", va="center", rotation=90,
                              fontsize=12, fontweight="bold", color="#333333")
-    fig.suptitle("F12 — IADA resource-class activation (absolute floors): no real "
-                 "app reduces to one class\n(rows = environment, columns = variant; "
-                 "✓ = class active; trailing number = classes activated)", fontsize=10)
+    fig.suptitle("F12 — IADA resource-class activation (absolute floors): "
+                 "adequately-driven real apps span ≥2 classes\n(rows = environment, "
+                 "columns = variant; ✓ = class active; trailing number = classes "
+                 "activated; ⚠ = under-driven at the 1/3 footprint)", fontsize=10)
     fig.subplots_adjust(left=0.16, right=0.97, top=0.84, bottom=0.12,
                         hspace=0.22, wspace=0.08)
     save(fig, out, "F12-class-activation")

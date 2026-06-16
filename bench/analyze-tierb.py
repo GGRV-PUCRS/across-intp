@@ -251,16 +251,40 @@ def main():
             f"apps activate ≥2 classes ("
             + "; ".join(f"{a.replace('_',' ')}={len(classes[a])}" for a in apps if nreps.get((venv, var, a)))
             + ").")
-    w("> **Verdict (F12):** real apps are multi-resource — no app reduces to a "
-      "single IADA class on a fair reading of the fingerprint.\n")
+    # data-driven verdict (computed, never hardcoded): judge only the apps that
+    # were actually driven on the verdict env; under-driven apps are a load-gen
+    # artifact, not evidence for or against F12.
+    nm = lambda xs: ", ".join(sorted(x.replace("_", " ") for x in xs))
+    if venv is not None:
+        venv_apps = [a for a in apps if any(nreps.get((venv, v, a)) for v in variants)]
+        best = {a: max((len(activation(med, venv, v, apps)[a])
+                        for v in variants if nreps.get((venv, v, a))), default=0)
+                for a in venv_apps}
+        driven = [a for a in venv_apps if a not in low]
+        multi = [a for a in driven if best[a] >= 2]
+        single_real = [a for a in driven if best[a] < 2]
+        if driven and not single_real:
+            verdict = (f"every adequately-driven app on {venv} spans ≥2 IADA resource "
+                       f"classes ({nm(multi)}) — the single-class label fails for real apps")
+        elif multi and single_real:
+            verdict = (f"{len(multi)}/{len(driven)} adequately-driven apps span ≥2 classes "
+                       f"({nm(multi)}); {nm(single_real)} stayed single-class even when driven")
+        elif not driven:
+            verdict = ("every app in this campaign was under-driven at the default load on the "
+                       "1/3 footprint — no multi-resource conclusion from this campaign alone; "
+                       "see the per-app fingerprint and the scheduling-regime signal in §2")
+        else:
+            verdict = f"{nm(single_real)} stayed single-class; {nm(multi) or 'none'} spanned ≥2"
+        w(f"> **Verdict (F12):** {verdict}.\n")
     for vl in verdict_lines:
         w(vl)
     if low:
-        w(f"\n⚠ **Low-drive cells:** {', '.join(sorted(a.replace('_',' ') for a in low))} "
+        w(f"\n⚠ **Low-drive cells:** {nm(low)} "
           "barely registered (cpu<5%, no net, membw_est<50) — at the 1/3 footprint "
-          "the load generator under-drove the service, so its low class-count is a "
-          "load-gen artifact, not a single-resource signature. The richer "
-          "scheduling-regime / cache signal in §2 still shows activity.")
+          "the default load generator under-drove the service, so its low class-count "
+          "is a load-gen artifact, not a single-resource signature. The scheduling-regime "
+          "signal (idle_preempt/psp) and cache activity in §2 still show the app is live; "
+          "an adequately-driven re-run is needed to read its full resource mix.")
     w("")
 
     # ---- full fingerprint tables ----

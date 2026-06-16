@@ -59,12 +59,12 @@ Number of IADA classes each real app activates (✓ = active). >1 ⇒ the single
 | app20 cs websearch ⚠ | · | · | ✓ | · | · | **1** | psp, idle_preempt |
 | app21 cs imanalytics | ✓ | ✓ | ✓ | · | · | **3** | psp, idle_preempt |
 
-> **Verdict (F12):** real apps are multi-resource — no app reduces to a single IADA class on a fair reading of the fingerprint.
+> **Verdict (F12):** every adequately-driven app on container spans ≥2 IADA resource classes (app18 redis kv, app19 cs datacaching, app21 cs imanalytics) — the single-class label fails for real apps.
 
 - **container·v2.1:** 3/4 apps activate ≥2 classes (app18 redis kv=2; app19 cs datacaching=4; app20 cs websearch=1; app21 cs imanalytics=3).
 - **container·v3.3:** 3/4 apps activate ≥2 classes (app18 redis kv=2; app19 cs datacaching=4; app20 cs websearch=1; app21 cs imanalytics=3).
 
-⚠ **Low-drive cells:** app20 cs websearch barely registered (cpu<5%, no net, membw_est<50) — at the 1/3 footprint the load generator under-drove the service, so its low class-count is a load-gen artifact, not a single-resource signature. The richer scheduling-regime / cache signal in §2 still shows activity.
+⚠ **Low-drive cells:** app20 cs websearch barely registered (cpu<5%, no net, membw_est<50) — at the 1/3 footprint the default load generator under-drove the service, so its low class-count is a load-gen artifact, not a single-resource signature. The scheduling-regime signal (idle_preempt/psp) and cache activity in §2 still show the app is live; an adequately-driven re-run is needed to read its full resource mix.
 
 ## §2 Full 15-metric fingerprint (median across reps)
 
