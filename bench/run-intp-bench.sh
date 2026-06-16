@@ -349,7 +349,7 @@ WORKLOADS=(
     "app19_cs_datacaching|kv-cache|COMPOSE:cloudsuite-data-caching:default:"
     "app20_cs_websearch|search|COMPOSE:cloudsuite-web-search:default:"
     "app21_cs_imanalytics|analytics|COMPOSE:cloudsuite-in-memory-analytics:batch:"
-    "app22_dsb_socialnet|microservice|COMPOSE:dsb-social-network:mixed-workload:-t 4 -c 64 -R 500"
+    "app22_dsb_socialnet|microservice|COMPOSE:dsb-social-network:mixed-workload:-t 8 -c 256 -R 4000"
 )
 
 # Pairwise victim+antagonist pairs (id|victim_args|antagonist_args|expected_pressure)
