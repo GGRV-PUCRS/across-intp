@@ -35,8 +35,8 @@ the analyzer TSVs (never recomputed in the plot layer).
 
 | id | Claim | Data | Script | Ready |
 |---|---|---|---|---|
-| F10 | Victim-delta forest plot: schedlat/psi_*/membw_est RISE under a noisy neighbour; schedthr/steal guards stay flat | W5 pairwise vs solo (same dir), analyzer `--w5` output → `w5-victim-delta.tsv` (420 cells) | gap: forest/dot plot per (env, victim) (`plot-w5-victim-delta.py`) | data ready (W5 run 2026-06-14; confirmed: membw_est Δ up to 6460, guards ≈0) — renderer is the gap |
-| F11 | The 7-metric fingerprint misses the contention the portable set sees in vm-guest (the P2 punchline) | W5 vm-guest leg (now in the unified run) | same script, vm-guest facet | data ready (vm-guest membw_est/schedlat rise where RDT mbw/llcocc are `--`) — renderer is the gap |
+| F10 | Victim-delta forest plot: schedlat/psi_*/membw_est RISE under a noisy neighbour; schedthr/steal guards stay flat | W5 pairwise vs solo (same dir), analyzer `--w5` output → `w5-victim-delta.tsv` (420 cells) | `plot-w5-victim-delta.py` → `F10-victim-delta-forest` (Cliff's δ per metric × env; v2.1●/v3.3■, filled=majority BH-FDR signif), png+pdf | DONE (2026-06-16). membw_est δ=+1 (signif) in all 3 envs; guards (schedthr/steal) ≈0 not-signif; canonical mbw/llcocc/psp move on host |
+| F11 | The 7-metric fingerprint misses the contention the portable set sees in vm-guest (the P2 punchline) | W5 vm-guest leg (`w5-victim-delta.tsv`) | `plot-w5-victim-delta.py` → `F11-vmguest-portable-vs-canonical`, png+pdf | DONE (2026-06-16). vm-guest: mbw absent (RDT n/a) yet membw_est δ≈+1 signif — the portable proxy captures the memory-bandwidth contention the canonical RDT metric cannot see in the VM |
 
 ## P3 §realism — Tier-B/C real workloads (queued)
 
