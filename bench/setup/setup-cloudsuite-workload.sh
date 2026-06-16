@@ -64,7 +64,10 @@ docker compose version >/dev/null 2>&1 || fail "docker compose v2 not available"
 mem_gib=$(( $(awk '/MemTotal/{print $2}' /proc/meminfo) / 1024 / 1024 ))
 if [ "$mem_gib" -ge 64 ]; then
     : "${SOLR_HEAP:=12g}"; : "${SPARK_MEM:=6g}"; IMA_DATASET="/data/ml-latest"
-    FABAN_WORKERS=32; FABAN_IMIN=100; FABAN_IMAX=200
+    # C33: 32 workers x 100-200ms CycleTime idled Solr at ~2% cpu on the 1/3
+    # footprint (16 cores) -- under-driven. Drive harder so web-search clears the
+    # activation floors (cpu/net/mem) for a representative multi-class fingerprint.
+    FABAN_WORKERS=128; FABAN_IMIN=20; FABAN_IMAX=50
 else
     : "${SOLR_HEAP:=4g}";  : "${SPARK_MEM:=3g}"; IMA_DATASET="/data/ml-latest-small"
     FABAN_WORKERS=16; FABAN_IMIN=200; FABAN_IMAX=400
