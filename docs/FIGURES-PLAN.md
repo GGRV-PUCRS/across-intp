@@ -42,7 +42,7 @@ the analyzer TSVs (never recomputed in the plot layer).
 
 | id | Claim | Data | Script | Ready |
 |---|---|---|---|---|
-| F12 | Real-app 15-metric fingerprints (Redis/CloudSuite/DSB) are MIXED — single-resource-class labels do not apply | Tier-B/C campaign portable.tsv | `plot-intp-bench.py` radar/heatmap path (verify 15-col) | blocked: campaign not run |
+| F12 | Real-app 15-metric fingerprints (Redis/CloudSuite/DSB) are MIXED — single-resource-class labels do not apply | Tier-B/C `fingerprints.tsv` (analyzer `bench/analyze-tierb.py`) | `plot-tierb-fingerprint.py` (heatmap + class-activation) | Tier-B DONE (2026-06-16; container·v3.3: datacaching=4 classes, imanalytics=3, redis=2, websearch=1 [load-gen under-drive flagged]); Tier-C (app22 DSB) feeds same analyzer — renderer is the gap |
 | F13 | IADA tiered ablation 7 -> 13 -> 15 (IDI / classifier quality per tier) | IADA M1 runs (off-box) + ml-ablation | `bench/iada/plot-iada.py` + `ml-ablation.py` output | blocked: M1 campaign queued (env ready) |
 
 ## Cross-cutting blockers and order-of-operations
