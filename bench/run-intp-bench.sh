@@ -2251,6 +2251,17 @@ EOF
 # service parented under $slice_unit, load.sh outside it.
 set -u
 cd /opt/intp-suites/$suite || { echo "suite dir missing in guest (need the WITH_SUITES image)" > /tmp/wl.log; echo 0 > /tmp/intp-wl.pid; exit 1; }
+# Pre-create the scoping slice so the in-guest profiler ALWAYS finds a real
+# cgroup to attach to, even if the suite's service containers flap/restart
+# (heavy suites like web-search/Solr do). Without it, v3.3 stats a missing
+# $slice_unit at attach time and SILENTLY falls back to system-wide -- the
+# app20 web-search symptom (12/12 reps idle, system-wide). A tiny idle holder
+# keeps the slice alive for the whole window; docker parents the services under
+# the same slice, so the profiler's subtree scope catches them.
+# holder must outlive compose-up + readiness (up to READY_TIMEOUT ~420s) + the
+# profiling window, so size it from the duration plus generous setup slack.
+sudo systemd-run --slice=$slice_unit --unit=intp-wl-holder --collect sleep $(( duration + 600 )) >/dev/null 2>&1 \
+  || sudo mkdir -p /sys/fs/cgroup/$slice_unit 2>/dev/null || true
 COMPOSE_FILES="compose.yml"; ANCHOR_SERVICE=""; READY_TIMEOUT=240
 . ./meta.env
 fargs=""
@@ -2261,12 +2272,15 @@ services=\$(sudo docker compose \$fargs config --services 2>/dev/null)
 sudo docker compose -p intpwl \$fargs -f /tmp/intp-ovr.yml up -d --wait --quiet-pull > /tmp/wl.log 2>&1 \
   || sudo docker compose -p intpwl \$fargs -f /tmp/intp-ovr.yml up -d --quiet-pull >> /tmp/wl.log 2>&1 \
   || { echo 0 > /tmp/intp-wl.pid; exit 1; }
+ready_ok=1
 if [ -f ./ready.sh ]; then
-  t=0; while [ \$t -lt \$READY_TIMEOUT ]; do
-    sudo env PROJECT=intpwl SUITE_DIR=\$PWD bash ./ready.sh >/dev/null 2>&1 && break
+  ready_ok=0; t=0; while [ \$t -lt \$READY_TIMEOUT ]; do
+    sudo env PROJECT=intpwl SUITE_DIR=\$PWD bash ./ready.sh >/dev/null 2>&1 && { ready_ok=1; break; }
     sleep 3; t=\$(( t + 3 ))
   done
 fi
+echo \$ready_ok > /tmp/intp-wl.ready
+[ \$ready_ok = 1 ] || echo "WARN: $suite not ready after \${READY_TIMEOUT}s -- cell scoped (pre-created slice) but may be idle/degraded" >> /tmp/wl.log
 cid=\$(sudo docker compose -p intpwl ps -q "\$ANCHOR_SERVICE" 2>/dev/null | head -1)
 sudo docker inspect -f '{{.State.Pid}}' "\$cid" 2>/dev/null > /tmp/intp-wl.pid || echo 0 > /tmp/intp-wl.pid
 if [ -f ./load.sh ]; then
@@ -2282,7 +2296,7 @@ echo \$! > /tmp/intp-wl.pid
 EOF
     fi
 
-    "${_ssh[@]}" "rm -f /tmp/intp-wl.pid; nohup sh /tmp/intp-wl-launch.sh >/dev/null 2>&1 &" \
+    "${_ssh[@]}" "rm -f /tmp/intp-wl.pid /tmp/intp-wl.ready; nohup sh /tmp/intp-wl-launch.sh >/dev/null 2>&1 &" \
         || warn "ssh workload dispatch failed"
     # The pid file lands when the launcher finishes starting the workload --
     # ~1 s for stress-ng, minutes for a compose up; poll instead of sleeping.
@@ -2291,6 +2305,13 @@ EOF
         gpid=$("${_ssh[@]}" 'cat /tmp/intp-wl.pid 2>/dev/null' 2>/dev/null) && [ -n "$gpid" ] && break
         sleep 2; waited=$(( waited + 2 ))
     done
+    # Surface a compose suite that never reached readiness. The cell is still
+    # scoped correctly (the slice was pre-created), so this is a data-quality
+    # warning, not a scope failure -- the analyzer's low-drive flag catches it.
+    if [[ "$args" == COMPOSE:* ]]; then
+        local rdy; rdy=$("${_ssh[@]}" 'cat /tmp/intp-wl.ready 2>/dev/null' 2>/dev/null)
+        [ "$rdy" = "1" ] || warn "vm-guest compose suite '$suite' not ready (ready=${rdy:-?}) -- cell may be idle/degraded"
+    fi
     echo "${gpid:-0}"
 }
 
