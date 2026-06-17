@@ -62,5 +62,31 @@ estimation in the VM (mbw/llcocc gone), not class identification. The portable
 proxies close that gap — minimally for mem (A), fully + regime (B). Next:
 the CloudSim IDI simulation to score scheduling quality per tier.
 
+## CloudSim IDI / scheduling simulation — status
+
+The classifier axis above (within-env CV + host→VM transfer) is the F13 headline.
+The closed-loop **IDI/scheduling** axis (does better classification → better
+placement?) is staged but is a larger integration:
+
+- **Done:** CloudSim compiled + the bundled baseline sim runs end-to-end (JRI
+  bridge, no segfault). The drop-in tiers' classifiers are retrained from our
+  campaign data — `results/iada-tier-rda/{T1,A}/` (6 `.rda` each: svm_model +
+  cpuk/memk/diskk/netk/cachek), 5-class/7-feature, vendorable via `INTP_R_FOLDER`.
+  A robustness patch (`bench/iada/patches/retrain-robust-quantile-breaks.patch`)
+  lets `retrain.R` handle zero-skewed level columns in real captures.
+- **Remaining (the heavy part):**
+  1. Convert our campaign workloads into CloudSim cloudlet traces (an iada-tree
+     `source/` of per-cloudlet CSVs) in the VM condition (RDT→0) — so the sim
+     classifies VM-style inputs where the tiers actually diverge. T1/A are 7-col
+     (drop-in); the bundled host traces don't discriminate the tiers (no VM
+     condition), so our VM traces are required.
+  2. **Approach B** needs the CloudSim Java widened (`MLClassifier`/`Interference.java`
+     7→15 features, `int`→`double`, the regime class) + a fresh IDI calibration
+     in `Degradation.java` — grounded in our **W5 victim-delta** measurements.
+  3. Run the SA scheduler per tier → parse idi_avg/sum/max, migrations,
+     interference (`parse-cloudsim-output.py`) → the per-tier scheduling table.
+
 _Artifacts: `bench/iada/scripts/campaign-to-trainsets.py`,
-`bench/iada/scripts/eval-tiers.R`, `results/iada-trainsets/tier-eval.tsv`._
+`bench/iada/scripts/eval-tiers.R`, `bench/plot/plot-iada-tier-table.py`,
+`results/iada-trainsets/tier-eval{,-transfer}.tsv`,
+`results/iada-tier-rda/{T1,A}/`._
