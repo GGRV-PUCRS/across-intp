@@ -24,8 +24,14 @@ source ~/.iada-env 2>/dev/null
 mkdir -p "$OUT"
 COMPARE="$OUT/tier-sim-compare.tsv"; : > "$COMPARE"
 
-# tier -> convert column set + clamp policy
-metrics_for() { [ "$1" = A ] && echo "netp,nets,blk,membw_est,llcmr,llcocc,cpu" || echo "netp,nets,blk,mbw,llcmr,llcocc,cpu"; }
+# tier -> convert column set (B = full 15-metric ALL order, incl regime signals)
+metrics_for() {
+  case "$1" in
+    A) echo "netp,nets,blk,membw_est,llcmr,llcocc,cpu" ;;
+    B) echo "netp,nets,blk,mbw,llcmr,llcocc,cpu,schedlat,psi_mem,membw_est,psi_io,schedthr,steal,psp,idle_preempt" ;;
+    *) echo "netp,nets,blk,mbw,llcmr,llcocc,cpu" ;;
+  esac
+}
 
 restore_bundled() { local RL=$CS/bin/resources/workload/interference; [ -L "$RL" ] && rm "$RL"; local o; o=$(ls -d ${RL}.orig-* 2>/dev/null|head -1); [ -n "$o" ] && mv "$o" "$RL"; }
 
@@ -40,7 +46,7 @@ for tier in $TIERS; do
   for cond in $CONDS; do
     tree=/tmp/tree-$tier-$cond; rm -rf "$tree"
     python3 "$AX/bench/generate-iada-tree.py" --manifest "$man" --out-root "$tree" \
-      --env "$cond" --variant v3.3 --stage solo \
+      --env "$cond" --variant v3.3 --stage solo --no-clamp \
       --rep-pattern-map "$REPMAP" --pattern-merge median --min-rows 30 --mode copy >/dev/null 2>&1
     # bridge path order: runner wants <variant>/<env>/source; tree has <env>/<variant>/source
     mkdir -p "$tree/v3.3"; ln -sfn "../$cond/v3.3" "$tree/v3.3/$cond"

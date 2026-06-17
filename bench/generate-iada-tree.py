@@ -127,6 +127,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print planned actions without writing files.",
     )
+    parser.add_argument(
+        "--no-clamp",
+        action="store_true",
+        help="Do not clamp aggregated values to [0,100] (needed for absolute-rate "
+             "columns like membw_est/psp in the 15-metric Approach B traces).",
+    )
     return parser.parse_args()
 
 
@@ -282,8 +288,8 @@ def read_meyer_csv(path: Path) -> list[list[int]]:
         for line_no, fields in enumerate(reader, start=1):
             if not fields:
                 continue
-            if len(fields) != 7:
-                raise SystemExit(f"Expected 7 columns in {path}:{line_no}, got {len(fields)}")
+            if len(fields) not in (7, 15):
+                raise SystemExit(f"Expected 7 (T1/A) or 15 (B) columns in {path}:{line_no}, got {len(fields)}")
             try:
                 values = [int(float(field)) for field in fields]
             except ValueError as exc:
@@ -295,7 +301,12 @@ def read_meyer_csv(path: Path) -> list[list[int]]:
     return rows
 
 
+CLAMP = True  # clamp aggregated values to [0,100]; disabled (--no-clamp) for B
+
+
 def clamp_percent(value: int) -> int:
+    if not CLAMP:
+        return value
     if value < 0:
         return 0
     if value > 100:
@@ -441,6 +452,9 @@ def write_tree_manifest(
 
 def main() -> int:
     args = parse_args()
+    global CLAMP
+    if args.no_clamp:
+        CLAMP = False
     rep_to_pattern = parse_rep_pattern_map(args.rep_pattern_map)
     manifest_rows = read_manifest(args.manifest)
 

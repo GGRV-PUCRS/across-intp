@@ -295,8 +295,8 @@ def main() -> int:
     global METRICS, CLAMP
     if args.metrics:
         METRICS = tuple(m.strip() for m in args.metrics.split(","))
-        if len(METRICS) != 7:
-            raise SystemExit(f"--metrics needs exactly 7 names, got {len(METRICS)}")
+        if len(METRICS) not in (7, 15):
+            raise SystemExit(f"--metrics needs 7 (T1/A) or 15 (B) names, got {len(METRICS)}")
     if args.no_clamp:
         CLAMP = False
     profiler_paths = filter_by_stage(iter_profiler_paths(args.inputs, args.capture_name), args.stage)

@@ -1,22 +1,3 @@
-diff --git a/R/retrain.R b/R/retrain.R
-index 2adf4bc..b915d81 100644
---- a/R/retrain.R
-+++ b/R/retrain.R
-@@ -280,10 +280,10 @@ rand_index_for_kmeans <- function(total, km, k) {
-     if (length(unique(sub[, col_idx])) < k) {
-       per_class[[cls]] <- NA_real_; next
-     }
--    quant <- as.integer(cut(sub[, col_idx],
--                            breaks = quantile(sub[, col_idx],
--                                              probs = seq(0, 1, length.out = k + 1),
--                                              na.rm = TRUE),
-+    brks <- unique(quantile(sub[, col_idx],
-+                            probs = seq(0, 1, length.out = k + 1), na.rm = TRUE))
-+    if (length(brks) < 2) { per_class[[cls]] <- NA_real_; next }  # zero-skewed col
-+    quant <- as.integer(cut(sub[, col_idx], breaks = brks,
-                             include.lowest = TRUE, labels = FALSE))
-     per_class[[cls]] <- rand(quant, km[[cls]]$cluster)
-   }
 diff --git a/src/cloudsim/interference/aaa/xxIntExample.java b/src/cloudsim/interference/aaa/xxIntExample.java
 index 1343852..1c37605 100644
 --- a/src/cloudsim/interference/aaa/xxIntExample.java

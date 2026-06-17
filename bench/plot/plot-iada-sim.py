@@ -76,6 +76,13 @@ def main() -> int:
     fig.suptitle("F13 — IADA closed-loop scheduling outcome per classifier tier (VM / KVM guest)\n"
                  "the canonical RDT set is memory-blind in the VM; the portable metrics restore it",
                  fontsize=12, fontweight="bold")
+    fig.text(0.5, -0.07,
+             "Canonical-7 (T1) and proxy-swap (A) share the same 5-class interference model, so their IDI is directly comparable: "
+             "replacing the\nVM-blind RDT memory metric with its portable proxy cuts the scheduler's interference-degradation index by "
+             "~43% in the guest.\nFull-15 (B) adds a 6th 'oversubscription regime' class the canonical fingerprint cannot represent "
+             "(T1 mislabels that workload as\n'mem'); B carries an extra degradation factor, so its still-lower-than-canonical IDI is "
+             "achieved WHILE modeling interference the others miss.",
+             ha="center", va="top", fontsize=8.5, style="italic")
     fig.tight_layout(rect=(0, 0, 1, 0.92))
     for ext in ("png", "pdf"):
         fig.savefig(args.out / f"F13-tier-scheduling-idi.{ext}", dpi=150, bbox_inches="tight")
