@@ -92,5 +92,32 @@ for (tier in c("T1", "A", "B")) {
   }
 }
 writeLines(rows, OUT)
-cat(sprintf("\n[wrote %s]\n\n=== F13 headline: classifier quality per tier x env ===\n", OUT))
+cat(sprintf("\n[wrote %s]\n\n=== F13 headline: classifier quality per tier x env (within-env CV) ===\n", OUT))
 for (k in names(head)) cat(sprintf("  %-8s  acc=%.3f  macroF1=%.3f\n", k, head[[k]]["acc"], head[[k]]["f1"]))
+
+# ─── host→VM TRANSFER (no per-domain retrain) ────────────────────────────────
+# The "train once on the host, deploy directly to the VM" scenario. Unlike the
+# within-env CV above, this exposes which metric set survives the deployment
+# shift when the classifier is NOT retrained in the target env.
+TOUT <- sub("\\.tsv$", "-transfer.tsv", OUT)
+trows <- c("tier\tmetric\tclass\tvalue"); thead <- list()
+cat("\n=== host-trained -> VM-tested TRANSFER (no per-domain retrain) ===\n")
+for (tier in c("T1", "A", "B")) {
+  trd <- file.path(ROOT, tier, "train"); ted <- file.path(ROOT, tier, "test-vm")
+  if (!dir.exists(trd) || !dir.exists(ted)) next
+  tr <- read_split(trd); te <- read_split(ted)
+  lvls <- levels(tr$category); te$category <- factor(te$category, levels = lvls)
+  m <- fit_svm(tr); feat <- setdiff(names(te), "category")
+  pred <- factor(predict(m, te[, feat, drop = FALSE]), levels = lvls)
+  acc <- mean(pred == te$category); f1 <- macro_f1(pred, te$category, lvls)
+  trows <- c(trows, sprintf("%s\taccuracy\t-\t%.4f", tier, acc),
+                    sprintf("%s\tmacro_f1\t-\t%.4f", tier, f1))
+  cat(sprintf("  Tier %s: VM accuracy=%.3f  macro-F1=%.3f\n", tier, acc, f1))
+  for (c in lvls) {
+    mask <- te$category == c; rec <- if (sum(mask) > 0) mean(pred[mask] == c) else NA
+    trows <- c(trows, sprintf("%s\trecall\t%s\t%.4f", tier, c, rec))
+    cat(sprintf("    recall[%-6s]=%.3f\n", c, rec))
+  }
+}
+writeLines(trows, TOUT)
+cat(sprintf("[wrote %s]\n", TOUT))

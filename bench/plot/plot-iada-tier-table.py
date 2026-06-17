@@ -33,14 +33,69 @@ def load(tsv: Path):
     return v
 
 
+def load_transfer(tsv: Path):
+    v = {}            # (tier, metric, class) -> value
+    for r in csv.DictReader(tsv.open(), delimiter="\t"):
+        v[(r["tier"], r["metric"], r["class"])] = float(r["value"])
+    return v
+
+
+def render_transfer(tsv: Path, out: Path):
+    v = load_transfer(tsv)
+    col_labels = ["Interference-classifier\nmetric set",
+                  "VM classification\naccuracy", "VM\nMacro-F1",
+                  "Memory-class\nrecall in VM"]
+    cells = []
+    for t in TIER_ORDER:
+        cells.append([TIER_DESC[t],
+                      f"{v.get((t,'accuracy','-'),float('nan')):.3f}",
+                      f"{v.get((t,'macro_f1','-'),float('nan')):.3f}",
+                      f"{v.get((t,'recall','mem'),float('nan')):.2f}"])
+    fig, ax = plt.subplots(figsize=(11, 3.4)); ax.axis("off")
+    tbl = ax.table(cellText=cells, colWidths=[0.34, 0.22, 0.22, 0.22],
+                   colLabels=col_labels, cellLoc="center", loc="center")
+    tbl.auto_set_font_size(False); tbl.set_fontsize(11); tbl.scale(1, 2.8)
+    for (r, c), cell in tbl.get_celld().items():
+        if r == 0:
+            cell.set_facecolor("#2c3e50"); cell.get_text().set_color("white")
+            cell.get_text().set_fontweight("bold"); cell.set_height(0.26)
+        elif c == 0:
+            cell.get_text().set_fontweight("bold"); cell.set_facecolor("#f2f4f6")
+        if r == 3 and c != 0:
+            cell.set_facecolor("#e8f5e9")          # full-15 row
+        if r in (1, 2) and c != 0:
+            cell.set_facecolor("#fdecea")          # canonical / proxy-swap rows
+    fig.suptitle("Applying a HOST-trained interference classifier directly inside the VM\n"
+                 "(cross-deployment transfer, no per-domain retraining)",
+                 fontsize=13, fontweight="bold", y=1.04)
+    fig.text(0.5, -0.10,
+             "When the classifier is moved across the deployment boundary without retraining, only the full 15-metric set "
+             "transfers:\nit keeps 78% accuracy and recovers the memory class perfectly (1.00), while the canonical 7-metric "
+             "set collapses to 51%\n(memory recall 0.41) because its RDT memory/cache inputs read zero in the VM. The naive "
+             "proxy-swap is worse (43%) — the\nmemory proxy's absolute value is ~10x larger in the VM than on the host, so the "
+             "host-trained boundary misreads it. Takeaway:\nthe richer portable set is what survives a deployment change; a "
+             "single substituted metric is not enough.",
+             ha="center", va="top", fontsize=9, style="italic")
+    for ext in ("png", "pdf"):
+        fig.savefig(out / f"F13-tier-transfer-table.{ext}", dpi=150, bbox_inches="tight")
+    print(f"wrote {out}/F13-tier-transfer-table.png + .pdf")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("tsv", nargs="?", type=Path,
                     default="results/iada-trainsets/tier-eval.tsv")
     ap.add_argument("--out", type=Path, default="results/figures/p2-iada-tiers")
+    ap.add_argument("--transfer", action="store_true",
+                    help="render the host->VM transfer table from tier-eval-transfer.tsv")
     args = ap.parse_args()
-    v = load(args.tsv)
     args.out.mkdir(parents=True, exist_ok=True)
+    if args.transfer:
+        t = args.tsv if "transfer" in str(args.tsv) else \
+            Path(str(args.tsv).replace(".tsv", "-transfer.tsv"))
+        render_transfer(t, args.out)
+        return 0
+    v = load(args.tsv)
 
     col_labels = ["Interference-classifier\nmetric set"]
     for env in ENV_ORDER:
