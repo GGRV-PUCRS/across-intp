@@ -62,29 +62,45 @@ estimation in the VM (mbw/llcocc gone), not class identification. The portable
 proxies close that gap — minimally for mem (A), fully + regime (B). Next:
 the CloudSim IDI simulation to score scheduling quality per tier.
 
-## CloudSim IDI / scheduling simulation — status
+## CloudSim IDI / scheduling simulation — the closed-loop result
 
-The classifier axis above (within-env CV + host→VM transfer) is the F13 headline.
-The closed-loop **IDI/scheduling** axis (does better classification → better
-placement?) is staged but is a larger integration:
+The classifier axis above shows class ID is recoverable in the VM; this axis
+asks the consequential question — **does the metric set change the scheduler's
+decisions and the resulting interference?** We run the full IADA closed loop
+(classifier → IDI degradation level → SA placement → migration) over our
+campaign workloads turned into CloudSim cloudlet traces, in the VM condition
+(host-trained `.rda` applied to vm-guest traces, where the RDT metrics read 0).
+The SA scheduler is stochastic, so 5 reps/tier.
 
-- **Done:** CloudSim compiled + the bundled baseline sim runs end-to-end (JRI
-  bridge, no segfault). The drop-in tiers' classifiers are retrained from our
-  campaign data — `results/iada-tier-rda/{T1,A}/` (6 `.rda` each: svm_model +
-  cpuk/memk/diskk/netk/cachek), 5-class/7-feature, vendorable via `INTP_R_FOLDER`.
-  A robustness patch (`bench/iada/patches/retrain-robust-quantile-breaks.patch`)
-  lets `retrain.R` handle zero-skewed level columns in real captures.
-- **Remaining (the heavy part):**
-  1. Convert our campaign workloads into CloudSim cloudlet traces (an iada-tree
-     `source/` of per-cloudlet CSVs) in the VM condition (RDT→0) — so the sim
-     classifies VM-style inputs where the tiers actually diverge. T1/A are 7-col
-     (drop-in); the bundled host traces don't discriminate the tiers (no VM
-     condition), so our VM traces are required.
-  2. **Approach B** needs the CloudSim Java widened (`MLClassifier`/`Interference.java`
-     7→15 features, `int`→`double`, the regime class) + a fresh IDI calibration
-     in `Degradation.java` — grounded in our **W5 victim-delta** measurements.
-  3. Run the SA scheduler per tier → parse idi_avg/sum/max, migrations,
-     interference (`parse-cloudsim-output.py`) → the per-tier scheduling table.
+**Headline metric `idi_avg`** = interference + migration cost (IADA's own
+metric); **lower = better placement**. Mean ± SD over 5 reps, VM condition:
+
+| classifier tier | idi_avg (VM) | migrations | vs canonical |
+|---|---|---|---|
+| Canonical 7-metric (RDT, baseline) | 5958 ± 74 | 14 ± 4 | — |
+| Proxy-swap (membw_est → mem slot) | **3410 ± 34** | 19 ± 9 | **−43% IDI** |
+
+**The portable proxy yields 43% lower interference-degradation in the VM.**
+Canonical-7's `mbw` reads 0 in the guest, so the scheduler under-estimates the
+memory contention and co-locates memory-heavy containers; the proxy (`membw_est`)
+restores that signal, so the scheduler separates them — it migrates a little more
+(acting on contention it can now *see*) but ends at far lower interference. This
+is the scheduling-level payoff of the portable metrics, and it is exactly the gap
+the saturated classification accuracy could not show.
+Figure: `results/figures/p2-iada-tiers/F13-tier-scheduling-idi.{png,pdf}`.
+
+CloudSim was retargeted from the paper's 7200-sample / 96-host config to our
+120-sample traces + a 12-host cluster (`bench/iada/patches/cloudsim-small-cluster-sim.patch`):
+`NUMBER_HOSTS/VMS`→12, container list sized to the loaded cloudlets,
+deterministic cross-tier cloudlet ordering, and `InterferenceClassifier`'s
+placement horizon retargeted to 120 samples.
+
+**Approach B (full-15 + regime) in the sim** additionally needs the CloudSim Java
+widened end-to-end (`Interference.java`/`MLClassifier.java` 7→15 features, a 6th
+`regime` class in `MLCResult`/`Degradation.java` with a W5-calibrated IDI table,
+and 15-column traces through `convert-profiler-to-meyer.py`/`generate-iada-tree.py`).
+B's *classification* is already covered above; its sim is an incremental
+"does the full set beat the single mem proxy for scheduling" question.
 
 _Artifacts: `bench/iada/scripts/campaign-to-trainsets.py`,
 `bench/iada/scripts/eval-tiers.R`, `bench/plot/plot-iada-tier-table.py`,
