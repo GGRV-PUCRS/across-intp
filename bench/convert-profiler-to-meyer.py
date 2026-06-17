@@ -11,6 +11,8 @@ from typing import Iterable
 
 
 METRICS = ("netp", "nets", "blk", "mbw", "llcmr", "llcocc", "cpu")
+CLAMP = True   # clamp values to [0,100]; disabled (--no-clamp) for proxy columns
+               # like membw_est (MB/s) whose magnitude must survive into the trace
 
 # Execution-environment directory names emitted by bench/run-intp-bench.sh.
 # Result layout is <env>/<variant>/<stage>/<workload>/rep<R>/profiler.tsv.
@@ -93,6 +95,21 @@ def parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Print planned conversions without writing files.",
+    )
+    parser.add_argument(
+        "--metrics",
+        default=None,
+        help=(
+            "Comma-separated 7 metric names to emit (header-mapped), overriding the "
+            "canonical set. For Approach A: netp,nets,blk,membw_est,llcmr,llcocc,cpu "
+            "(membw_est replaces mbw)."
+        ),
+    )
+    parser.add_argument(
+        "--no-clamp",
+        action="store_true",
+        help="Do not clamp values to [0,100] (needed when a column is an absolute "
+             "rate like membw_est MB/s).",
     )
     return parser.parse_args()
 
@@ -184,7 +201,7 @@ def parse_metric_row(
     except ValueError as exc:
         raise ValueError(f"{source}:{line_no}: could not parse metrics from {tail}") from exc
 
-    return [clamp_percent(value) for value in values]
+    return [clamp_percent(value) if CLAMP else value for value in values]
 
 
 def clamp_percent(value: int) -> int:
@@ -275,6 +292,13 @@ def write_manifest(path: Path, results: list[ConversionResult]) -> None:
 
 def main() -> int:
     args = parse_args()
+    global METRICS, CLAMP
+    if args.metrics:
+        METRICS = tuple(m.strip() for m in args.metrics.split(","))
+        if len(METRICS) != 7:
+            raise SystemExit(f"--metrics needs exactly 7 names, got {len(METRICS)}")
+    if args.no_clamp:
+        CLAMP = False
     profiler_paths = filter_by_stage(iter_profiler_paths(args.inputs, args.capture_name), args.stage)
     if not profiler_paths:
         raise SystemExit(f"No {args.capture_name} files matched the requested filters.")
