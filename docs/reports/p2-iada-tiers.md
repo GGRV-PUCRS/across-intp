@@ -95,12 +95,30 @@ CloudSim was retargeted from the paper's 7200-sample / 96-host config to our
 deterministic cross-tier cloudlet ordering, and `InterferenceClassifier`'s
 placement horizon retargeted to 120 samples.
 
-**Approach B (full-15 + regime) in the sim** additionally needs the CloudSim Java
-widened end-to-end (`Interference.java`/`MLClassifier.java` 7→15 features, a 6th
-`regime` class in `MLCResult`/`Degradation.java` with a W5-calibrated IDI table,
-and 15-column traces through `convert-profiler-to-meyer.py`/`generate-iada-tree.py`).
-B's *classification* is already covered above; its sim is an incremental
-"does the full set beat the single mem proxy for scheduling" question.
+**Approach B (full-15 + regime) in the sim — scope + risk.** Unlike A (a pure
+value-swap, zero code change), B needs an 8-file cascade because the CloudSim R
+**inference** path is hardcoded to 7 features / 5 classes — not just the training
+path:
+- `svm.R:112-124` — an explicit `if(predict=="cpu") … else if "cache"` chain
+  (no `regime` branch); `svm.R:132-209` slices `df[,1:7]`.
+- `kmeans.R` — fixed per-class level-column indices `(cpu=7,mem=4,disk=3,net=1,
+  cache=6)` for the 7-col layout; no `regime`.
+- `MLClassifier.java` (×2 classify methods) — `matrix(ncol=7)`, 7-name `setNames`
+  **with a deliberate netp/nets swap** between training and inference, a 7-term
+  `data.frame`, and `j<7` loops.
+- `Interference.java:63` (`int[7]→int[15]`, the one easy change),
+  `MLCResult`/`Degradation.java` (a 6th `regime` class + W5-calibrated IDI), plus
+  `convert-profiler-to-meyer.py`/`generate-iada-tree.py` to emit/accept 15-col
+  traces, and a `retrain.R` widening (`FEATURES`/`CLASSES`/`LEVEL_COL`).
+
+The hazard is that a wrong 15-column order, a mis-mapped level index, or the
+netp/nets swap produces **silently wrong** IDI numbers (plausible but incorrect),
+not a crash. So B's sim is a careful, dedicated effort — not a quick add — and it
+is **incremental**: B's *classification* is already in the tables above, and the
+*scheduling* payoff of the portable metrics is already demonstrated by A
+(−43% IDI in the VM). It answers only "does the full-15+regime set beat the
+single membw_est proxy for placement," which A's result suggests is a small
+delta (A already restores the dominant memory signal).
 
 _Artifacts: `bench/iada/scripts/campaign-to-trainsets.py`,
 `bench/iada/scripts/eval-tiers.R`, `bench/plot/plot-iada-tier-table.py`,
