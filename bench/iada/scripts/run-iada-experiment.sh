@@ -76,7 +76,8 @@ ln -sfn "$VARIANT_TREE" "$RESOURCE_LINK"
 export R_HOME="${R_HOME:-$(R RHOME)}"
 export LD_LIBRARY_PATH="$JRI_DIR:$R_HOME/lib:${LD_LIBRARY_PATH:-}"
 export R_LIBS_USER
-export INTP_R_FOLDER="$CLOUDSIM_REPO/R/"
+# honor a pre-set INTP_R_FOLDER (per-tier .rda + R sources); default to the fork
+export INTP_R_FOLDER="${INTP_R_FOLDER:-$CLOUDSIM_REPO/R/}"
 export INTP_R_LIBPATHS="$R_LIBS_USER"
 
 CP="$CLOUDSIM_REPO/bin"

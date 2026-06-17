@@ -177,7 +177,10 @@ def parse_metric_row(
     else:
         tail = fields[-7:]
     try:
-        values = [round(float(field)) for field in tail]
+        # '--'/empty = source unavailable in this env (e.g. RDT mbw/llcocc/llcmr
+        # in a KVM guest) -> 0, matching campaign-to-trainsets.py. Without this
+        # the canonical 7 of a vm-guest capture abort the whole conversion.
+        values = [0 if field in ("--", "") else round(float(field)) for field in tail]
     except ValueError as exc:
         raise ValueError(f"{source}:{line_no}: could not parse metrics from {tail}") from exc
 
