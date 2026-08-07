@@ -258,3 +258,121 @@ the k3s-busy testbed.
   with the rescan cadence. Needs sequential windows or disjoint legs
   before its resctrl rows are trusted; left to the paper-2 analysis
   pass rather than a mechanical rewrite here.
+
+> The two entries below arrived from `main` with the camera-ready work and
+> were renumbered on this branch: `main`'s D10 and D11 are D13 and D14 here,
+> since this branch had already allocated D10-D12 in June.
+
+## D13 — camera-ready release refresh: two assets, redacted raws, recreated tag
+
+The camera-ready figure pipeline merged as `862dc6d` (no-ff, PR #1). The
+release plan changed twice from the original "tag never moves, assets
+clobbered in place" stance, both by author decision:
+
+1. **The raw sources are now public.** `consolidation-raw.tar.gz` joins the
+   anonymized artifact as a second release asset: the five source campaign
+   sessions (two hosts), the Fig. 6 auxiliary reruns, and the fusion trees
+   (`ub24-concat`, `ub22-and-24-full`) with their PROVENANCE records. The
+   original privacy rationale had weakened — the rented testbed nodes are
+   decommissioned and the hostname/IP mapping was already public in
+   `ANONYMIZATION.md`.
+2. **The tag is recreated, not preserved.** `v0.1.0` is deleted and re-cut
+   at the final post-merge commit so the release's source snapshot matches
+   the code that produced the camera-ready figures. Acceptable because the
+   camera-ready (due 2026-09-05) is not yet submitted; the risk that a
+   submission-phase evaluator pinned the old `9795c5b` hash is accepted.
+
+One redaction was applied to the raws before publication, after an audit
+found host auth-log content in `stall-monitor/`: the `journal tail` section
+of every heartbeat (5,292 files) and the auth units (sshd, CRON, PAM,
+systemd-logind) of every `stall-dump-*/journal.txt` (262 files, 1,454
+lines) exposed login source IPs and an SSH key fingerprint. Kernel,
+SystemTap and stress-ng journal lines — the stall evidence — are untouched;
+each touched file carries a marker. A full-tree scan for auth patterns,
+key material and platform tokens is clean. The published fragility tables
+remain the canonical v0.2 stall counts; `ANONYMIZATION.md` in the payload
+was rewritten to record both assets' policies.
+
+## D14 — post-camera-ready audit: stale amplification figure, draft section numbering
+
+An audit against the accepted camera-ready found the repository publishing a
+context-switch amplification figure the paper contradicts, plus cross-references
+to a draft section numbering that no longer exists.
+
+1. **`194-416x` was wrong; the correct figure is `194-416x`.** Recomputed from
+   the published artifact's raw `vmstat` traces
+   (`extra/intp-aux-rerun-v3-20260524-164742/`) with `parse_vmstat_cs` from
+   `bench/plot/plot-aux-rerun.py`, mean of 3 reps per cell: `ref_stream` 194x,
+   `ref_cpu` 404x, `ref_disk` 416x. The paper's §V-B figure is right and the
+   repository's was stale — it predates the 2026-05-24 auxiliary reruns and had
+   propagated to 22 sites across 12 files, including two C source comments and
+   the `test-no-ctxsw-amplification.sh` diagnostics. The 1.10 acceptance
+   threshold in that test is unchanged; only the messages were. The same
+   computation over `intp-aux-rerun-v3.2-*` gives 1.0x on all three loads,
+   confirming §V-B's "leaves vmstat unchanged".
+
+2. **`V3-OVERHEAD-FINDINGS.md` §1 had the workload attribution backwards.** It
+   claimed bursty I/O sat at the low end of the range and CPU-bound load at the
+   high end. `ref_disk` is in fact the maximum and `ref_stream` the minimum —
+   a case the sentence did not mention. Replaced with the measured table.
+
+3. **Draft section numbers swept to the camera-ready.** `section VIII` →
+   `§III-A`, `section V-D` and `section VI (overhead decomposition)` → `§V-B`,
+   `§IV-C` → `§IV` (which has no lettered subsections). `§IV-E` had no target
+   at all: the `mbw` silent-clip material was cut from the camera-ready, so
+   those five sites now point at `docs/V3-OVERHEAD-FINDINGS.md` §3. Two
+   references were deliberately left alone — `bench/OVERVIEW.md` §9.7 maps the
+   2022 IntP paper, and `v3-ebpf-ring/DESIGN.md` quotes iprof's paper §III.A.
+
+4. **`docs/READER-MAP.md` added.** The paper points readers at the companion
+   repository nine times without saying where; `PAPER-CROSS-REFERENCES.md` is
+   historical and uses draft numbering. The new map covers those promises plus
+   the `figures/` → `published/<subset>/` filename mapping, whose two aliases
+   (`new-fig01b_*` for the merged subset, `merged-fig11_rep_errorbars` for stem
+   `fig11_idi_bars`) were otherwise undiscoverable.
+
+5. **Two artifact-only figure specs.** Measuring all 33 PDFs in `published/`
+   put the audit's premise straight: the D13 refresh covered the eleven stems in
+   `PAPER_FIGURES`, leaving 22 at the exploratory plotter's default size, and
+   exactly **one** of those 22 was below the 6.5 pt floor —
+   `new/fig01b_per_variant_bars` at 5.8 pt, 670x421 pt. `merged/fig13` was
+   off-format (1088x457 pt) but legible at 7.0 pt, and the other 20 are all at
+   or above 7 pt. None of the 22 is a stale copy of a placed figure: each is a
+   different variant subset's cut of the same panel.
+
+   The two that matter are now specs with `artifact_only=True`, rendered at
+   `TEXT_WIDTH` and gated like the rest but not copied into `figures/`, so the
+   Overleaf drop-in still holds exactly the eleven the paper includes.
+   `fig_iada_segmented` needed a layout change to go with it: `cols = min(2, n)`
+   turns the three-variant cut into a 2x2 grid with an empty cell, so
+   camera-ready mode now gives every variant its own column, matching what
+   `fig01b` already did. The two-variant subset the paper places is a 1x2 grid
+   either way, so Fig. 4 is unaffected. The gate report now ships as
+   `published/QA-FIGS.md`, which `PROVENANCE.md` had promised without
+   delivering, alongside a `published/README.md` that separates the 13 gated
+   figures from the 20 campaign renders.
+
+6. **The published figures were kept, not re-rendered.** A full re-render
+   reproduces the data exactly — the gate's visible-string delta is empty for
+   all eleven, and rasterising published against re-rendered shows every bar,
+   error bar, PCA point, cluster assignment and dendrogram merge distance in the
+   same place. But no PDF matched byte-for-byte, and only two matched at the
+   content-stream level, under matplotlib 3.10.7 and 3.10.9 alike (the two
+   versions are identical to each other here, so the version is not the cause).
+   `constrained_layout` solves the axes packing from measured text extents, so a
+   different fontconfig shifts the plot box by a fraction of an inch. Since the
+   camera-ready references the published PDFs and nothing about them is wrong,
+   only the two artifact-only figures were replaced; 31 of the 33 are unchanged
+   bytes. `render-paper-figures.py` claimed the run was "deterministic: same
+   inputs produce byte-identical layout" — true only within one pinned
+   environment, and now documented as such.
+
+7. **`PROVENANCE.md` no longer pins the tag's commit hash.** It claimed
+   `9795c5b` and "the tag does not move", both contradicted by D13. Since the
+   tag is re-cut at every asset refresh, any hash written here goes stale by
+   construction; `git rev-parse v0.1.0` is now the stated authority. The asset
+   count is also reconciled with D13's wording (two tarballs plus `SHA256SUMS`).
+
+The release keeps version `v0.1.0`, the tag is re-cut at this pass's head, and
+the assets are clobbered in place. The camera-ready PDF is untouched: no placed
+figure was re-rendered, so the 11-page layout stands.

@@ -55,7 +55,7 @@ the original SystemTap approach across kernel versions and hardware architecture
 | V2.1 (c-abi-cgroup) -- C / c-abi-cgroup, per-cgroup attribution | Active (Paper 2 cross-deployment profiler); validated on Hetzner Sapphire Rapids |
 | V3.1 (bpftrace) -- bpftrace + Python orchestrator | Complete; validated on Hetzner Sapphire Rapids for Phase 3 experiments |
 | V3 (ebpf-ring) -- eBPF/CO-RE (libbpf, ring-buffer-streaming) | Complete; validated on Hetzner Sapphire Rapids for Phase 3 experiments |
-| V3.2 (eBPF-CORE) -- eBPF/CO-RE (libbpf, in-kernel-aggregating, paper section VIII) | Complete; validated on Hetzner Sapphire Rapids for Phase 3 experiments |
+| V3.2 (eBPF-CORE) -- eBPF/CO-RE (libbpf, in-kernel-aggregating, paper §III-A) | Complete; validated on Hetzner Sapphire Rapids for Phase 3 experiments |
 | V3.3 (ebpf-core-cgroup) -- eBPF/CO-RE (libbpf, per-cgroup, in-kernel-aggregating) | Active (Paper 2 cross-deployment profiler); validated on Hetzner Sapphire Rapids |
 
 ### Citation
@@ -141,7 +141,7 @@ fingerprint above and its on-disk schema are left untouched. Design + status:
 |   |-- v2.1-c-abi-cgroup/    Pure C, per-cgroup attribution (cgroup v2 + perf cgroup mode, no eBPF)
 |   |-- v3-ebpf-ring/       Full eBPF/CO-RE with libbpf (ring-buffer-streaming)
 |   |-- v3.1-bpftrace/         bpftrace scripts + Python orchestrator + resctrl
-|   |-- v3.2-ebpf-core/         Full eBPF/CO-RE with libbpf (in-kernel-aggregating, paper section VIII)
+|   |-- v3.2-ebpf-core/         Full eBPF/CO-RE with libbpf (in-kernel-aggregating, paper §III-A)
 |   |-- v3.3-ebpf-core-cgroup/      eBPF/CO-RE with libbpf, per-cgroup targeting + in-kernel aggregation (paper #2 cross-deployment path)
 |-- VERSIONS.md                Variant-naming map (current vs legacy pre-2026-05-05)
 ```
@@ -281,8 +281,8 @@ eBPF-CORE is the in-kernel-aggregating variant specified in paper section
 VIII: same probe set as ebpf-ring, but the 16 MiB ring buffer is replaced
 with per-CPU + per-PID counter maps polled once per `--interval`.
 The userspace consumer is no longer draining a continuous event
-stream, which is supposed to eliminate the 188-390x context-switch
-amplification documented in paper section V-D.
+stream, which is supposed to eliminate the 194-416x context-switch
+amplification documented in paper §V-B.
 
 Requires: libbpf, clang, kernel BTF, resctrl for mbw/llcocc (same as
 ebpf-ring). Adds a trailing `mbw_raw_mbps` diagnostic column to the TSV

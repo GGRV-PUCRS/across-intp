@@ -31,7 +31,7 @@ implementations within the same paradigm.
   host-global without eBPF).
 - **v3.x** -- eBPF-based implementations. Active. v3 streams events
   through a ring buffer (predecessor); v3.1 is the bpftrace companion;
-  **v3.2** is the in-kernel-aggregation endpoint (paper section VIII)
+  **v3.2** is the in-kernel-aggregation endpoint (paper §III-A)
   that supersedes v3 as the measured eBPF endpoint; **v3.3** (new)
   scopes the v3.2 design to a single cgroup (`cgroup_skb` + cgroup-id
   counter maps) -- the eBPF-native sibling of v3.2 and companion to
@@ -58,7 +58,7 @@ to as the "2022 baseline".
 | v2.1    | c-abi-cgroup | (new)  | `variants/v2.1-c-abi-cgroup/`    | v2's hybrid-C backends with **per-cgroup attribution**: cgroup v2 `cpu.stat`/`io.stat`, `perf_event_open` cgroup mode (LLC), resctrl mon\_groups; disk bandwidth self-detected. `nets` stays system-wide. One code path for bare co-located + container + VM-guest. Target kernel **5.8+** (cgroup v2). See `variants/v2.1-c-abi-cgroup/DESIGN.md` | Active (container / IADA, paper #2) |
 | v3      | ebpf-ring    | v6     | `variants/v3-ebpf-ring/`         | C + libbpf + CO-RE; software metrics through 16 MiB ring buffer (streaming pattern); hardware metrics through resctrl. **Predecessor of v3.2**; retained for overhead-evidence documentation. | Active (predecessor) |
 | v3.1    | bpftrace     | v5     | `variants/v3.1-bpftrace/`          | bpftrace DSL scripts + Python orchestrator + resctrl. SystemTap-script-style ergonomics on top of eBPF | Active (companion) |
-| v3.2    | eBPF-CORE     | (new)  | `variants/v3.2-ebpf-core/`    | C + libbpf + CO-RE with **in-kernel aggregation**: `BPF_MAP_TYPE_PERCPU_ARRAY` + `BPF_MAP_TYPE_HASH` counters polled once per interval (no ring buffer). Eliminates the 188-390x context-switch amplification documented for v3; emits both `mbw_pct` and `mbw_raw_mbps`. See `variants/v3.2-ebpf-core/DESIGN.md` and `docs/V3-OVERHEAD-FINDINGS.md`. | Active (measured eBPF endpoint) |
+| v3.2    | eBPF-CORE     | (new)  | `variants/v3.2-ebpf-core/`    | C + libbpf + CO-RE with **in-kernel aggregation**: `BPF_MAP_TYPE_PERCPU_ARRAY` + `BPF_MAP_TYPE_HASH` counters polled once per interval (no ring buffer). Eliminates the 194-416x context-switch amplification documented for v3; emits both `mbw_pct` and `mbw_raw_mbps`. See `variants/v3.2-ebpf-core/DESIGN.md` and `docs/V3-OVERHEAD-FINDINGS.md`. | Active (measured eBPF endpoint) |
 | v3.3    | ebpf-core-cgroup   | (new)  | `variants/v3.3-ebpf-core-cgroup/`    | C + libbpf + CO-RE with **per-cgroup attribution**: the in-kernel-aggregation design of v3.2 (counter maps polled once per interval, no ring buffer) scoped to one cgroup via `cgroup_skb` (netp) and cgroup-id-keyed counter maps. The **eBPF-native sibling of v3.2** and the **companion to v2.1**: same per-cgroup question, eBPF mechanism instead of c-abi-cgroup stable ABIs. `nets` is a per-cgroup **proxy** (byte-share cost model) that diverges by design from v2.1's system-wide `nets` (the v2.1-vs-v3.3 comparison axis). Binary `intp-ebpf-core-cgroup`. CLI adds `--cgroup`, `--target-container`, `--target-vm`, `--tap-iface`, `--exact`, `--no-diag-cols`. See `variants/v3.3-ebpf-core-cgroup/DESIGN.md`. | Active (container / IADA, paper #2) |
 
 \* The v3 lineage was discontinued at the `pre-rename-2026-05-05` tag because
@@ -156,14 +156,14 @@ to avoid the RCU-unsafe pattern, recovering the full 7-metric coverage.
 ## Status after V3.2 introduction (2026-05-13)
 
 - v3.2 (`variants/v3.2-ebpf-core/`) was added as the measured eBPF
-  endpoint for the SBAC-PAD 2026 paper section VIII. Architecture:
+  endpoint for the SBAC-PAD 2026 paper §III-A. Architecture:
   same eBPF probe set as v3 (`tracepoint:net/net_dev_xmit`,
   `tracepoint:block/block_rq_complete`, `tracepoint:sched/sched_switch`,
   `tracepoint:irq/softirq_entry+exit`, perf_event LLC counters),
   but every event is written into a `BPF_MAP_TYPE_PERCPU_ARRAY` +
   `BPF_MAP_TYPE_HASH` slot via `__sync_fetch_and_add`; userspace
   reads the maps once per `--interval` instead of draining a ring
-  buffer. The structural goal is to eliminate the 188-390x ctxsw
+  buffer. The structural goal is to eliminate the 194-416x ctxsw
   amplification v3 exhibits.
 - v3 is retained as the **predecessor of v3.2**, not deleted. Its
   overhead measurements are the empirical evidence that motivates
@@ -174,7 +174,7 @@ to avoid the RCU-unsafe pattern, recovering the full 7-metric coverage.
   the default matrix; v3 stays for overhead evidence only.
 - Acceptance gate: `make -C variants/v3.2-ebpf-core test-amplification`
   must pass (ratio <= 1.10 on a 90 s stress-ng window) before v3.2
-  joins a campaign. v3 fails this test at 188-390x by construction.
+  joins a campaign. v3 fails this test at 194-416x by construction.
 
 ## Status after v2.1 introduction (2026-05-24)
 

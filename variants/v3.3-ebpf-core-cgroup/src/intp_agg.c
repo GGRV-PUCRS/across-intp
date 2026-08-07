@@ -6,8 +6,8 @@
  * and per-cgroup (agg_per_cgroup) counter maps, and the main loop is just
  * "sleep --interval, read maps, compute deltas, emit one row." No
  * ring_buffer__poll, no event handler dispatch, no consumer-wakeup loop --
- * the structural change that eliminates V3's 188-390x context-switch
- * amplification (SBAC-PAD 2026 section V-D).
+ * the structural change that eliminates V3's 194-416x context-switch
+ * amplification (SBAC-PAD 2026 §V-B).
  *
  * The change from V3.2 is the ATTRIBUTION KEY (DESIGN §3, DECISIONS C1/C2):
  *   - --cgroup/--target-container PATH resolves to a cgroup-identity config

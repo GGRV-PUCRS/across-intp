@@ -4,8 +4,8 @@
  * V3.3 is the per-CGROUP sibling of V3.2. Like V3.2 it accumulates the
  * per-event signal directly into per-CPU / per-cgroup counter maps and is
  * polled once per --interval by userspace -- no ring buffer, no
- * ring_buffer__poll, no consumer-wakeup feedback loop (the 188-390x
- * context-switch amplification V3 incurs, SBAC-PAD 2026 section V-D).
+ * ring_buffer__poll, no consumer-wakeup feedback loop (the 194-416x
+ * context-switch amplification V3 incurs, SBAC-PAD 2026 §V-B).
  *
  * The change from V3.2 is the ATTRIBUTION KEY: instead of a static
  * target_pids[] + a fork/exit-maintained descendant_tgids hash (membership

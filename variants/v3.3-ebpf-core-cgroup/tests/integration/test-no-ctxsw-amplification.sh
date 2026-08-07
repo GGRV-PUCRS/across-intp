@@ -3,8 +3,8 @@
 #
 # V3.3's central acceptance test for the SBAC-PAD 2026 paper hypothesis:
 # the in-kernel-aggregation profiler must NOT structurally amplify the
-# system-wide context switch rate (paper section V-D documents V3's
-# 188-390x amplification driven by the ring-buffer consumer loop). V3.3
+# system-wide context switch rate (paper §V-B documents V3's
+# 194-416x amplification driven by the ring-buffer consumer loop). V3.3
 # inherits V3.2's in-kernel-aggregation design (no userspace draining loop)
 # and adds per-cgroup targeting, so it must clear this gate just like V3.2.
 #
@@ -20,7 +20,7 @@
 #      This gives the WITH measurement (workload + profiler).
 #   8. ratio = WITH / BASELINE. Pass if ratio <= MAX_RATIO (default 1.10).
 #
-# V3 fails this test at 188-390x. V3.3 should pass within noise.
+# V3 fails this test at 194-416x. V3.3 should pass within noise.
 
 set -eu
 
@@ -106,9 +106,9 @@ fail=$(awk -v r="$ratio" -v m="$MAX_RATIO" \
        'BEGIN { print (r == "inf" || r+0 > m+0) ? 1 : 0 }')
 if [ "$fail" = "1" ]; then
     echo "FAIL: ctxsw amplification ratio $ratio exceeds limit $MAX_RATIO"
-    echo "  (V3 fails this test at 188-390x; if V3.3 is failing too, the"
+    echo "  (V3 fails this test at 194-416x; if V3.3 is failing too, the"
     echo "   in-kernel aggregation is still feeding a userspace draining loop)"
     exit 1
 fi
 
-echo "PASS: ctxsw ratio within tolerance (V3 fails at 188-390x)"
+echo "PASS: ctxsw ratio within tolerance (V3 fails at 194-416x)"
