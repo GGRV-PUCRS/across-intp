@@ -175,7 +175,7 @@ BENCH_ENVS="${BENCH_ENVS:-bare}"
 #        (container/VM + IADA loop, paper #2); see
 #        variants/v2.1-c-abi-cgroup/DESIGN.md — BENCH_VARIANTS="...,v2.1".
 #   v3.1 bpftrace alternative — BENCH_VARIANTS="...,v3.1".
-#   v3.2 in-kernel-aggregating variant (addresses the V-D amplification);
+#   v3.2 in-kernel-aggregating variant (addresses the §V-B amplification);
 #        see variants/v3.2-ebpf-core/DESIGN.md — BENCH_VARIANTS="...,v3.2".
 #   v3.3 per-cgroup eBPF variant — eBPF-native sibling of v3.2 / companion to
 #        v2.1 (container/VM + IADA loop, paper #2); see

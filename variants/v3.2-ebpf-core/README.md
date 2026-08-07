@@ -113,7 +113,7 @@ canonical reason for `pct > 100` is a misconfigured
 eBPF-CORE ships two integration tests on top of the ebpf-ring smoke test:
 
 - `tests/integration/test-no-ctxsw-amplification.sh` (`make test-amplification`)
-  -- the structural acceptance test for the paper's V-D hypothesis.
+  -- the structural acceptance test for the paper's §V-B hypothesis.
   Runs stress-ng under vmstat for 90 s with and without the profiler,
   computes the ratio of context switches, and fails if the ratio
   exceeds 1.10. ebpf-ring fails this test at 194-416x.
@@ -144,7 +144,7 @@ the saturating subtraction `counters_diff()` relies on.
 ## When to pick V3.2 (eBPF-CORE) over V3 (ebpf-ring)
 
 - You're running ebpf-ring against a sustained-workload campaign and the
-  paper's V-D amplification is showing up in your numbers.
+  paper's §V-B amplification is showing up in your numbers.
 - You don't need per-event introspectability for this campaign.
 - You don't need MPSC FIFO ordering between probes.
 

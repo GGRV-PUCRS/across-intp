@@ -277,12 +277,13 @@ sudo ./intp-ebpf-core --pids <PID> --interval <seconds>
 sudo make test-amplification
 ```
 
-eBPF-CORE is the in-kernel-aggregating variant specified in paper section
-VIII: same probe set as ebpf-ring, but the 16 MiB ring buffer is replaced
+eBPF-CORE is the in-kernel-aggregating variant specified in paper §III-A:
+same probe set as ebpf-ring, but the 16 MiB ring buffer is replaced
 with per-CPU + per-PID counter maps polled once per `--interval`.
 The userspace consumer is no longer draining a continuous event
-stream, which is supposed to eliminate the 194-416x context-switch
-amplification documented in paper §V-B.
+stream, which eliminates the 194-416x context-switch amplification
+documented in paper §V-B -- the auxiliary rerun measures eBPF-CORE at
+1.0x the no-profiler baseline on all three reference loads.
 
 Requires: libbpf, clang, kernel BTF, resctrl for mbw/llcocc (same as
 ebpf-ring). Adds a trailing `mbw_raw_mbps` diagnostic column to the TSV
