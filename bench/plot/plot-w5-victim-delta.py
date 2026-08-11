@@ -21,12 +21,16 @@ from __future__ import annotations
 import argparse
 import csv
 from collections import defaultdict
+import sys
 from pathlib import Path
 from statistics import median
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 import numpy as np
 
 ORDER = ["netp", "nets", "blk", "mbw", "llcmr", "llcocc", "cpu",
@@ -66,10 +70,9 @@ def agg(cells, env, var, m):
 
 
 def save(fig, out: Path, name: str):
-    for ext in ("png", "pdf"):
-        fig.savefig(out / f"{name}.{ext}", dpi=140, bbox_inches="tight")
+    p2_figio.save(fig, out, name, dpi=140)
     plt.close(fig)
-    print(f"wrote {out}/{name}.png + .pdf")
+    print(p2_figio.describe(out, name))
 
 
 def fig_forest(cells, present, variants, out):
@@ -122,9 +125,9 @@ def fig_forest(cells, present, variants, out):
                     plt.Line2D([0], [0], marker=mark[variants[1]], color="k", ls="", label=variants[1])]
     fig.legend(handles=handles, loc="lower center", ncol=4, fontsize=8,
                frameon=True, bbox_to_anchor=(0.5, -0.04))
-    fig.suptitle("F10 — colocation victim-delta: the victim's metric shift under a noisy "
-                 "neighbour\n(grey band = negligible |δ|<0.147; portable contention signals "
-                 "rise, guards stay flat)", fontsize=11)
+    fig.suptitle("How a victim's metrics shift under a noisy neighbour\n"
+                 "grey band = negligible effect.  The portable contention signals rise; "
+                 "the guard metrics stay flat", fontsize=11)
     fig.tight_layout(rect=(0, 0.06, 1, 0.95))
     save(fig, out, "F10-victim-delta-forest")
 
@@ -165,9 +168,9 @@ def fig_vmguest(cells, present, variants, out):
     handles = [plt.Line2D([0], [0], marker="s", color="#1f77b4", ls="", label="canonical RDT (mbw/llcocc/llcmr)"),
                plt.Line2D([0], [0], marker="s", color="#2ca02c", ls="", label="portable proxy")]
     ax.legend(handles=handles, loc="lower right", fontsize=8, frameon=True)
-    ax.set_title("F11 — in the VM the canonical memory-bandwidth metric (mbw) is unavailable; "
-                 "its\nportable proxy membw_est still captures the contention (δ≈+1) under a "
-                 "noisy neighbour", fontsize=10)
+    ax.set_title("Inside the VM the canonical memory-bandwidth metric is unavailable,\n"
+                 "yet its portable proxy still captures the contention under a noisy neighbour",
+                 fontsize=10)
     fig.tight_layout()
     save(fig, out, "F11-vmguest-portable-vs-canonical")
 

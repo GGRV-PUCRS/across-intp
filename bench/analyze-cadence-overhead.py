@@ -29,7 +29,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "plot"))
-import p2_ci  # noqa: E402  (shared rep-level bootstrap CI convention)
+import p2_ci     # noqa: E402  (shared rep-level bootstrap CI convention)
+import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 
 THPT_KEY = "bogo_ops_per_s_real"
 REFS = ["ref_cpu", "ref_stream", "ref_disk"]
@@ -196,16 +197,14 @@ def main() -> int:
     if len(variants) > 1:
         handles += [plt.Line2D([0], [0], color="k", ls="--", label=f"{variants[1]} (dashed)")]
     ax.legend(handles=handles, fontsize=8, ncol=2, frameon=True)
-    ax.set_title(f"F9 — profiler overhead vs sampling cadence ({env0}, Volpert D)\n"
-                 "throughput loss of a reference workload under the profiler vs no profiler\n"
-                 f"error bars: {p2_ci.CI_TAG} (bootstrap over repetitions, baseline and arm resampled independently)",
+    ax.set_title("What the profiler costs at each sampling cadence\n"
+                 "throughput lost by a reference workload when the profiler is attached\n"
+                 f"error bars: {p2_ci.CI_TAG}, bootstrapped over repetitions",
                  fontsize=10)
     fig.tight_layout()
-    for ext in ("png", "pdf"):
-        fig.savefig(os.path.join(args.fig, f"F9-overhead-vs-cadence.{ext}"),
-                    dpi=140, bbox_inches="tight")
+    p2_figio.save(fig, args.fig, "F9-overhead-vs-cadence", dpi=140)
     plt.close(fig)
-    print(f"wrote {args.fig}/F9-overhead-vs-cadence.png + .pdf")
+    print(p2_figio.describe(args.fig, "F9-overhead-vs-cadence"))
     return 0
 
 

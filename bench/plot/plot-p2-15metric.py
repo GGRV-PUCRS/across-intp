@@ -33,6 +33,9 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 import numpy as np
 import pandas as pd
 
@@ -198,13 +201,12 @@ def fig_fingerprint(cells, out: Path):
             ax.axvline(12.5, color="k", lw=1.0)
     cbar = fig.colorbar(im, ax=axes, fraction=0.015, pad=0.01)
     cbar.set_label("interference (%)")
-    fig.suptitle("F0 — Per-(env, variant) 15-metric workload fingerprint "
-                 "(canonical 7 | portable 6 | scheduling-regime 2)\n"
-                 "grey = metric unavailable ('--');  * = panel-normalized to max "
-                 "(membw_est MB/s, psp events/s);  red border = v2.1 mbw invalid pre-D12 re-run (C34)",
+    fig.suptitle("15-metric interference fingerprint per workload, across the deployment stack\n"
+                 "canonical 7 | portable 6 | scheduling-regime 2.  "
+                 "Grey = metric unavailable in this deployment;  "
+                 "* = normalized to the panel maximum (estimated memory bandwidth, preemptions/s)",
                  fontsize=11)
-    fig.savefig(out / "F0-fingerprint-heatmap.png", dpi=160, bbox_inches="tight")
-    fig.savefig(out / "F0-fingerprint-heatmap.pdf", bbox_inches="tight")
+    p2_figio.save(fig, out, "F0-fingerprint-heatmap", dpi=160)
     plt.close(fig)
 
 
@@ -242,11 +244,10 @@ def fig_ratio(df: pd.DataFrame, out: Path):
     handles, labels = axes[0][0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=len(ENV_ORDER),
                fontsize=8, frameon=False, bbox_to_anchor=(0.5, -0.04))
-    fig.suptitle("F1 — ABSOLUTE metrics: ratio vs bare with bootstrap CI "
-                 "(green band = W4 equivalence 0.8–1.25x)", fontsize=11)
+    fig.suptitle("Absolute metrics: ratio to bare metal, with 95% bootstrap CI\n"
+                 "green band = the 0.8–1.25x equivalence corridor", fontsize=11)
     fig.tight_layout(rect=(0, 0.04, 1, 0.94))
-    fig.savefig(out / "F1-ratio-vs-bare.png", dpi=160, bbox_inches="tight")
-    fig.savefig(out / "F1-ratio-vs-bare.pdf", bbox_inches="tight")
+    p2_figio.save(fig, out, "F1-ratio-vs-bare", dpi=160)
     plt.close(fig)
 
 
@@ -283,17 +284,14 @@ def fig_claimclass(df: pd.DataFrame, out: Path):
         ax.set_title(f"{vlabel(var)}", fontsize=10)
         ax.invert_yaxis()
     handles = ([plt.Rectangle((0, 0), 1, 1, color=v, alpha=0.55) for v in cls_color.values()]
-               + [plt.Rectangle((0, 0), 1, 1, facecolor="white", edgecolor="#999999"),
-                  plt.Rectangle((0, 0), 1, 1, facecolor="white", edgecolor="crimson", hatch="///")])
-    labels = list(cls_color.keys()) + ["blank = metric unavailable in env ('--')",
-                                       "v2.1 mbw — invalid (pre-D12 scope bug)"]
+               + [plt.Rectangle((0, 0), 1, 1, facecolor="white", edgecolor="#999999")])
+    labels = list(cls_color.keys()) + ["blank = metric unavailable in this deployment"]
     fig.legend(handles, labels, loc="lower center", ncol=3, fontsize=8, frameon=False,
                bbox_to_anchor=(0.5, -0.02))
-    fig.suptitle("F2 — Claim class per (env, metric); shading intensity = strength of the "
-                 "env-vs-bare evidence", fontsize=11)
+    fig.suptitle("Claim class per deployment and metric\n"
+                 "shading intensity = strength of the evidence against bare metal", fontsize=11)
     fig.tight_layout(rect=(0, 0.05, 1, 0.92))
-    fig.savefig(out / "F2-claim-class-matrix.png", dpi=160, bbox_inches="tight")
-    fig.savefig(out / "F2-claim-class-matrix.pdf", bbox_inches="tight")
+    p2_figio.save(fig, out, "F2-claim-class-matrix", dpi=160)
     plt.close(fig)
 
 
@@ -323,11 +321,11 @@ def fig_availability(cells, out: Path):
         ax.invert_yaxis()
         ax.axvline(8, color="k", lw=1.2)
         ax.set_title(f"{vlabel(var)}   (left: portable + regime | right: RDT canonicals)", fontsize=9)
-    fig.suptitle("F3 — Availability across the deployment stack: the portable set stays numeric in "
-                 "kvm-guest where the RDT canonicals go '--'", fontsize=11)
+    fig.suptitle("Metric availability across the deployment stack\n"
+                 "the portable set keeps reporting numbers inside the VM guest, where the "
+                 "RDT-backed canonical metrics stop reporting at all", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.93))
-    fig.savefig(out / "F3-availability-grid.png", dpi=160, bbox_inches="tight")
-    fig.savefig(out / "F3-availability-grid.pdf", bbox_inches="tight")
+    p2_figio.save(fig, out, "F3-availability-grid", dpi=160)
     plt.close(fig)
 
 
@@ -353,14 +351,13 @@ def fig_validation(base: Path, cells, out: Path):
     ax.set_xscale("log"); ax.set_yscale("log")
     ax.set_xlabel("ground truth: LLC misses/s seen by host perf (median of the rep window)")
     ax.set_ylabel("estimated memory bandwidth, membw_est (MB/s, median of the rep window)")
-    ax.set_title("F4 — Validation: the estimated memory bandwidth tracks true memory traffic\n"
+    ax.set_title("The estimated memory bandwidth tracks true memory traffic\n"
                  "each point = one rep (host envs, all 7 workloads); ρ = Spearman rank correlation;\n"
                  "log-log because the workloads span three decades of memory intensity", fontsize=10)
     ax.legend(fontsize=9)
     ax.grid(alpha=0.2, which="both")
     fig.tight_layout()
-    fig.savefig(out / "F4-membw-validation.png", dpi=160, bbox_inches="tight")
-    fig.savefig(out / "F4-membw-validation.pdf", bbox_inches="tight")
+    p2_figio.save(fig, out, "F4-membw-validation", dpi=160)
     plt.close(fig)
 
 
@@ -386,12 +383,11 @@ def fig_psi(cells, out: Path):
     ax.set_xticklabels([ENV_SHORT[e] for e in envs], fontsize=9)
     ax.set_ylabel("estimated memory bandwidth, membw_est,\non app05_streaming (MB/s, log)")
     ax.legend(fontsize=9, loc="upper left")
-    ax.set_title("F5 — Falsification: PSI memory pressure cannot see bandwidth saturation\n"
+    ax.set_title("PSI memory pressure cannot see bandwidth saturation\n"
                  "(app05_streaming pins the memory channels; psi_mem only reacts to CAPACITY reclaim)",
                  fontsize=10)
     fig.tight_layout()
-    fig.savefig(out / "F5-psi-bandwidth-blindness.png", dpi=160, bbox_inches="tight")
-    fig.savefig(out / "F5-psi-bandwidth-blindness.pdf", bbox_inches="tight")
+    p2_figio.save(fig, out, "F5-psi-bandwidth-blindness", dpi=160)
     plt.close(fig)
 
 
@@ -440,13 +436,12 @@ def fig_psp(df: pd.DataFrame, out: Path):
         ax.set_title(f"{vlabel(var)}", fontsize=10)
         cb = fig.colorbar(im, ax=ax, fraction=0.045)
         cb.set_label("Cliff's δ (effect size of env vs bare)", fontsize=8)
-    fig.suptitle("F6 — Scheduling-regime metric psp (involuntary preemptions/s of the profiled workload)\n"
+    fig.suptitle("Scheduling-regime metric: involuntary preemptions per second of the profiled workload\n"
                  "cell = median Δ vs bare in events/s (bold = statistically significant); "
                  "red = MORE preemptions than bare, blue = fewer",
                  fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.88))
-    fig.savefig(out / "F6-psp-directional.png", dpi=160, bbox_inches="tight")
-    fig.savefig(out / "F6-psp-directional.pdf", bbox_inches="tight")
+    p2_figio.save(fig, out, "F6-psp-directional", dpi=160)
     plt.close(fig)
 
 

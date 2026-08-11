@@ -20,11 +20,15 @@ from __future__ import annotations
 import argparse
 import csv
 from collections import defaultdict
+import sys
 from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 import numpy as np
 
 # metric display order, grouped by IADA resource class (consumption metrics
@@ -64,10 +68,9 @@ def load(tsv: Path):
 
 
 def save(fig, out: Path, name: str):
-    for ext in ("png", "pdf"):
-        fig.savefig(out / f"{name}.{ext}", dpi=140, bbox_inches="tight")
+    p2_figio.save(fig, out, name, dpi=140)
     plt.close(fig)
-    print(f"wrote {out}/{name}.png + .pdf")
+    print(p2_figio.describe(out, name))
 
 
 def short(a):
@@ -182,8 +185,8 @@ def fig_fingerprint(med, cls, apps, envs_show, variants, out):
                              fontsize=12, fontweight="bold", color="#333333")
     cb = fig.colorbar(im, ax=axes, fraction=0.018, pad=0.02)
     cb.set_label("intensity (per metric, ÷ max across apps within environment)", fontsize=8)
-    fig.suptitle("F12 — real-application 15-metric fingerprints span multiple "
-                 "resource classes when driven\n(rows = environment, columns = "
+    fig.suptitle("Real applications stress several resource classes at once when adequately driven\n"
+                 "(rows = environment, columns = "
                  "profiler variant; cell = raw median; colour normalized per metric "
                  "within each environment; ⚠ = under-driven at the 1/3 footprint; "
                  "solo)", fontsize=11)
@@ -236,10 +239,13 @@ def fig_activation(med, apps, envs_show, variants, out):
         axes[ri][0].annotate(e, xy=(-0.5, 0.5), xycoords="axes fraction",
                              ha="center", va="center", rotation=90,
                              fontsize=12, fontweight="bold", color="#333333")
-    fig.suptitle("F12 — IADA resource-class activation (absolute floors): "
-                 "adequately-driven real apps span ≥2 classes\n(rows = environment, "
-                 "columns = variant; ✓ = class active; trailing number = classes "
-                 "activated; ⚠ = under-driven at the 1/3 footprint)", fontsize=10)
+    # Keep the longest line close to the pre-retitle width: the title is wider
+    # than the axes, so it sets the tight-bbox width and hence the aspect the
+    # seminar deck was laid out against.
+    fig.suptitle("Every adequately-driven real application activates at least two IADA resource "
+                 "classes, so a single-class label cannot describe it\n"
+                 "(rows = environment, columns = profiler variant; ✓ = class active; "
+                 "trailing number = classes activated; ⚠ = under-driven)", fontsize=10)
     fig.subplots_adjust(left=0.16, right=0.97, top=0.84, bottom=0.12,
                         hspace=0.22, wspace=0.08)
     save(fig, out, "F12-class-activation")

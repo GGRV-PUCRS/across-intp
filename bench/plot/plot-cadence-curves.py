@@ -21,11 +21,15 @@ from __future__ import annotations
 import argparse
 import csv
 from collections import defaultdict
+import sys
 from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 import numpy as np
 
 THRESH = 0.05          # min max|Δref| for a metric to be drawn as a curve
@@ -59,10 +63,9 @@ def load(tsv: Path):
 
 
 def save(fig, out: Path, name: str):
-    for ext in ("png", "pdf"):
-        fig.savefig(out / f"{name}.{ext}", dpi=140, bbox_inches="tight")
+    p2_figio.save(fig, out, name, dpi=140)
     plt.close(fig)
-    print(f"wrote {out}/{name}.png + .pdf")
+    print(p2_figio.describe(out, name))
 
 
 def fig_fidelity(fid, dens, cls, med, variants, workloads, fine, out):
@@ -129,8 +132,8 @@ def fig_fidelity(fid, dens, cls, med, variants, workloads, fine, out):
         handles += [plt.Line2D([0], [0], color="k", ls="--", label=f"{variants[1]} (dashed)")]
     fig.legend(handles=handles, loc="lower center", ncol=min(len(handles), 6),
                fontsize=8, frameon=True, bbox_to_anchor=(0.5, -0.02))
-    fig.suptitle("F8 — profiler fidelity & sample density vs sampling cadence "
-                 "(1/3 footprint; shaded = ±10% fidelity band)", fontsize=11)
+    fig.suptitle("Profiler fidelity and sample density versus sampling cadence\n"
+                 "shaded band = ±10% fidelity", fontsize=11)
     fig.tight_layout(rect=(0, 0.08, 1, 0.95))
     save(fig, out, "F8-cadence-fidelity")
 
@@ -162,8 +165,9 @@ def fig_sensitivity(fid, cls, med, variants, workloads, fine, out):
                         color="white" if v > 55 else "black")
     cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     cb.set_label("max |Δref| vs 0.1s (%)", fontsize=8)
-    ax.set_title("F8b — cadence sensitivity: max fidelity loss per metric vs the\n"
-                 "finest cadence (hot = needs fine sampling; blank = metric ~0 / N/A)",
+    ax.set_title("Which metrics need fine sampling\n"
+                 "largest fidelity loss per metric relative to the finest cadence\n"
+                 "(hot = degrades quickly as sampling coarsens; blank = metric near zero)",
                  fontsize=10)
     fig.tight_layout()
     save(fig, out, "F8-cadence-sensitivity")

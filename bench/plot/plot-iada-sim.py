@@ -27,7 +27,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import p2_ci  # noqa: E402  (shared rep-level bootstrap CI convention)
+import p2_ci      # noqa: E402  (shared rep-level bootstrap CI convention)
+import p2_figio   # noqa: E402  (shared {png,pdf} output layout)
 
 TIER_DESC = {"T1": "Canonical 7-metric\n(RDT — IADA baseline)",
              "A": "Proxy-swap\n(portable mem proxy)",
@@ -96,7 +97,7 @@ def main() -> int:
     ax2.set_title(f"Migrations triggered (mean, {p2_ci.CI_TAG})", fontsize=10)
     ax2.grid(axis="y", ls=":", alpha=0.3)
 
-    fig.suptitle("F13 — IADA closed-loop scheduling outcome per classifier tier (VM / KVM guest)\n"
+    fig.suptitle("Closed-loop scheduling outcome per classifier tier, inside a KVM guest\n"
                  "the canonical RDT set is memory-blind in the VM; the portable metrics restore it",
                  fontsize=12, fontweight="bold")
     fig.text(0.5, -0.07,
@@ -107,9 +108,8 @@ def main() -> int:
              "achieved WHILE modeling interference the others miss.",
              ha="center", va="top", fontsize=8.5, style="italic")
     fig.tight_layout(rect=(0, 0, 1, 0.92))
-    for ext in ("png", "pdf"):
-        fig.savefig(args.out / f"F13-tier-scheduling-idi.{ext}", dpi=150, bbox_inches="tight")
-    print(f"wrote {args.out}/F13-tier-scheduling-idi.png + .pdf")
+    p2_figio.save(fig, args.out, "F13-tier-scheduling-idi", dpi=150)
+    print(p2_figio.describe(args.out, "F13-tier-scheduling-idi"))
     return 0
 
 

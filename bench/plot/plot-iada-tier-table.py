@@ -9,11 +9,15 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 
 TIER_DESC = {
     "T1": "Canonical 7-metric\n(RDT — IADA baseline)",
@@ -76,9 +80,8 @@ def render_transfer(tsv: Path, out: Path):
              "host-trained boundary misreads it. Takeaway:\nthe richer portable set is what survives a deployment change; a "
              "single substituted metric is not enough.",
              ha="center", va="top", fontsize=9, style="italic")
-    for ext in ("png", "pdf"):
-        fig.savefig(out / f"F13-tier-transfer-table.{ext}", dpi=150, bbox_inches="tight")
-    print(f"wrote {out}/F13-tier-transfer-table.png + .pdf")
+    p2_figio.save(fig, out, "F13-tier-transfer-table", dpi=150)
+    print(p2_figio.describe(out, "F13-tier-transfer-table"))
 
 
 def main() -> int:
@@ -143,10 +146,8 @@ def main() -> int:
              "(degradation level) that drives scheduling — which the canonical set "
              "cannot read in the VM and the portable metrics restore.",
              ha="center", va="top", fontsize=9, style="italic", wrap=True)
-    for ext in ("png", "pdf"):
-        fig.savefig(args.out / f"F13-tier-portability-table.{ext}", dpi=150,
-                    bbox_inches="tight")
-    print(f"wrote {args.out}/F13-tier-portability-table.png + .pdf")
+    p2_figio.save(fig, args.out, "F13-tier-portability-table", dpi=150)
+    print(p2_figio.describe(args.out, "F13-tier-portability-table"))
     return 0
 
 
