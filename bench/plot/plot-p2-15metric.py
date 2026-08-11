@@ -246,7 +246,7 @@ def fig_ratio(df: pd.DataFrame, out: Path):
                fontsize=8, frameon=False, bbox_to_anchor=(0.5, -0.04))
     fig.suptitle("Absolute metrics: ratio to bare metal, with 95% bootstrap CI\n"
                  "green band = the 0.8–1.25x equivalence corridor", fontsize=11)
-    fig.tight_layout(rect=(0, 0.04, 1, 0.94))
+    fig.tight_layout(rect=(0, 0.02, 1, 0.985))
     p2_figio.save(fig, out, "F1-ratio-vs-bare", dpi=160)
     plt.close(fig)
 
@@ -290,7 +290,7 @@ def fig_claimclass(df: pd.DataFrame, out: Path):
                bbox_to_anchor=(0.5, -0.02))
     fig.suptitle("Claim class per deployment and metric\n"
                  "shading intensity = strength of the evidence against bare metal", fontsize=11)
-    fig.tight_layout(rect=(0, 0.05, 1, 0.92))
+    fig.tight_layout(rect=(0, 0.025, 1, 0.975))
     p2_figio.save(fig, out, "F2-claim-class-matrix", dpi=160)
     plt.close(fig)
 
@@ -324,7 +324,7 @@ def fig_availability(cells, out: Path):
     fig.suptitle("Metric availability across the deployment stack\n"
                  "the portable set keeps reporting numbers inside the VM guest, where the "
                  "RDT-backed canonical metrics stop reporting at all", fontsize=11)
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    fig.tight_layout(rect=(0, 0, 1, 0.985))
     p2_figio.save(fig, out, "F3-availability-grid", dpi=160)
     plt.close(fig)
 
@@ -440,7 +440,7 @@ def fig_psp(df: pd.DataFrame, out: Path):
                  "cell = median Δ vs bare in events/s (bold = statistically significant); "
                  "red = MORE preemptions than bare, blue = fewer",
                  fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.88))
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
     p2_figio.save(fig, out, "F6-psp-directional", dpi=160)
     plt.close(fig)
 

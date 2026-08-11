@@ -134,7 +134,7 @@ def fig_fidelity(fid, dens, cls, med, variants, workloads, fine, out):
                fontsize=8, frameon=True, bbox_to_anchor=(0.5, -0.02))
     fig.suptitle("Profiler fidelity and sample density versus sampling cadence\n"
                  "shaded band = ±10% fidelity", fontsize=11)
-    fig.tight_layout(rect=(0, 0.08, 1, 0.95))
+    fig.tight_layout(rect=(0, 0.045, 1, 0.985))
     save(fig, out, "F8-cadence-fidelity")
 
 

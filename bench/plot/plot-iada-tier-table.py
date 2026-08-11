@@ -58,7 +58,10 @@ def render_transfer(tsv: Path, out: Path):
     fig, ax = plt.subplots(figsize=(11, 3.4)); ax.axis("off")
     tbl = ax.table(cellText=cells, colWidths=[0.34, 0.22, 0.22, 0.22],
                    colLabels=col_labels, cellLoc="center", loc="center")
-    tbl.auto_set_font_size(False); tbl.set_fontsize(11); tbl.scale(1, 2.8)
+    tbl.auto_set_font_size(False); tbl.set_fontsize(11)
+    # Fill the axes: without an explicit bbox the table floats in the upper
+    # part of it and leaves a dead band above the caption.
+    tbl._bbox = [0, 0, 1, 1]
     for (r, c), cell in tbl.get_celld().items():
         if r == 0:
             cell.set_facecolor("#2c3e50"); cell.get_text().set_color("white")
@@ -72,7 +75,7 @@ def render_transfer(tsv: Path, out: Path):
     fig.suptitle("Applying a HOST-trained interference classifier directly inside the VM\n"
                  "(cross-deployment transfer, no per-domain retraining)",
                  fontsize=13, fontweight="bold", y=1.04)
-    fig.text(0.5, -0.10,
+    fig.text(0.5, -0.055,
              "When the classifier is moved across the deployment boundary without retraining, only the full 15-metric set "
              "transfers:\nit keeps 78% accuracy and recovers the memory class perfectly (1.00), while the canonical 7-metric "
              "set collapses to 51%\n(memory recall 0.41) because its RDT memory/cache inputs read zero in the VM. The naive "
@@ -124,7 +127,8 @@ def main() -> int:
         tbl[(i + 1, 0)].get_text().set_text(TIER_DESC[t])
     tbl.auto_set_font_size(False)
     tbl.set_fontsize(10)
-    tbl.scale(1, 2.6)
+    # Fill the axes (see the portability table for why).
+    tbl._bbox = [0, 0, 1, 1]
     # style: header row bold, first column left-ish, shade best row (B)
     for (r, c), cell in tbl.get_celld().items():
         if r == 0:
@@ -138,7 +142,7 @@ def main() -> int:
     fig.suptitle("IADA interference-classifier portability across deployments\n"
                  "(within-deployment 5-fold cross-validation; identical SVM per tier)",
                  fontsize=13, fontweight="bold", y=1.02)
-    fig.text(0.5, -0.06,
+    fig.text(0.5, -0.035,
              "Resource-class identification stays near-perfect for every metric set in "
              "both deployments — including inside the VM, where the\nRDT memory/cache "
              "metrics are unavailable. The cross-deployment gap is therefore not in "

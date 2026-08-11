@@ -128,7 +128,7 @@ def fig_forest(cells, present, variants, out):
     fig.suptitle("How a victim's metrics shift under a noisy neighbour\n"
                  "grey band = negligible effect.  The portable contention signals rise; "
                  "the guard metrics stay flat", fontsize=11)
-    fig.tight_layout(rect=(0, 0.06, 1, 0.95))
+    fig.tight_layout(rect=(0, 0.035, 1, 0.985))
     save(fig, out, "F10-victim-delta-forest")
 
 

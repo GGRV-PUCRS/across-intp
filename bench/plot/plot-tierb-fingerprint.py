@@ -246,7 +246,7 @@ def fig_activation(med, apps, envs_show, variants, out):
                  "classes, so a single-class label cannot describe it\n"
                  "(rows = environment, columns = profiler variant; ✓ = class active; "
                  "trailing number = classes activated; ⚠ = under-driven)", fontsize=10)
-    fig.subplots_adjust(left=0.16, right=0.97, top=0.84, bottom=0.12,
+    fig.subplots_adjust(left=0.16, right=0.97, top=0.90, bottom=0.12,
                         hspace=0.22, wspace=0.08)
     save(fig, out, "F12-class-activation")
 
