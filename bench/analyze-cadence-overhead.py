@@ -20,12 +20,16 @@ from __future__ import annotations
 import argparse
 import glob
 import os
+import sys
 from collections import defaultdict
 from statistics import median
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "plot"))
+import p2_ci  # noqa: E402  (shared rep-level bootstrap CI convention)
 
 THPT_KEY = "bogo_ops_per_s_real"
 REFS = ["ref_cpu", "ref_stream", "ref_disk"]
@@ -88,8 +92,14 @@ def main() -> int:
     intervals = [iv for iv, _ in man]
 
     # overhead% per (env, variant, ref, interval); + aggregate over refs
-    rows = ["env\tvariant\tref\tinterval_s\tbaseline_thpt\tarm_thpt\toverhead_pct\treps"]
+    # ci_lo/ci_hi are APPENDED to the historical column set: the leading columns
+    # and every value in them are byte-identical to what this analyzer wrote
+    # before the CI existed, so an older reader keeps working.
+    rows = ["env\tvariant\tref\tinterval_s\tbaseline_thpt\tarm_thpt\toverhead_pct\treps"
+            "\tci_lo\tci_hi"]
     ov = defaultdict(dict)        # (env,variant,ref) -> {interval: overhead%}
+    ci = defaultdict(dict)        # (env,variant,ref) -> {interval: (pct, lo, hi)}
+    cell = 0                      # deterministic per-cell bootstrap stream
     for env in envs:
         for iv in intervals:
             base = th.get((iv, env, "_baseline", ""), None)
@@ -104,8 +114,12 @@ def main() -> int:
                         continue
                     amed = median(a)
                     pct = (bmed - amed) / bmed * 100.0
+                    _p, lo, hi = p2_ci.ratio_ci(b, a, seed_offset=cell)
+                    cell += 1
                     ov[(env, var, ref)][iv] = pct
-                    rows.append(f"{env}\t{var}\t{ref}\t{iv:g}\t{bmed:.1f}\t{amed:.1f}\t{pct:.3f}\t{len(a)}")
+                    ci[(env, var, ref)][iv] = (pct, lo, hi)
+                    rows.append(f"{env}\t{var}\t{ref}\t{iv:g}\t{bmed:.1f}\t{amed:.1f}\t{pct:.3f}\t{len(a)}"
+                                f"\t{lo:.3f}\t{hi:.3f}")
     tsv_path = args.tsv or os.path.join(args.sweep_dir, "overhead-vs-cadence.tsv")
     with open(tsv_path, "w") as fh:
         fh.write("\n".join(rows) + "\n")
@@ -161,8 +175,16 @@ def main() -> int:
             if not d:
                 continue
             xs = sorted(d); ys = [d[x] for x in xs]
-            ax.plot(xs, ys, style.get(var, "-"), marker="o", ms=4,
-                    color=REF_COLOR[ref], lw=1.6, alpha=0.9)
+            # Points stay at the median-based overhead%; the whisker is the 95 %
+            # rep-level bootstrap CI of that same statistic.
+            c = ci.get((env0, var, ref), {})
+            lo = [max(0.0, y - c[x][1]) if x in c and c[x][1] == c[x][1] else 0.0
+                  for x, y in zip(xs, ys)]
+            hi = [max(0.0, c[x][2] - y) if x in c and c[x][2] == c[x][2] else 0.0
+                  for x, y in zip(xs, ys)]
+            ax.errorbar(xs, ys, yerr=[lo, hi], fmt=style.get(var, "-"), marker="o", ms=4,
+                        color=REF_COLOR[ref], lw=1.6, alpha=0.9,
+                        capsize=3, elinewidth=0.9)
     ax.set_xscale("log")
     ax.set_xticks(intervals); ax.set_xticklabels([f"{iv:g}" for iv in intervals], fontsize=8)
     ax.set_xlabel("sampling interval (s)  —  finer cadence ←")
@@ -175,7 +197,8 @@ def main() -> int:
         handles += [plt.Line2D([0], [0], color="k", ls="--", label=f"{variants[1]} (dashed)")]
     ax.legend(handles=handles, fontsize=8, ncol=2, frameon=True)
     ax.set_title(f"F9 — profiler overhead vs sampling cadence ({env0}, Volpert D)\n"
-                 "throughput loss of a reference workload under the profiler vs no profiler",
+                 "throughput loss of a reference workload under the profiler vs no profiler\n"
+                 f"error bars: {p2_ci.CI_TAG} (bootstrap over repetitions, baseline and arm resampled independently)",
                  fontsize=10)
     fig.tight_layout()
     for ext in ("png", "pdf"):

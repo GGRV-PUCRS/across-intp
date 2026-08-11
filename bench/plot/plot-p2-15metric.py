@@ -352,8 +352,8 @@ def fig_validation(base: Path, cells, out: Path):
             ax.scatter(xs, ys, s=14, alpha=0.55, label=f"{vlabel(var)}   ρ = {rho:.2f}  (n={len(xs)} reps)")
     ax.set_xscale("log"); ax.set_yscale("log")
     ax.set_xlabel("ground truth: LLC misses/s seen by host perf (median of the rep window)")
-    ax.set_ylabel("membw_est (MB/s, median of the rep window)")
-    ax.set_title("F4 — Validation: membw_est tracks true memory traffic\n"
+    ax.set_ylabel("estimated memory bandwidth, membw_est (MB/s, median of the rep window)")
+    ax.set_title("F4 — Validation: the estimated memory bandwidth tracks true memory traffic\n"
                  "each point = one rep (host envs, all 7 workloads); ρ = Spearman rank correlation;\n"
                  "log-log because the workloads span three decades of memory intensity", fontsize=10)
     ax.legend(fontsize=9)
@@ -384,7 +384,7 @@ def fig_psi(cells, out: Path):
     ax.set_yscale("log")
     ax.set_xticks(np.arange(len(envs)))
     ax.set_xticklabels([ENV_SHORT[e] for e in envs], fontsize=9)
-    ax.set_ylabel("membw_est on app05_streaming (MB/s, log)")
+    ax.set_ylabel("estimated memory bandwidth, membw_est,\non app05_streaming (MB/s, log)")
     ax.legend(fontsize=9, loc="upper left")
     ax.set_title("F5 — Falsification: PSI memory pressure cannot see bandwidth saturation\n"
                  "(app05_streaming pins the memory channels; psi_mem only reacts to CAPACITY reclaim)",
