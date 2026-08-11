@@ -1154,3 +1154,83 @@ caveat dropped; a smaller ceiling note retained for the v3.3 absolute
 asymmetry), and the figure set re-rendered (`C34_INVALID` is now empty -> the
 crimson hatch/borders are gone). Next: W5 relaunch -- now unblocked on the D12
 sync and running the correctly-scoped v2.1 binary.
+
+### C35 — Paper 1 CI + vocabulary directive ported to the P2 figure set (2026-08-11)
+
+**Upstream sync.** `upstream/main` (ggrv-intp) carried one novelty over the
+fork's `main`, `66a419a` (campaign stages + veth workloads in bench/OVERVIEW.md
+and a READER-MAP entry); the camera-ready plot/style work was already on this
+branch via `8825e81`. `main` fast-forwarded, then merged here. One conflict, in
+`variants/v3.2-ebpf-core/src/intp_agg.c` and so outside the bench/plot + docs
+envelope the merge policy anticipated: the feat side had rewritten
+`emit_tsv_header()` to emit the 6 portable trailing columns (`a495e0a`), while
+main still held the pre-portable form of the same block. Resolved to the feat
+side wholesale. Nothing was lost: main's only real edit to that file was the
+section retarget to `docs/V3-OVERHEAD-FINDINGS.md 3`, which this branch had
+already applied independently in `3b02996`, so the resolved file is identical to
+the feat side and no stale `paper IV-E` reference survives.
+
+**Directive source.** `0611429` (fig11 in-plot title -> "interference
+discrimination index (IDI)"), `5704125` (95 % bootstrap CI on fig11, rep-level
+primary with the unit-level method retained as artifact, N=10000, seed
+20260607, percentile method -> asymmetric), `9795c5b` (CI tag reworded to
+"rep-level 95%").
+
+**What was ported.** New `bench/plot/p2_ci.py` carries the convention once
+(same N, seed and percentile method as fig11) so every P2 aggregate means the
+same thing: `rep_ci()` for a mean over reps, `ratio_ci()` for F9's
+median-based percent displacement, which resamples the baseline and arm reps
+independently because they are separate runs. Applied to:
+
+- **F13 scheduling** (`plot-iada-sim.py`): both panels moved from population SD
+  whiskers to the 95 % rep-level bootstrap CI; bar heights are unchanged to
+  full precision, since the point estimate is still the plain sample mean.
+- **F9** (`analyze-cadence-overhead.py`): every point gained an asymmetric CI
+  whisker. `ci_lo`/`ci_hi` are APPENDED to `overhead-vs-cadence.tsv`; columns
+  1-8 re-render byte-identical to the banked TSV.
+- **F4/F5** (`plot-p2-15metric.py`): the bare `membw_est` column name in axis
+  labels and the F4 title now reads "estimated memory bandwidth", with the
+  column token kept parenthetically so the figure stays traceable to the TSV.
+
+**Judgment calls.**
+
+1. *The two IDIs are not the same quantity.* `0611429` renamed fig11 precisely
+   because the profiler-side interference DISCRIMINATION index collided with
+   IADA's response-time interference DEGRADATION index. F13 plots the latter,
+   so applying the fig11 wording literally would have asserted something false.
+   The word is spelled out and the docstring states the distinction; only the
+   internal `idi_avg` token was removed.
+2. *F13 states its own n.* Its input is a CloudSim simulator run
+   (`run-tier-sim-reps.sh`, default `REPS=5`), not a measurement campaign, so
+   the CI rests on 5 reps where fig11's rested on 12. A percentile CI over 5
+   points is coarse, so the title carries `n=5 sim reps`, read from the data
+   rather than hardcoded. Chased a suspected 4-rep default and did not find one
+   anywhere in the IADA path: `run-tier-sim-reps.sh` defaults `REPS=5` (and the
+   banked TSV holds exactly 5 rows per tier); on the training side
+   `bench/iada/scripts/eval-tiers.R` defaults `K <- 5L` for the within-env
+   k-fold CV behind the F13 tables, which `docs/reports/p2-iada-tiers.md`
+   independently records as "within-env 5-fold CV"; and the CloudSimInterference
+   fork's SA driver (`Placement.java`) uses `epoch = 10`. The only literal 4 in
+   that tree is `args[4]`, a CLI argument position. The number is 5 on both the
+   simulation and the training axis.
+3. *F6 `psp` and F11 `mbw` were left alone*: both are already glossed in place
+   for a reader, so rewording would have added length without adding clarity.
+
+**Not done, and why.** The typography half of the directive (`paper_style.apply`
+plus the printed-width `save()` path) was NOT applied. `paper_style` sizes text
+against an exact printed column width and `PAPER_FIGURES` is keyed by Paper 1
+stems only, so `spec_for()` returns None for every F-numbered figure, and
+`qa_fig_fonts.py` iterates that same registry rather than the directory it is
+pointed at -- pointing it at the P2 figures reports Paper 1 stems MISSING and
+checks nothing. Registering P2 specs means choosing each figure's printed width,
+which is a Paper 2 LaTeX-geometry decision that does not exist yet. Applying the
+7 pt floors to figures still sized for a slide would also have shrunk the text
+relative to the canvas and broken the deck geometry the current renders feed.
+Paper 1 itself gates this behind `--camera-ready`; the same opt-in should be
+added for P2 once the target venue's column width is known.
+
+**Verification.** Pre-edit and post-edit renders were compared in one
+environment: 15 of 19 figures byte-identical, 4 changed and all 4 intended.
+Aspect drift max 2.3 % (F9, from a third title line), the rest at or under
+0.1 %, so the seminar deck geometry survives the swap. `pytest bench/plot/tests`
+green (17 passed, 24 subtests); all six analyzers still import.
