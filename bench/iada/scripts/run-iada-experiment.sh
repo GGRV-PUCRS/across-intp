@@ -38,7 +38,8 @@ set -euo pipefail
 : "${OUT_DIR:?OUT_DIR not set}"
 : "${WORKLOAD_MIX:=all}"
 : "${JAVA_HOME:=/usr/lib/jvm/java-17-openjdk-amd64}"
-: "${R_LIBS_USER:=$HOME/R/library}"
+# rJava may live in the site library (distro R) or the user library.
+: "${R_LIBS_USER:=$(Rscript -e 'cat(dirname(find.package("rJava")))' 2>/dev/null || echo "$HOME/R/library")}"
 : "${TIMEOUT:=7200}"
 
 JRI_DIR="$R_LIBS_USER/rJava/jri"
@@ -51,11 +52,12 @@ RUN_DIR="$OUT_DIR/$VARIANT/$ENV/$WORKLOAD_MIX"
 mkdir -p "$RUN_DIR"
 
 # 1) Build input.txt (declarative app list pointing at our Meyer CSVs)
-#    For now: include all *.csv from source/ and use 48 PMs (paper config).
+#    PM count defaults to the paper's 48 and is overridable via PM_COUNT,
+#    which is what the host-count sweep varies (IADA Table 3: 6/12/24/48).
 #    Future: extend with WORKLOAD_MIX filtering.
 python3 "$(dirname "$0")/generate-iada-input.py" \
     --tree "$VARIANT_TREE" \
-    --pm-count 48 --pm-cpu 100 \
+    --pm-count "${PM_COUNT:-48}" --pm-cpu "${PM_CPU:-100}" \
     --output "$RUN_DIR/input.txt"
 
 # 2) Symlink CloudSim's expected resource path to our variant's tree
@@ -86,9 +88,17 @@ CP="$CP:$CLOUDSIM_REPO/lib/commons-math3-3.3.jar:$CLOUDSIM_REPO/lib/opencsv-3.7.
 
 START=$(date +%s)
 set +e
+# Datacenter sizing. CLOUDLETS defaults to however many interference traces the
+# tree actually holds: xxIntExample submits cloudletList.subList(0, containers),
+# so asking for more containers than there are traces aborts the run.
+: "${IADA_CLOUDLETS:=$(find "$VARIANT_TREE" -name '*.csv' | wc -l)}"
+: "${IADA_HOSTS:=12}"
+: "${IADA_VMS:=$IADA_HOSTS}"
+
 timeout "$TIMEOUT" "$JAVA_HOME/bin/java" \
     -Xmx6g -Xss8m -XX:+UseSerialGC \
     -DR_SignalHandlers=0 \
+    -Diada.hosts="$IADA_HOSTS" -Diada.vms="$IADA_VMS" -Diada.cloudlets="$IADA_CLOUDLETS" \
     -Djava.library.path="$JRI_DIR" \
     -cp "$CP" \
     cloudsim.interference.aaa.xxIntExample \

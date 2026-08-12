@@ -13,8 +13,9 @@
 # CloudSim bin/resources symlink). Run from the across-intp repo root.
 set -uo pipefail
 
-AX=/home/dedealien/Desktop/across-intp
-CS=/home/dedealien/Desktop/CloudSimInterference
+# Repo and CloudSim locations are per-operator; override via env.
+AX="${AX:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)}"
+CS="${CS:-$HOME/Desktop/intpinto/CloudSimInterference}"
 CAMPAIGN=$AX/results/p2-15metric-xdeploy-1of3
 OUT=$AX/results/iada-sim
 REPMAP="rep1=inc,rep2=dec,rep3=osc,rep4=con"
@@ -54,7 +55,7 @@ for tier in $TIERS; do
     echo "== sim $tier × $cond =="
     VARIANT=v3.3 ENV="$cond" WORKLOAD_MIX="$tier" TIMEOUT=400 \
       IADA_TREE_ROOT="$tree" CLOUDSIM_REPO="$CS" OUT_DIR="$OUT/$tier" \
-      R_HOME="$(R RHOME)" R_LIBS_USER="$HOME/R/library" \
+      R_HOME="$(R RHOME)" R_LIBS_USER="${R_LIBS_USER:-$(Rscript -e 'cat(dirname(find.package("rJava")))' 2>/dev/null)}" \
       INTP_R_FOLDER="$RDA/" \
       bash "$AX/bench/iada/scripts/run-iada-experiment.sh" >/dev/null 2>&1
     restore_bundled
