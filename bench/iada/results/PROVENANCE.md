@@ -57,3 +57,28 @@ the campaign actually consisted of so the numbers in the reports and in
 
 Regenerate the digests with the inline python in `git log` for this file's
 commit, or ad hoc: sha256 over name+bytes of sorted `*.rda`+`*.R` per dir.
+
+## Meyer-validation leg (W2, frozen 2026-08-12 — CONFORMANCE.md §5)
+
+- **Simulator source**: `campaign-2026-08` + `16ba42b` (`iada.simLimit` flag,
+  default unchanged), rebuilt `--release 8` (major 52) in the main checkout.
+- **Traces**: Meyer's published 12 (`interference-classifier/source/`,
+  3 apps × 4 patterns, 281–1080 rows), laid out by
+  `bench/iada/scripts/meyer-traces-to-tree.py`; horizon/simLimit 280.
+- **Classifier arms**: fork `R/` as shipped; `meyer-validation/rda-50k/`
+  (retrain.R --seed 42 on `interference-classifier/training_dataset/`).
+- **Runner scripts + shims**: `meyer-validation/run-{svm-accuracy,kmeans-rindex,retrain-cv}.R`
+  (deviations documented in each header), `bench/iada/scripts/run-meyer-validation.sh`.
+
+| file | rows | sha256 |
+|---|---|---|
+| `meyer-validation/meyer-sim-reps.tsv` | 70 | `93c33119db026c30…` |
+| `meyer-validation/meyer-scripts-output.txt` | 40 | `1ca2922fc9fbd676…` |
+| `meyer-validation/retrain-cv-output.txt` | 58 | `efb201c495d1e4e7…` |
+| `meyer-validation/retrain-artifacts-output.txt` | 31 | `afb12a489eb7c46e…` |
+| `meyer-validation/rda-50k/cachek.rda` | — | `cd254bba214cd9ad…` |
+| `meyer-validation/rda-50k/cpuk.rda` | — | `ee722a1c1ad95921…` |
+| `meyer-validation/rda-50k/diskk.rda` | — | `cdc91044f981b807…` |
+| `meyer-validation/rda-50k/memk.rda` | — | `90a069b2f6fab3ef…` |
+| `meyer-validation/rda-50k/netk.rda` | — | `990bae6da842bfb5…` |
+| `meyer-validation/rda-50k/svm_model.rda` | — | `a9b8c91ca2bbac1b…` |

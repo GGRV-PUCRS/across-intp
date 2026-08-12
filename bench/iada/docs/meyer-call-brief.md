@@ -40,10 +40,20 @@ per-second IntP extracts, the classifier, OCPD deciding *when*, SA deciding
    - Our seeded retrain pipeline on the same data: CV accuracy 1.0000
      (5-class, full 50k), 0.9998 (6-class with `cache_miss`).
    - His 12 patterned traces (bench4q/linkbench/tpch × inc/dec/osc/con)
-     through the simulator: shipped-classifier vs 50k-retrained arms,
-     3/6/12-host arrangements incl. the 12/12 degeneracy probe, and a
-     both-degradation-tables leg. *(Results land in CONFORMANCE.md §5 —
-     flag any leg still running at call time.)*
+     through the simulator — 70 sims, 0 failures (CONFORMANCE.md §5):
+     - The host-curve **flatness reproduces on his own traces** (shipped:
+       289/293/291 idi_avg at 3/6/12 hosts) — simulator property, not our
+       data.
+     - The **12/12 degeneracy probe**: the paper lineage predicts score→0
+       at 1 app/host; measured ≈291 (shipped) / ≈906 (50k-retrained),
+       byte-flat interference across host counts — the occupancy-invariance
+       finding (N8) made empirical.
+     - **Classifier substitution triples the score**: shipped
+       (forced/-trained) ≈290 vs 50k-retrained ≈885 on identical traces —
+       the two classifiers are not interchangeable (F4 quantified).
+     - **Both-tables leg**: fork (JSS empirical) table 883 → paper
+       (CCPE/JSA) table 646 (−27 %) on his traces, matching E5's direction
+       on our tiers.
    - Reproduction notes he may want for his own archive: both scripts need
      a one-line factor shim on R ≥ 4.0; `fossil::rand.index` allocates
      O(n²) (~29 GB at n≈60 k — it OOM-killed our 31 GB box twice; exact
