@@ -89,3 +89,10 @@ Figures (rendered 2026-08-12 by `bench/plot/plot-meyer-validation.py`):
 | `figures/p2-meyer-validation/pdf/F15-degradation-tables.pdf` | — | `505ca62cc7e698be…` |
 | `figures/p2-meyer-validation/png/F14-kmeans-threshold-map.png` | — | `c08687ce98e5383c…` |
 | `figures/p2-meyer-validation/png/F15-degradation-tables.png` | — | `8ab57b6f09750c09…` |
+
+Everything the leg produced or consumed is consolidated under
+`IADA-second-born/meyer-validation/`: runner scripts + raw outputs, the
+`rda-50k/` artifact set, `kmeans-centers.tsv`, `meyer-sim-reps.tsv`, all 71
+per-run `sim/` logs, `figures/{png,pdf}/` (F14/F15 mirror of
+`results/figures/p2-meyer-validation/`), and `tree-meyer/` (the trace tree
+that lived in /tmp during the runs).
