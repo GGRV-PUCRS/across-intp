@@ -51,9 +51,17 @@ ARMS = [
     ("e4-ramp-convex",    "ramp convex 1.07/1.55/1.95"),
     ("e4-ramp-measured",  "ramp measured 1.10/1.25/1.41"),
     ("e5-degtable-paper", "Meyer Table 2"),
+    ("s8-bpsp-default",       "psp levels, default ramp"),
+    ("s8-bpsp-ramp-step",     "psp levels, step ramp"),
+    ("s8-bpsp-ramp-measured", "psp levels, measured ramp"),
+    ("s8-bpsp-degtable-paper", "psp levels × Meyer Table 2"),
 ]
 GROUP_OF = {"e1": "E1 co-execution window", "e2": "E2 ablation",
-            "e4": "E4 ramp shape", "e5": "E5 degradation table"}
+            "e4": "E4 ramp shape", "e5": "E5 degradation table",
+            "s8": "S8 regime re-keyed on psp"}
+# S8 arms run as pseudo-tier "B-psp" (same traces, re-keyed level column);
+# their baseline and colour are tier B's.
+TIER_ALIAS = {"B-psp": "B"}
 HOSTS_GATE = 12
 
 
@@ -167,6 +175,7 @@ def main() -> int:
             print(f"[skip] {stem}: no TSV", file=sys.stderr)
             continue
         arm = load(p)
+        arm["tier"] = arm["tier"].map(lambda t: TIER_ALIAS.get(t, t))
         group = GROUP_OF[stem.split("-")[0]]
         for ti, tier in enumerate(TIERS):
             vals = arm[arm.tier == tier].idi_avg.to_numpy()

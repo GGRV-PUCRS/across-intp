@@ -143,7 +143,7 @@ cost-model knob:
 | finding | numbers | reading |
 |---|---|---|
 | **E2** regime term off | B −2090 [−2320, −1926] | The 6th multiplier carries ~39% of B's IDI; without it B (3292) lands *below* A (3629). B-vs-A is dominated by the extra cost term, not the 15-metric fingerprint. |
-| **E4** ramp shape | step +292 n.s., convex +230 n.s., measured −1211 * | Shapes sharing `hig`≈1.95 are indistinguishable → in-sim regime classifications land almost entirely at `hig`, confirming W5's bimodality from inside the simulation. IDI tracks the `hig` value, i.e. ramp *magnitude*, not shape. |
+| **E4** ramp shape | step +292 n.s., convex +230 n.s., measured −1211 * | IDI tracks overall ramp magnitude (only `measured`, which lowers every level, moves it); shape changes drown in B's rep noise (sd ~400). ~~"lands almost entirely at hig"~~ — falsified by the S8 offline analysis: the schedlat-keyed levels were 71/186/223 across low/mod/hig, and arbitrary (see S8). |
 | **E5** Meyer Table 2 | T1 −1576 *, A −879 *, B −1024 * | The table choice scales the index by 16–25% but preserves tier ordering (T1 > B > A) at 12 hosts. A reporting decision, not a ranking risk. |
 | **E1** startup delay | 0/10/50 s all n.s., every tier | The 19-s co-execution window does **not** bias IDI at 12 hosts. The default can stay at 100 s; no rebank needed. |
 | **E3** host sweep | 13/15 n.s.; B@19 +566 *, T1@23 −193 * | The index is **flat from 9 to 28 hosts** — no consolidation curve, no degeneracy collapse at 1 container/host. Per-cloudlet cost is computed from solo traces, so co-location never enters it; the two isolated exclusions have no trend and read as multiplicity. |
@@ -155,9 +155,64 @@ claim needs either a co-location-aware cost (interference recomputed from
 actual co-residents) or must be framed as scheduler-behaviour, not
 system-outcome. Feeds directly into the S8 discussion.
 
+## S8 — ratified (2026-08-12): regime levels re-keyed on psp
+
+**No retrain needed.** `predict.kmeans` uses the level column only to *order*
+the three centroids (which one is called low/mod/hig); cluster membership is
+full-space distance. So re-keying is a one-line inference change
+(`predict_regime.kmeans` var 8 → 14) against the same `.rda` centroids —
+`results/iada-tier-rda/B-psp/` is a copy of `B/` with exactly that edit
+(patch: `IADA-second-born/s8-bpsp-kmeans.patch`).
+
+**Offline evidence** (`bench/iada/scripts/analyze-regime-levels.R`): every
+regime training centroid has schedlat = 100 — the stressor saturates it — so
+`which.max`/`which.min` tie-break and the shipped low/mod/hig labels are
+cluster-ID artifacts. psp orders the same centroids consistently
+(5185 < 5294 < 5366). Over the 28-trace tree (3360 rows, 480 classified
+regime): schedlat-keyed levels 71/186/223, arbitrary; psp-keyed 71/409/0
+(`hig` never fires on real traces).
+
+**Sim results** (12 hosts, 10 reps/arm, vs gate B 5382.5 sd 337):
+
+| arm | idi_mean | sd | delta vs gate B |
+|---|---|---|---|
+| B-psp default ramp | 4431.6 | 149 | **−951** [−1188, −767] * |
+| B-psp step 1.90/1.93/1.95 | 5632.0 | 661 | +250 n.s. |
+| B-psp measured 1.10/1.25/1.41 | 3813.0 | 167 | **−1570** [−1807, −1377] * |
+
+Three consequences:
+
+1. **The ramp binds now.** Within B-psp, step − default = **+1200**
+   [+832, +1631] and measured − default = **−619** [−744, −482], both
+   decisive — where the same shape comparisons under schedlat levels were
+   n.s. (E4). The tie-break levels were not merely mislabelled; they were
+   destroying the ramp experiment's statistical power.
+2. **Less noise.** B-psp default sd 149 vs schedlat-B 337 — arbitrary level
+   assignment was itself a variance source.
+3. **Rebank impact if adopted:** tier B's banked 5753 becomes ≈4430 (the
+   F13 annotation "10% lower IDI vs canonical" becomes ≈31%). E2's ablation
+   result carries over unchanged (with the regime term off, levels are
+   irrelevant), so the fingerprint-vs-multiplier reading stands.
+
+Adoption as tier B's canonical definition = owner decision (changes a
+number the draft may quote). The E4 "ramp magnitude" reading survives, now
+with resolvable shape effects on top.
+
+**Extension arms (same day).** Default arm deepened to n=20: **4402.3
+sd 133** (−980 [−1209, −810] vs gate B) — the rebank-candidate number for
+tier B. Interaction arm B-psp × Meyer Table 2: **3458.7 sd 87**; the naive
+multiplicative composition of the two adoptions (0.818 × 0.810 × 5382.5 =
+3565) lands 3.1% above the observed mean, just outside its tight CI
+[3411, 3514] — the two decisions compose *approximately* multiplicatively
+with a small extra interaction, so adopting both yields B ≈ 3460, not a
+surprise regime. Noteworthy trend: rep noise shrinks monotonically as the
+cost model gets more principled (schedlat-B sd 337 → B-psp 133 → B-psp ×
+paper-table 87).
+
 ## Open questions
 
-1. **S8** — psp-keyed regime level column (retrain + re-run, after campaign).
+1. ~~**S8** — psp-keyed regime level column.~~ Ratified above; adoption
+   into the banked campaign pending owner decision.
 2. Whether E1's startup-delay result justifies moving the *default* to a
    shorter delay (breaks banked comparability; would need a rebank).
 3. Application-level runtime ground truth for ramp magnitudes — W5 has stall

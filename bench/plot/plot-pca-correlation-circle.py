@@ -314,7 +314,12 @@ def plot_scores(ax, centroids: pd.DataFrame, scores: np.ndarray,
         color = VARIANT_COLORS.get(variant, "#333333")
         ax.scatter(sub["pc1"], sub["pc2"],
                    s=42, color=color, edgecolor="black", lw=0.4,
-                   alpha=0.85, label=f"{variant_label(variant)}  (n={len(sub)})",
+                   # "(n=7)" read as a metric count next to panel A's
+                   # "14 metrics" suptitle; name the unit instead -- the
+                   # points are per-workload centroids, the metrics are the
+                   # space's dimensions.
+                   alpha=0.85,
+                   label=f"{variant_label(variant)}  ({len(sub)} workloads)",
                    zorder=2)
 
     ax.axhline(0, color="gray", lw=0.5, linestyle=":")
