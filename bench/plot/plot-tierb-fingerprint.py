@@ -167,7 +167,7 @@ def fig_fingerprint(med, cls, apps, envs_show, variants, out):
     applabels = [alabel(med, envs_show, variants, a) for a in apps]
     nr, nc = len(envs_show), len(variants)
     fig, axes = plt.subplots(nr, nc, squeeze=False,
-                             figsize=(0.52 * len(metrics) * nc + 2.5, 2.6 * nr + 1.6))
+                             figsize=(0.52 * len(metrics) * nc + 2.5, 2.1 * nr + 1.1))
     im = None
     for ri, e in enumerate(envs_show):
         for ci, v in enumerate(variants):
@@ -179,19 +179,26 @@ def fig_fingerprint(med, cls, apps, envs_show, variants, out):
             if ri == 0:                      # variant column header (above class row)
                 ax.annotate(v, xy=(0.5, 1.16), xycoords="axes fraction",
                             ha="center", va="bottom", fontsize=12, fontweight="bold")
-        # environment row label, left of the app ticks
-        axes[ri][0].annotate(e, xy=(-0.42, 0.5), xycoords="axes fraction",
+        # environment row label, just outboard of the app ticks (-0.42 left a
+        # blank gutter between the label and the tick text)
+        axes[ri][0].annotate(e, xy=(-0.26, 0.5), xycoords="axes fraction",
                              ha="center", va="center", rotation=90,
                              fontsize=12, fontweight="bold", color="#333333")
-    cb = fig.colorbar(im, ax=axes, fraction=0.018, pad=0.02)
+    # Fix the grid FIRST, then hand the colorbar its own axes: colorbar(ax=axes)
+    # placed the bar before subplots_adjust moved the grid, so it ended up on
+    # top of the rightmost panel's ticks.
+    fig.subplots_adjust(left=0.075, right=0.912, top=0.845, bottom=0.15,
+                        hspace=0.22, wspace=0.06)
+    cax = fig.add_axes([0.928, 0.15, 0.008, 0.695])
+    cb = fig.colorbar(im, cax=cax)
     cb.set_label("intensity (per metric, ÷ max across apps within environment)", fontsize=8)
+    # y pins the suptitle just above the variant headers (which sit at 1.16
+    # axes fraction); the default 0.98 left a blank band under the title.
     fig.suptitle("Real applications stress several resource classes at once when adequately driven\n"
                  "(rows = environment, columns = "
                  "profiler variant; cell = raw median; colour normalized per metric "
                  "within each environment; ⚠ = under-driven at the 1/3 footprint; "
-                 "solo)", fontsize=11)
-    fig.subplots_adjust(left=0.12, right=0.9, top=0.86, bottom=0.14,
-                        hspace=0.30, wspace=0.06)
+                 "solo)", fontsize=11, y=0.985)
     save(fig, out, "F12-fingerprint")
 
 
@@ -236,17 +243,22 @@ def fig_activation(med, apps, envs_show, variants, out):
             if ri == 0:
                 ax.annotate(var, xy=(0.5, 1.08), xycoords="axes fraction",
                             ha="center", va="bottom", fontsize=12, fontweight="bold")
-        axes[ri][0].annotate(e, xy=(-0.5, 0.5), xycoords="axes fraction",
+        # -0.5, not tighter: this panel's y ticks are long app names, and the
+        # env label must clear them.
+        axes[ri][0].annotate(e, xy=(-0.52, 0.5), xycoords="axes fraction",
                              ha="center", va="center", rotation=90,
                              fontsize=12, fontweight="bold", color="#333333")
     # Keep the longest line close to the pre-retitle width: the title is wider
     # than the axes, so it sets the tight-bbox width and hence the aspect the
     # seminar deck was laid out against.
+    # top=0.90 walked the variant headers (1.08 axes fraction) into the
+    # subtitle line; 0.84 gives them their own band under the title.
     fig.suptitle("Every adequately-driven real application activates at least two IADA resource "
                  "classes, so a single-class label cannot describe it\n"
                  "(rows = environment, columns = profiler variant; ✓ = class active; "
-                 "trailing number = classes activated; ⚠ = under-driven)", fontsize=10)
-    fig.subplots_adjust(left=0.16, right=0.97, top=0.90, bottom=0.12,
+                 "trailing number = classes activated; ⚠ = under-driven)",
+                 fontsize=10, y=0.985)
+    fig.subplots_adjust(left=0.13, right=0.97, top=0.84, bottom=0.12,
                         hspace=0.22, wspace=0.08)
     save(fig, out, "F12-class-activation")
 

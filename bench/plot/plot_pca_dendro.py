@@ -44,8 +44,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import paper_style  # noqa: E402  (shared camera-ready typography)
 
 METRICS = ["netp", "nets", "blk", "mbw", "llcmr", "llcocc", "cpu"]
-VARIANT_ORDER = ["v0.2", "v1.1", "v2", "v3.2"]
-VARIANT_MARKERS = {"v0.2": "P", "v1.1": "o", "v2": "s", "v3.2": "*"}
+# Paper-1's four measured versions plus the P2 cgroup pair: without the
+# latter, a P2 aggregate-means input filtered down to zero variants and
+# panel A rendered empty.
+VARIANT_ORDER = ["v0.2", "v1.1", "v2", "v3.2", "v2.1", "v3.3"]
+VARIANT_MARKERS = {"v0.2": "P", "v1.1": "o", "v2": "s", "v3.2": "*",
+                   "v2.1": "s", "v3.3": "*"}
 
 # Descriptive, paper-facing variant names. Figures show these instead of the
 # bare vN tags so a reader need not consult the variant table to know what a
@@ -126,6 +130,10 @@ def main(csv_path, outdir, variants=None, camera_ready=False,
         vorder = list(VARIANT_ORDER)
 
     df = load_solo_bare(csv_path)
+    # Keep only variants the input actually carries -- with the P2 pair added
+    # to VARIANT_ORDER, the default otherwise legends four Paper-1 variants
+    # that never appear in a P2 aggregate-means file.
+    vorder = [v for v in vorder if v in set(df["variant"].astype(str))]
     if variants:
         df = df[df["variant"].isin(vorder)].copy()
     g = per_workload_variant_means(df)

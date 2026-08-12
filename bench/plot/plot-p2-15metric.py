@@ -350,7 +350,9 @@ def fig_validation(base: Path, cells, out: Path):
             ax.scatter(xs, ys, s=14, alpha=0.55, label=f"{vlabel(var)}   ρ = {rho:.2f}  (n={len(xs)} reps)")
     ax.set_xscale("log"); ax.set_yscale("log")
     ax.set_xlabel("ground truth: LLC misses/s seen by host perf (median of the rep window)")
-    ax.set_ylabel("estimated memory bandwidth, membw_est (MB/s, median of the rep window)")
+    # Two lines: the single-line form was taller than the axis and its top
+    # clipped off the saved figure.
+    ax.set_ylabel("estimated memory bandwidth, membw_est\n(MB/s, median of the rep window)")
     ax.set_title("The estimated memory bandwidth tracks true memory traffic\n"
                  "each point = one rep (host envs, all 7 workloads); ρ = Spearman rank correlation;\n"
                  "log-log because the workloads span three decades of memory intensity", fontsize=10)
