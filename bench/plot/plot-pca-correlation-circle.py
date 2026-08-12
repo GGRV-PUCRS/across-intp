@@ -84,7 +84,8 @@ METRIC_LABEL = {
     "cpu":    "cpu",
 }
 
-VARIANT_ORDER = ["v0", "v0.1", "v0.2", "v1", "v1.1", "v2", "v3.1", "v3", "v3.2"]
+VARIANT_ORDER = ["v0", "v0.1", "v0.2", "v1", "v1.1", "v2", "v3.1", "v3", "v3.2",
+                 "v2.1", "v3.3"]
 VARIANT_COLORS = {
     "v0":   "#7f7f7f",
     "v0.1": "#bcbd22",
@@ -95,6 +96,14 @@ VARIANT_COLORS = {
     "v3.1": "#ff7f0e",
     "v3":   "#2ca02c",
     "v3.2": "#d62728",
+    # P2 cgroup pair. Absent from this Paper-1 map, both fell to the #333333
+    # fallback and panel B drew the two variants in one colour -- unreadable
+    # for a convergence plot. Hexes follow the pairing the P2 set already
+    # uses (F4/F11 draw these variants with the default C0/C1 cycle); the
+    # family-mate reuse (v2's blue, v3.1's orange) is safe because Paper-1
+    # and P2 variants never co-plot.
+    "v2.1": "#1f77b4",
+    "v3.3": "#ff7f0e",
 }
 
 # Descriptive, paper-facing variant names. Figures show these instead of the
