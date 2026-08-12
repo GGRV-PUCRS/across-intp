@@ -104,9 +104,11 @@ into two named modalities; pick the one that matches your scientific
 question:
 
 - **M1 (IADA-aligned, default).** `ENVS=container` only. The shipped
-  classifier was trained on container-collected profiles (Meyer 2021,
-  LXC + Node-Tiers); container-only keeps the comparison inside that
-  training domain. M1 is the right modality for *instrumentation-
+  classifier was trained on container-collected synthetic-stressor
+  profiles (the fork's `R/forced/` set — **not** the published 50k
+  Node-Tiers set; see finding F4 in `bench/iada/CONFORMANCE.md`);
+  container-only keeps the comparison as close to that training domain
+  as the artifact allows. M1 is the right modality for *instrumentation-
   fidelity* claims — i.e. "variant X produces scheduling-quality Y
   with the scheduler fixed". Sanity-checked at startup.
 - **M2 (cross-domain transfer, opt-in).** Adds `bare` and `vm-guest`.

@@ -209,6 +209,35 @@ surprise regime. Noteworthy trend: rep noise shrinks monotonically as the
 cost model gets more principled (schedlat-B sd 337 → B-psp 133 → B-psp ×
 paper-table 87).
 
+## S9 — ratified (2026-08-12): E5/E3 reframed by the lineage paper pass
+
+Full evidence: `bench/iada/CONFORMANCE.md` (findings N1–N8, V1–V4).
+
+1. **S5/E5 reframed (N1).** The fork's "hotter" degradation table is not
+   drift — it is IADA 2022's own empirically re-measured IDI table (PU-06
+   Eq. 4/Fig. 6; mem 1.10/1.67/1.79 ≈ the paper's 1.10/1.69/1.79). The
+   `-Diada.degTable` flag therefore selects *between two published tables*
+   (IADA 2022 empirical vs Ludwig 2019/Meyer 2021 printed), not
+   fork-vs-paper. E5's result stands, re-captioned: table choice scales IDI
+   16–25 % and preserves tier order.
+2. **E3 reframed (N4 + N8, revising the earlier Eq. 2 hypothesis).** The
+   Eq. 2 zero rule *is* implemented (`Solution.java:98`, Meyer's own
+   `9a9ef67`); the earlier "cost floor ≥ 1/host" reading is retracted. E3's
+   flatness has two verified mechanical causes instead: per-cloudlet cost is
+   trace-driven (co-residents never enter it), and **both SA mutation
+   operators are strict swaps, so per-host occupancy counts are invariant**
+   for the whole search (N8) — consolidation is structurally unreachable
+   regardless of cost model. IADA 2022's own host sweep (constant 4
+   apps/host, ~flat Fig. 9) means flatness at constant contention is also
+   the *published* behaviour; the remaining discriminator is PU-03 Fig. 6's
+   falling curve, which W2.2's 12-hosts/12-apps probe tests empirically.
+3. **Validation campaign opened (W2).** Meyer's own reproducibility scripts
+   run on his published dataset (2026-08-12): SVM acc 0.999–1.000 vs
+   published 0.97 (V3); Rand 0.67–0.83 unseeded vs published 0.82 (V4);
+   both scripts require an R≥4.0 factor shim (V1); `fossil::rand.index` is
+   O(n²) memory and OOM-killed the campaign machine twice before being
+   replaced by the exact contingency form (V2).
+
 ## Open questions
 
 1. ~~**S8** — psp-keyed regime level column.~~ Ratified above; adoption
