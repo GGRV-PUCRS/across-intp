@@ -98,7 +98,11 @@ predict_cache.kmeans <-function(object, newdata)
 
 predict_regime.kmeans <-function(object, newdata)
 {
-  predict.kmeans(object, newdata, 8)
+  # S8 (DECISIONS-sim-experiments.md): level on psp (col 14), the graded
+  # scheduling-regime signal. The schedlat column (8) is saturated at 100 in
+  # every training centroid, so which.max/which.min tie-break and the
+  # resulting levels are cluster-ID artifacts, not severity.
+  predict.kmeans(object, newdata, 14)
 }
 
 
