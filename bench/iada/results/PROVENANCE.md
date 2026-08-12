@@ -82,3 +82,10 @@ commit, or ad hoc: sha256 over name+bytes of sorted `*.rda`+`*.R` per dir.
 | `meyer-validation/rda-50k/memk.rda` | — | `90a069b2f6fab3ef…` |
 | `meyer-validation/rda-50k/netk.rda` | — | `990bae6da842bfb5…` |
 | `meyer-validation/rda-50k/svm_model.rda` | — | `a9b8c91ca2bbac1b…` |
+
+Figures (rendered 2026-08-12 by `bench/plot/plot-meyer-validation.py`):
+
+| `figures/p2-meyer-validation/pdf/F14-kmeans-threshold-map.pdf` | — | `b08160e4693fd964…` |
+| `figures/p2-meyer-validation/pdf/F15-degradation-tables.pdf` | — | `505ca62cc7e698be…` |
+| `figures/p2-meyer-validation/png/F14-kmeans-threshold-map.png` | — | `c08687ce98e5383c…` |
+| `figures/p2-meyer-validation/png/F15-degradation-tables.png` | — | `8ab57b6f09750c09…` |

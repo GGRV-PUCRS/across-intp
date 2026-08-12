@@ -197,6 +197,16 @@ there; shims documented in each script header).
   published 0.82 almost exactly; runs 2–3 do not. Contributing script bug:
   `cl_total <- kmeans(…, nstart=20)` is computed and never used — the
   scored clustering is a second `kmeans()` with default `nstart=1`.
+- **V5 — retraining on the published 50k saturates the level-defining
+  metric for cpu/mem/net.** The retrained per-class centroids sit at
+  97.9/99.0/99.0 on `cpu`, 52.2/52.4/53.0 on `mbw`, and 99/99/99 on `netp`
+  (`meyer-validation/kmeans-centers.tsv`; figure F14), so
+  `predict.kmeans`' rank-based low/mod/hig labels are `which.max`
+  tie-break artifacts **on Meyer's own published data** — S8's saturation
+  phenomenon is not specific to our tiers. Likely the mechanism behind the
+  tripled IDI in W2.2 arm b (the shipped one-hot `forced/` centroids, by
+  contrast, span 19–84 on their defining metrics). Also visible in F14:
+  the published utilization bands (C14) match neither centroid set.
 
 ---
 
