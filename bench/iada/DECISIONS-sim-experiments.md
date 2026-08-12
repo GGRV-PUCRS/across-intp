@@ -133,6 +133,28 @@ the `.rda` the running sims read.
 10 reps/arm-tier; rep-level bootstrap CI (N=10000, seed 20260607) per
 `bench/plot/p2_ci.py`; figures via `paper_style.py` + `p2_figio.py`.
 
+## Campaign results (landed 2026-08-12, all arms complete, 0 failed reps)
+
+Full per-arm numbers: `results/figures/p2-sim-experiments/summary.tsv`;
+figures `F-simexp-deltas` / `F-simexp-hosts`. Deltas are arm − gate, same
+tier, 95% bootstrap CI. Five intervals exclude zero; every one is a
+cost-model knob:
+
+| finding | numbers | reading |
+|---|---|---|
+| **E2** regime term off | B −2090 [−2320, −1926] | The 6th multiplier carries ~39% of B's IDI; without it B (3292) lands *below* A (3629). B-vs-A is dominated by the extra cost term, not the 15-metric fingerprint. |
+| **E4** ramp shape | step +292 n.s., convex +230 n.s., measured −1211 * | Shapes sharing `hig`≈1.95 are indistinguishable → in-sim regime classifications land almost entirely at `hig`, confirming W5's bimodality from inside the simulation. IDI tracks the `hig` value, i.e. ramp *magnitude*, not shape. |
+| **E5** Meyer Table 2 | T1 −1576 *, A −879 *, B −1024 * | The table choice scales the index by 16–25% but preserves tier ordering (T1 > B > A) at 12 hosts. A reporting decision, not a ranking risk. |
+| **E1** startup delay | 0/10/50 s all n.s., every tier | The 19-s co-execution window does **not** bias IDI at 12 hosts. The default can stay at 100 s; no rebank needed. |
+| **E3** host sweep | 13/15 n.s.; B@19 +566 *, T1@23 −193 * | The index is **flat from 9 to 28 hosts** — no consolidation curve, no degeneracy collapse at 1 container/host. Per-cloudlet cost is computed from solo traces, so co-location never enters it; the two isolated exclusions have no trend and read as multiplicity. |
+
+The E3 flatness is the deepest finding: Meyer's Fig. 10 host-curve shape
+cannot be reproduced by this IDI metric as implemented, because placement
+cost is trace-driven rather than co-location-driven. Any future host-sweep
+claim needs either a co-location-aware cost (interference recomputed from
+actual co-residents) or must be framed as scheduler-behaviour, not
+system-outcome. Feeds directly into the S8 discussion.
+
 ## Open questions
 
 1. **S8** — psp-keyed regime level column (retrain + re-run, after campaign).

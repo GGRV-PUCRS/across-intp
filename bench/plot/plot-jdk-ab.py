@@ -54,8 +54,11 @@ BUILD_LABEL = {"java8": "banked build (Java 8 target)",
 BUILD_HATCH = {"java8": "", "jdk17": "///"}
 
 # Depths the campaign was asked for. 10 reps is the campaign; the first 5 are
-# the control leg, kept as a subset so both depths come from one run.
-DEPTHS = [5, 10]
+# the control leg, kept as a subset so both depths come from one run. None
+# means "every rep available" -- with --confirm-dir the T1 legs gain the
+# 20-rep confirmation batch, and that pooled sample is what settled the
+# question, so it gets its own row rather than being truncated to 10.
+DEPTHS = [5, 10, None]
 
 
 def load_leg(path: Path, leg: str) -> pd.DataFrame:
@@ -93,7 +96,8 @@ def fig_levels(rows, banked, outdir, equivalent: bool):
 
     for ti, tier in enumerate(TIERS):
         for bi, leg in enumerate(("java8", "jdk17")):
-            r = rows[(tier, leg, 10)]
+            # Deepest sample available for this tier = the verdict numbers.
+            r = rows.get((tier, leg, None), rows[(tier, leg, 10)])
             # 2 px of surface between the paired bars, per the set's mark specs.
             x = ti + (bi - 0.5) * (width + gap)
             ax.bar(x, r["mean"], width, color=COLOR[tier],
@@ -147,15 +151,18 @@ def fig_delta(deltas, outdir):
     ypos, ylabels = [], []
     # Top-to-bottom T1, A, B so the rows track the bar panel's left-to-right order.
     for ti, tier in enumerate(reversed(TIERS)):
-        for di, depth in enumerate(DEPTHS):
-            d = deltas[(tier, depth)]
-            y = ti * 2.3 + (1 - di) * 0.72
-            ypos.append(y); ylabels.append(f"{depth} reps")
+        tier_rows = [(dep, deltas[(tier, dep)]) for dep in DEPTHS
+                     if (tier, dep) in deltas]
+        for di, (depth, d) in enumerate(tier_rows):
+            final = di == len(tier_rows) - 1  # deepest sample = the verdict row
+            y = ti * 2.3 + (len(tier_rows) - 1 - di) * 0.72
+            ypos.append(y)
+            ylabels.append(f"all ({d['n']})" if depth is None else f"{depth} reps")
             ax.plot([d["lo"], d["hi"]], [y, y], lw=1.3, color=COLOR[tier],
-                    solid_capstyle="round", alpha=0.55 if depth == 5 else 1.0, zorder=3)
-            ax.scatter([d["point"]], [y], s=13 if depth == 10 else 9,
+                    solid_capstyle="round", alpha=1.0 if final else 0.55, zorder=3)
+            ax.scatter([d["point"]], [y], s=13 if final else 9,
                        color=COLOR[tier], edgecolor="white", linewidth=0.6,
-                       zorder=4, alpha=0.75 if depth == 5 else 1.0)
+                       zorder=4, alpha=1.0 if final else 0.75)
             ax.text(d["hi"], y + 0.30, f"{d['point']:+.0f}", ha="right", va="bottom",
                     fontsize=paper_style.ANNOT, color="#222222")
 
@@ -167,12 +174,21 @@ def fig_delta(deltas, outdir):
                 ax.get_yaxis_transform(), ha="left", va="center",
                 fontsize=paper_style.BODY, color=COLOR[tier])
     ax.set_xlabel("difference in degradation index  (rebuild − banked build)")
-    n_excl = sum(1 for d in deltas.values() if not d["covers_zero"])
-    ax.set_title("Every interval covers zero: the two builds agree within rep noise"
+    # The verdict row per tier is the DEEPEST sample: shallower rows stay
+    # visible so the reader can see an excursion that did not survive pooling
+    # (T1's 10-rep +204 is exactly that), but they do not set the title.
+    finals = {}
+    for (tier, dep), d in deltas.items():
+        cur = finals.get(tier)
+        key = float("inf") if dep is None else dep
+        if cur is None or key > cur[0]:
+            finals[tier] = (key, d)
+    n_excl = sum(1 for _, d in finals.values() if not d["covers_zero"])
+    ax.set_title("The deepest interval per tier covers zero: the builds agree"
                  if n_excl == 0 else
-                 f"{n_excl} of {len(deltas)} intervals exclude zero: the builds differ",
+                 f"{n_excl} of {len(finals)} tiers differ at full depth",
                  pad=3)
-    ax.set_ylim(-0.7, (len(TIERS) - 1) * 2.3 + 1.5)
+    ax.set_ylim(-0.7, (len(TIERS) - 1) * 2.3 + 2.1)
     ax.grid(axis="y", visible=False)
 
     paper_style.apply()
@@ -186,18 +202,31 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ab-dir", required=True, type=Path,
                     help="directory holding reps-java8.tsv and reps-jdk17.tsv")
+    ap.add_argument("--confirm-dir", type=Path, default=None,
+                    help="directory holding confirm-<tier>-<leg>.tsv batches "
+                         "to pool into the matching leg (defaults to --ab-dir)")
     ap.add_argument("--banked", type=Path,
                     default=Path("results/iada-sim/tier-sim-reps.tsv"))
     ap.add_argument("--out-set", default="p2-jdk-ab")
     ap.add_argument("--figures-root", type=Path, default=Path("results/figures"))
     args = ap.parse_args()
 
+    confirm_dir = args.confirm_dir or args.ab_dir
     legs = {}
     for leg in ("java8", "jdk17"):
         p = args.ab_dir / f"reps-{leg}.tsv"
         if not p.exists():
             print(f"missing {p}", file=sys.stderr); return 1
-        legs[leg] = load_leg(p, leg)
+        frames = [load_leg(p, leg)]
+        # Confirmation batches are independent same-config reps, so pooling is
+        # legitimate; renumber them past the first-pass reps so head(depth)
+        # keeps selecting the original batch for the fixed-depth rows.
+        for cf in sorted(confirm_dir.glob(f"confirm-*-{leg}.tsv")):
+            extra = load_leg(cf, leg)
+            base = frames[0]["rep"].max()
+            extra["rep"] = extra["rep"] + base
+            frames.append(extra)
+        legs[leg] = pd.concat(frames, ignore_index=True)
 
     # Keep the banked REPS, not just their mean: the banked figure is itself 5
     # noisy samples, so "is the rerun consistent with it" is a two-sample
@@ -214,11 +243,17 @@ def main() -> int:
     # ---- aggregate -------------------------------------------------------
     rows, deltas, table = {}, {}, []
     for ti, tier in enumerate(TIERS):
-        for depth in DEPTHS:
+        # Drop the "all reps" row for tiers with no confirmation batch -- it
+        # would duplicate the 10-rep row exactly.
+        n_all = min(len(legs[l][legs[l]["tier"] == tier]) for l in ("java8", "jdk17"))
+        tier_depths = [d for d in DEPTHS if d is not None or n_all > max(
+            d2 for d2 in DEPTHS if d2 is not None)]
+        for depth in tier_depths:
             per_leg = {}
             for bi, leg in enumerate(("java8", "jdk17")):
-                v = (legs[leg].query("tier == @tier").sort_values("rep")
-                     ["idi_avg"].head(depth).to_numpy())
+                q = legs[leg].query("tier == @tier").sort_values("rep")
+                v = (q["idi_avg"] if depth is None else
+                     q["idi_avg"].head(depth)).to_numpy()
                 mean, lo, hi = p2_ci.rep_ci(v, seed_offset=ti * 10 + bi)
                 per_leg[leg] = v
                 rows[(tier, leg, depth)] = {"mean": mean, "lo": lo, "hi": hi,
@@ -227,18 +262,22 @@ def main() -> int:
                 # cost it optimises, so a build difference could show up here
                 # even with the index unmoved. Text-only: it does not need a
                 # panel, but it should not go unlooked-at either.
-                mig = (legs[leg].query("tier == @tier").sort_values("rep")
-                       ["migrations"].head(depth).astype(float).to_numpy())
-                table.append({"tier": tier, "build": leg, "depth": depth,
+                mig = (q["migrations"] if depth is None else
+                       q["migrations"].head(depth)).astype(float).to_numpy()
+                table.append({"tier": tier, "build": leg,
+                              "depth": "all" if depth is None else depth,
                               "reps": len(v),
                               "idi_mean": round(mean, 2), "ci_lo": round(lo, 2),
                               "ci_hi": round(hi, 2),
                               "sd": round(float(np.std(v, ddof=1)), 2) if len(v) > 1 else float("nan"),
                               "migrations_mean": round(float(mig.mean()), 2) if mig.size else float("nan")})
             point, lo, hi = diff_ci(per_leg["java8"], per_leg["jdk17"],
-                                    seed_offset=100 + ti * 10 + depth)
+                                    seed_offset=100 + ti * 10 +
+                                    (99 if depth is None else depth))
             # Equivalent = the interval cannot exclude zero.
             deltas[(tier, depth)] = {"point": point, "lo": lo, "hi": hi,
+                                     "n": min(len(per_leg["java8"]),
+                                              len(per_leg["jdk17"])),
                                      "covers_zero": lo <= 0 <= hi}
 
     outdir = args.figures_root / args.out_set
@@ -248,13 +287,20 @@ def main() -> int:
     # also exist as text somewhere -- this is that table view, not a nicety.
     tdf = pd.DataFrame(table)
     tdf.to_csv(outdir / "summary.tsv", sep="\t", index=False)
-    ddf = pd.DataFrame([{"tier": t, "reps": d, **{k: (round(v, 2) if isinstance(v, float) else v)
-                                                  for k, v in deltas[(t, d)].items()}}
-                        for t in TIERS for d in DEPTHS])
+    ddf = pd.DataFrame([{"tier": t, "depth": "all" if d is None else d,
+                         **{k: (round(v, 2) if isinstance(v, float) else v)
+                            for k, v in deltas[(t, d)].items()}}
+                        for t in TIERS for d in DEPTHS if (t, d) in deltas])
     ddf.to_csv(outdir / "delta.tsv", sep="\t", index=False)
 
     paper_style.apply()
-    equivalent = all(d["covers_zero"] for d in deltas.values())
+    # Verdict from the deepest sample per tier (see fig_delta).
+    deepest = {}
+    for (t, dep), d in deltas.items():
+        key = float("inf") if dep is None else dep
+        if t not in deepest or key > deepest[t][0]:
+            deepest[t] = (key, d)
+    equivalent = all(d["covers_zero"] for _, d in deepest.values())
     fig_levels(rows, banked, outdir, equivalent)
     fig_delta(deltas, outdir)
 
@@ -265,7 +311,7 @@ def main() -> int:
         for ti, tier in enumerate(TIERS):
             if tier not in banked_reps:
                 continue
-            r = rows[(tier, "java8", 10)]
+            r = rows.get((tier, "java8", None), rows[(tier, "java8", 10)])
             point, lo, hi = diff_ci(banked_reps[tier], r["vals"], seed_offset=200 + ti)
             print(f"  {tier}: banked {banked[tier]:8.1f} (n={len(banked_reps[tier])}) | "
                   f"rerun {r['mean']:8.1f} (n={r['n']}) | diff {point:+8.1f} "
