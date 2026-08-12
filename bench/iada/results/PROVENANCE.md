@@ -93,6 +93,10 @@ Figures (rendered 2026-08-12 by `bench/plot/plot-meyer-validation.py`):
 Everything the leg produced or consumed is consolidated under
 `IADA-second-born/meyer-validation/`: runner scripts + raw outputs, the
 `rda-50k/` artifact set, `kmeans-centers.tsv`, `meyer-sim-reps.tsv`, all 71
-per-run `sim/` logs, `figures/{png,pdf}/` (F14/F15 mirror of
-`results/figures/p2-meyer-validation/`), and `tree-meyer/` (the trace tree
-that lived in /tmp during the runs).
+per-run `sim/` logs, `figures/{png,pdf}/` (F14/F15), and `tree-meyer/` (the
+trace tree that lived in /tmp during the runs).
+
+**All rendered figures** (every set under `results/figures/`, 25 PNG +
+25 PDF, not just this leg's) are mirrored to `IADA-second-born/figures/`,
+since `results/` is gitignored and therefore not recoverable from a clone.
+Re-rendering a set overwrites the repo copy only — re-mirror afterwards.
