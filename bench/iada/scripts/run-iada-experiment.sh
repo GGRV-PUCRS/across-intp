@@ -95,9 +95,17 @@ set +e
 : "${IADA_HOSTS:=12}"
 : "${IADA_VMS:=$IADA_HOSTS}"
 
+# JVM flags in two layers. INTP_JAVA_OPTS is the JRI-safety set that
+# setup-iada.sh already writes into ~/.iada-env -- it was being defined there
+# and then ignored here, with the same three flags hardcoded below, so sourcing
+# the env file could not actually change them. IADA_JAVA_EXTRA is the per-arm
+# experiment hook (-Diada.vmStartup, -Diada.regime, -Diada.degTable,
+# -Diada.regimeRamp, -Diada.horizon). Both default to today's behaviour.
+: "${INTP_JAVA_OPTS:=-DR_SignalHandlers=0 -XX:+UseSerialGC -Xss8m}"
+: "${IADA_JAVA_EXTRA:=}"
+
 timeout "$TIMEOUT" "$JAVA_HOME/bin/java" \
-    -Xmx6g -Xss8m -XX:+UseSerialGC \
-    -DR_SignalHandlers=0 \
+    -Xmx6g $INTP_JAVA_OPTS $IADA_JAVA_EXTRA \
     -Diada.hosts="$IADA_HOSTS" -Diada.vms="$IADA_VMS" -Diada.cloudlets="$IADA_CLOUDLETS" \
     -Djava.library.path="$JRI_DIR" \
     -cp "$CP" \

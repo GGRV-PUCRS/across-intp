@@ -2,6 +2,14 @@
 
 **Status:** scaffold ready, smoke test validated 2026-05-05; closed-loop
 wrapper (Section V) added in `iada-closed-loop` branch.
+**Update 2026-08-12:** the tier campaign (T1/A/B, 12 hosts, 28 traces) ran and
+banked; the follow-on simulation-side campaign (gate + E1–E5) and every
+decision it settled — including the two the June handoff left open, the
+host-sweep range (ratio-matched 9/14/19/23/28, decision S6) and upstreaming
+the sizing parameters (now committed on `feat/approach-b-15metric`, decision
+S4/S5) — are logged in [`../DECISIONS-sim-experiments.md`](../DECISIONS-sim-experiments.md).
+The phase checklists below are kept as written for provenance; where they
+conflict, the decisions file wins.
 **Host:** local (laptop) — CloudSim is a deterministic simulation
 **Reference dataset validated:** 192 apps on 48 PMs, 24 intervals,
 mean IDI 3476.2

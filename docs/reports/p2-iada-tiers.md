@@ -11,6 +11,16 @@ RDT metrics mbw/llcocc arrive as `--`/0).
 | **A proxy-swap** | same 7, `membw_est` in the `mbw` slot | 5 | `membw_est` | — |
 | **B full-15+regime** | all 15 metrics | 6 | membw_est + psi_mem | psp/idle_preempt |
 
+> **Discrepancy found 2026-08-12 (S7 in `bench/iada/DECISIONS-sim-experiments.md`):**
+> the regime column above names psp/idle_preempt as the class signal, but the
+> shipped `retrain.R` levels the regime class on column 8 = **schedlat** — a
+> victim-delay metric, not an oversubscription indicator. schedlat's
+> fire-or-not behaviour is the likely cause of the empty low/mod bins in the
+> W5 |Cliff's δ| distribution; psp is the graded signal (87…9901 events/s
+> across apps, §fingerprint table below) that could actually support three
+> levels. Re-levelling on psp + retraining tier B is tracked as S8; results in
+> this report predate that fix.
+
 ## Result 1 — resource-CLASS identification is NOT the portability bottleneck
 
 Within-env CV classification accuracy / macro-F1:
