@@ -48,8 +48,20 @@ python3 - "$OUT/gate-default.tsv" "$BASELINE" <<'PY'
 # Gate on overlap of rep-level bootstrap CIs rather than on equality: both
 # sides are stochastic SA samples, so demanding equal means would fail on
 # noise. Any tier whose interval misses the baseline's is a real discrepancy.
-import sys, numpy as np, pandas as pd
+#
+# The baseline pools every same-config java8 rep available: the first-pass
+# 10-rep batch PLUS the 20-rep confirmation legs. The first campaign run
+# gated against the 10-rep batch alone and failed on T1 (+147.7
+# [+17.6, +282.1]) -- but that batch is the same outlier (mean 6251, sd 105
+# vs the confirmed ~6425/286) that manufactured the S2 false positive, and
+# the rel8 gate mean 6398.8 sits dead-centre of the confirmation. Gating a
+# 10-rep sample against a known-anomalous 10-rep sample re-runs the S2
+# mistake with the roles reversed.
+import sys, glob, os
+import numpy as np, pandas as pd
 new, base = (pd.read_csv(p, sep="\t") for p in sys.argv[1:3])
+for extra in glob.glob(os.path.join(os.path.dirname(sys.argv[2]), "confirm-*-java8.tsv")):
+    base = pd.concat([base, pd.read_csv(extra, sep="\t")], ignore_index=True)
 bad = []
 for t in ("T1", "A", "B"):
     a = pd.to_numeric(base[base.tier == t].idi_avg, errors="coerce").dropna().to_numpy()
