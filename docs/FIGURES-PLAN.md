@@ -47,6 +47,15 @@ the analyzer TSVs (never recomputed in the plot layer).
 | F14 | K-Means level-threshold map (Meyer 2021 Fig. 9 form): shipped vs 50k-retrained centroids on the level-defining metric, over the published utilization bands (C14/V5: bands unimplemented; retrained levels are tie-break artifacts) | `IADA-second-born/meyer-validation/kmeans-centers.tsv` | `bench/plot/plot-meyer-validation.py` → `results/figures/p2-meyer-validation/` | rendered 2026-08-12 |
 | F15 | Degradation tables in IADA 2022 Fig. 6 form: fork (JSS empirical) vs paper (CCPE/JSA) multipliers by class × level (N1/E5/W2.3) | `Degradation.java` tables | `bench/plot/plot-meyer-validation.py` → `results/figures/p2-meyer-validation/` | rendered 2026-08-12 |
 
+## Auxiliary — seminar (SA) figures
+
+Figures produced for the Seminario de Andamento document rather than for a
+paper; stems carry no F-number. Same claim/data/script traceability applies.
+
+| id | Claim | Data | Script | Ready |
+|---|---|---|---|---|
+| w4-summary | W4 headline: cpu absolutely faithful in every adjudicable cell (20/20, ratios 0.90-1.02); llcmr directionally faithful (Spearman rho 0.66 v2.1 / 0.83 v3.3, p<0.001) | `docs/reports/W4-faithfulness-r2.md` — the adjudicated report is the source of record (analyze-faithfulness.py emits markdown, no verdict TSV) | `plot-w4-summary.py` → `w4-summary` (ratio band + rho bars), png+pdf → `results/figures/w4-faithfulness/` | DONE (2026-08-19, versioned for the SA document) |
+
 ## Cross-cutting blockers and order-of-operations
 
 1. **C34 v2.1 re-run — DONE (2026-06-13).** The re-run completed and was
