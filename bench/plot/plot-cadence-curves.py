@@ -30,7 +30,11 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
+import sa_style  # noqa: E402  (Seminario de Andamento printed geometry)
 import numpy as np
+
+# The SA deck embeds the PNG siblings of these PDFs.
+SA_PNG_DPI = 300
 
 THRESH = 0.05          # min max|Δref| for a metric to be drawn as a curve
 BAND = 0.10            # ±10% fidelity tolerance band
@@ -173,11 +177,83 @@ def fig_sensitivity(fid, cls, med, variants, workloads, fine, out):
     save(fig, out, "F8-cadence-sensitivity")
 
 
+def sa_sensitivity(fid, cls, med, variants, workloads, fine, out: Path) -> None:
+    """F8-cadence-sensitivity at the SA's printed width.
+
+    Was 7.98 in scaled to 0.42, so its 7 pt tick labels printed at 2.92 pt --
+    the second worst in the set. At the 3.36 in column the heatmap is the same
+    matrix with the same numbers; what changes is that the three-line title
+    moves to the LaTeX caption (it was reading instructions, not data) and the
+    cell numbers sit at ANNOT_FLOOR, which is what dense in-cell annotations
+    are allowed.
+    """
+    spec = sa_style.spec_for("F8-cadence-sensitivity")
+    sa_style.apply()
+
+    cols = [(w, v) for w in workloads for v in variants]
+    rows = [m for m in ORDER
+            if any(abs(med.get((v, w, m), {}).get(fine, 0)) >= FLOOR
+                   for (w, v) in cols)]
+    M = np.full((len(rows), len(cols)), np.nan)
+    for ri, m in enumerate(rows):
+        for ci, (w, v) in enumerate(cols):
+            if abs(med.get((v, w, m), {}).get(fine, 0)) < FLOOR:
+                continue
+            vals = [abs(d) for d in fid.get((v, w, m), {}).values()]
+            M[ri, ci] = max(vals) if vals else 0.0
+
+    fig, ax = plt.subplots(figsize=(spec.width, spec.height),
+                           layout="constrained")
+    im = ax.imshow(M, aspect="auto", cmap="YlOrRd", vmin=0, vmax=100)
+    # Two-level x axis. The exploratory cut stacks "<workload>\n<variant>" on
+    # every column, which repeats each workload name once per variant; at the
+    # 0.47 in column pitch those repeats overlap into each other. Naming the
+    # workload once, centred under its variant pair, is the same information
+    # in half the ink -- and the QA gate sees only a duplicate disappearing,
+    # never a new string.
+    ax.set_xticks(range(len(cols)))
+    ax.set_xticklabels([v for (_w, v) in cols], fontsize=sa_style.BODY)
+    span = len(variants)
+    for i, w in enumerate(workloads):
+        ax.text(i * span + (span - 1) / 2.0, -0.14, w.replace("_", " "),
+                transform=ax.get_xaxis_transform(), ha="center", va="top",
+                fontsize=sa_style.BODY)
+        if i:
+            ax.axvline(i * span - 0.5, color="black", lw=0.8)
+    ax.set_yticks(range(len(rows)))
+    ax.set_yticklabels([f"{m} ({cls.get(m,'?')})" for m in rows],
+                       fontsize=sa_style.BODY)
+    ax.tick_params(length=0)
+    for ri in range(len(rows)):
+        for ci in range(len(cols)):
+            if not np.isnan(M[ri, ci]):
+                v = M[ri, ci]
+                ax.text(ci, ri, f"{v:.0f}", ha="center", va="center",
+                        fontsize=sa_style.ANNOT,
+                        color="white" if v > 55 else "black")
+    cb = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.03)
+    cb.set_label("max |Δref| vs 0.1s (%)", size=sa_style.BODY)
+    cb.ax.tick_params(labelsize=sa_style.BODY)
+    cb.outline.set_linewidth(0.5)
+    ax.grid(False)
+
+    out.mkdir(parents=True, exist_ok=True)
+    w_in, h_in = sa_style.save(fig, out / "F8-cadence-sensitivity.pdf", spec)
+    fig.savefig(out / "F8-cadence-sensitivity.png", dpi=SA_PNG_DPI,
+                bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {out}/F8-cadence-sensitivity.{{pdf,png}} "
+          f"({w_in:.2f} x {h_in:.2f} in)")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("tsv", nargs="?", type=Path,
                     default="results/p2-cadence-sweep/cadence-fidelity.tsv")
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument("--sa-style", action="store_true",
+                    help="render only F8-cadence-sensitivity, at the "
+                         "Seminario de Andamento's exact printed width")
     args = ap.parse_args()
     fid, dens, cls, med = load(args.tsv)
     variants = sorted({v for (v, _, _) in fid})
@@ -185,6 +261,9 @@ def main() -> int:
     fine = min((iv for d in med.values() for iv in d), default=0.1)
     out = args.out or Path("results/figures/p2-cadence-sweep")
     out.mkdir(parents=True, exist_ok=True)
+    if args.sa_style:
+        sa_sensitivity(fid, cls, med, variants, workloads, fine, out)
+        return 0
     fig_fidelity(fid, dens, cls, med, variants, workloads, fine, out)
     fig_sensitivity(fid, cls, med, variants, workloads, fine, out)
     return 0

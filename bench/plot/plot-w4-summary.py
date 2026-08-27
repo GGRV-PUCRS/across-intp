@@ -34,6 +34,11 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
+import sa_style  # noqa: E402  (Seminario de Andamento printed geometry)
+
+# The SA deck embeds the PNG siblings of these PDFs, so they are rendered at
+# projector resolution rather than p2_figio's screen default.
+SA_PNG_DPI = 300
 
 VARIANT_LABELS = {"v2.1": "C-ABI v2.1", "v3.3": "eBPF-CORE v3.3"}
 BAR_COLOR = {"v2.1": "#8aa9cf", "v3.3": "#2e5d8c"}
@@ -69,12 +74,78 @@ def parse(report: Path):
     return cpu_ratios, cells, rho, pval
 
 
+def render_sa(ratios, cells, rho, pval, out: Path) -> None:
+    """Seminario de Andamento cut: the same two panels at printed size.
+
+    The SA embedded this figure 7.2 in wide inside a 3.36 in column, so
+    \\includegraphics scaled it to 0.46 and its 8 pt text printed at 3.7 pt.
+    Here it is drawn at the column width itself, at scale 1.0.
+
+    The two panel titles are gone: they carried the faithful/adjudicable cell
+    count and the p value, and both belong in the LaTeX caption, which has the
+    running width to hold them (see sa_style.LATEX_CHANGES). Nothing else
+    changes -- same band, same bars, same numbers.
+    """
+    spec = sa_style.spec_for("w4-summary")
+    sa_style.apply()
+
+    lo, hi = min(ratios), max(ratios)
+    variants = sorted(rho)
+    pmax = max(pval.values())
+    ptext = "p < 0.001" if pmax < 0.001 else f"p = {pmax:.1e}"
+
+    # The band panel carries no x axis and only four y ticks, so it needs far
+    # less width than the bar panel, whose two variant names are the widest
+    # text in the figure. Splitting 0.62/1.0 is what keeps those names off
+    # each other at 7 pt without abbreviating them.
+    fig, (ax1, ax2) = plt.subplots(
+        1, 2, figsize=(spec.width, spec.height),
+        width_ratios=[0.62, 1.0], layout="constrained")
+
+    ax1.axhspan(lo, hi, color=BAND_COLOR, alpha=0.55,
+                label="observed ratio range")
+    ax1.axhline(1.0, ls="--", lw=1.0, color="black")
+    ax1.set_ylim(0.80, 1.10)
+    ax1.set_yticks([0.8, 0.9, 1.0, 1.1])
+    ax1.set_xticks([])
+    ax1.set_ylabel("profiler / ground truth")
+    ax1.legend(loc="lower right", fontsize=sa_style.LEGEND, framealpha=0.9)
+
+    xs = range(len(variants))
+    vals = [rho[v] for v in variants]
+    ax2.bar(xs, vals, width=0.55, edgecolor="black", lw=0.6,
+            color=[BAR_COLOR[v] for v in variants])
+    for x, v in zip(xs, vals):
+        ax2.text(x, v + 0.02, f"{v:.2f}", ha="center",
+                 fontsize=sa_style.BODY)
+    ax2.set_xticks(list(xs))
+    # Rotated, not abbreviated: the tick strings stay exactly what they were,
+    # so the QA gate's content diff stays clean. At 7 pt "eBPF-CORE v3.3" is
+    # wider than its bar pitch and would collide horizontally.
+    ax2.set_xticklabels([VARIANT_LABELS.get(v, v) for v in variants],
+                        rotation=20, ha="right", rotation_mode="anchor")
+    ax2.set_ylim(0.0, 1.0)
+    ax2.set_ylabel(r"Spearman $\rho$ vs. ground truth")
+
+    out.mkdir(parents=True, exist_ok=True)
+    w, h = sa_style.save(fig, out / "w4-summary.pdf", spec)
+    fig.savefig(out / "w4-summary.png", dpi=SA_PNG_DPI,
+                bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {out}/w4-summary.{{pdf,png}} ({w:.2f} x {h:.2f} in) "
+          f"[titles -> caption: '{ptext}', cells {cells}]")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("report", type=Path, nargs="?",
                     default="docs/reports/W4-faithfulness-r2.md")
     ap.add_argument("--out", type=Path,
                     default=Path("results/figures/w4-faithfulness"))
+    ap.add_argument("--sa-style", action="store_true",
+                    help="render the Seminario de Andamento cut at its exact "
+                         "printed width (sa_style geometry) instead of the "
+                         "exploratory figure")
     args = ap.parse_args()
 
     ratios, cells, rho, pval = parse(args.report)
@@ -87,6 +158,10 @@ def main() -> int:
     print(f"cpu ratios: n={len(ratios)} min={lo:.2f} max={hi:.2f} "
           f"cells={faithful}/{total}")
     print(f"spearman  : {rho} ({ptext})")
+
+    if args.sa_style:
+        render_sa(ratios, cells, rho, pval, args.out)
+        return 0
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.2, 2.3))
 

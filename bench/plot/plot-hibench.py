@@ -166,11 +166,30 @@ RESOURCE_COLORS = {
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import paper_style  # noqa: E402  (shared camera-ready typography)
+import sa_style    # noqa: E402  (Seminario de Andamento printed geometry)
 
 # Camera-ready mode (--camera-ready); see plot-intp-bench.py for the rationale.
 # Off by default so the exploratory HiBench figure set is unaffected.
 CAMERA_READY = False
 PAPER_SUBSET: str | None = None
+# Which printed geometry camera-ready mode targets: paper_style (IEEEtran,
+# 3.45 in column) or sa_style (acmart sigconf, 3.36 in). The two modules share
+# their typography, so this only ever changes the page the figure is sized to.
+STYLE = paper_style
+
+
+def _spec_for(stem: str):
+    """Printed spec for ``stem`` under the active style, or None.
+
+    sa_style keys its table by stem alone -- the SA has one cut of each
+    figure, not one per variant subset -- so the subset only applies to the
+    paper table.
+    """
+    if not CAMERA_READY:
+        return None
+    if STYLE is sa_style:
+        return sa_style.spec_for(stem)
+    return paper_style.spec_for(PAPER_SUBSET, stem)
 
 # Raised together so the inch-clamp keeps the same figure proportions while
 # every raster gets ~1.4x more pixels (matches plot-intp-bench.py).
@@ -234,14 +253,14 @@ def _save(fig, path: Path, label: str) -> None:
     so paper-bound PDFs and README-friendly PNGs coexist."""
     base_dir = path.parent
     stem = path.stem
-    spec = paper_style.spec_for(PAPER_SUBSET, stem) if CAMERA_READY else None
+    spec = _spec_for(stem)
     written = []
     for fmt in FORMATS:
         sub = base_dir / fmt
         sub.mkdir(parents=True, exist_ok=True)
         out = sub / f"{stem}.{fmt}"
         if spec is not None:
-            w, h = paper_style.save(fig, out, spec)
+            w, h = STYLE.save(fig, out, spec)
         else:
             fig.savefig(out, bbox_inches="tight")
         written.append(f"{fmt}/{out.name}")
@@ -1098,9 +1117,7 @@ def fig_variant_resource_heatmap(df: pd.DataFrame, outdir: Path) -> None:
     n_v = rdf["variant"].nunique()
     resources = list(RESOURCE_FAMILY.keys())
 
-    spec = (paper_style.spec_for(PAPER_SUBSET,
-                                 "fig10_variant_resource_heatmap")
-            if CAMERA_READY else None)
+    spec = _spec_for("fig10_variant_resource_heatmap")
     if spec is not None:
         # Addendum B.2 item 2: one heatmap instead of a panel grid.
         #
@@ -1434,9 +1451,14 @@ def main() -> None:
                    default=None,
                    help="Which variant subset this render is for; selects the "
                         "printed size.")
+    p.add_argument("--style", choices=["paper", "sa"], default="paper",
+                   help="Which printed geometry --camera-ready targets: the "
+                        "SBAC-PAD paper (IEEEtran, 3.45 in column) or the "
+                        "Seminario de Andamento (acmart sigconf, 3.36 in). "
+                        "'sa' takes no --paper-subset.")
     args = p.parse_args()
-    if args.camera_ready and not args.paper_subset:
-        sys.exit("--camera-ready requires --paper-subset "
+    if args.camera_ready and args.style == "paper" and not args.paper_subset:
+        sys.exit("--camera-ready --style paper requires --paper-subset "
                  "{baseline,new,merged}")
 
     hdir = args.hibench_dir
@@ -1451,13 +1473,18 @@ def main() -> None:
     FORMATS = [f.strip() for f in args.formats.split(",") if f.strip()] or ["png"]
 
     setup_style()
-    global CAMERA_READY, PAPER_SUBSET
+    global CAMERA_READY, PAPER_SUBSET, STYLE
     CAMERA_READY = args.camera_ready
     PAPER_SUBSET = args.paper_subset
+    STYLE = sa_style if args.style == "sa" else paper_style
     if CAMERA_READY:
-        paper_style.apply()   # after setup_style() so these win
-        print(f"Camera-ready mode: subset={PAPER_SUBSET}, "
-              f"{paper_style.BODY} pt body / {paper_style.ANNOT} pt annotations")
+        STYLE.apply()   # after setup_style() so these win
+        if STYLE is sa_style:
+            # The SA deck embeds the PNG sibling of the gated PDF, so the
+            # raster cut is written at projector resolution.
+            plt.rcParams["savefig.dpi"] = 300
+        print(f"Camera-ready mode: style={args.style}, subset={PAPER_SUBSET}, "
+              f"{STYLE.BODY} pt body / {STYLE.ANNOT} pt annotations")
 
     print(f"Loading hibench results from {hdir}")
     df, run_dirs = load_hibench_dir(hdir)

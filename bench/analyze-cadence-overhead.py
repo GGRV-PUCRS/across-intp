@@ -22,6 +22,7 @@ import glob
 import os
 import sys
 from collections import defaultdict
+from pathlib import Path
 from statistics import median
 
 import matplotlib
@@ -31,6 +32,10 @@ import matplotlib.pyplot as plt
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "plot"))
 import p2_ci     # noqa: E402  (shared rep-level bootstrap CI convention)
 import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
+import sa_style  # noqa: E402  (Seminario de Andamento printed geometry)
+
+# The SA deck embeds the PNG siblings of these PDFs.
+SA_PNG_DPI = 300
 
 THPT_KEY = "bogo_ops_per_s_real"
 REFS = ["ref_cpu", "ref_stream", "ref_disk"]
@@ -65,12 +70,85 @@ def thpt(cell):
     return None
 
 
+def render_sa(ov, ci, intervals, variants, env0, figdir):
+    """F9 at the Seminario de Andamento's printed width.
+
+    Was 7.39 in scaled to 0.45, so its 8 pt tick labels printed at 3.61 pt.
+    Two things pay for the column width: the three-line title, which was the
+    error-bar definition and the reading instructions and belongs in the LaTeX
+    caption, and the legend, which drops from a two-column block to one row of
+    the same four entries.
+
+    The curve itself, its points, and its bootstrap CIs are untouched -- this
+    is the same figure on a narrower page.
+    """
+    spec = sa_style.spec_for("F9-overhead-vs-cadence")
+    sa_style.apply()
+
+    fig, ax = plt.subplots(figsize=(spec.width, spec.height),
+                           layout="constrained")
+    style = {variants[0]: "-"}
+    if len(variants) > 1:
+        style[variants[1]] = "--"
+    ax.axhline(0, color="grey", lw=0.6)
+    for var in variants:
+        for ref in FIG_REFS:
+            d = ov.get((env0, var, ref), {})
+            if not d:
+                continue
+            xs = sorted(d)
+            ys = [d[x] for x in xs]
+            c = ci.get((env0, var, ref), {})
+            lo = [max(0.0, y - c[x][1]) if x in c and c[x][1] == c[x][1] else 0.0
+                  for x, y in zip(xs, ys)]
+            hi = [max(0.0, c[x][2] - y) if x in c and c[x][2] == c[x][2] else 0.0
+                  for x, y in zip(xs, ys)]
+            ax.errorbar(xs, ys, yerr=[lo, hi], fmt=style.get(var, "-"),
+                        marker="o", ms=2.6, color=REF_COLOR[ref], lw=1.0,
+                        alpha=0.9, capsize=1.8, elinewidth=0.7)
+    ax.set_xscale("log")
+    ax.set_xticks(intervals)
+    ax.set_xticklabels([f"{iv:g}" for iv in intervals],
+                       fontsize=sa_style.BODY)
+    ax.set_xlabel("sampling interval (s)  —  finer cadence ←")
+    ax.set_ylabel("profiler overhead\n(% throughput loss vs baseline)")
+    ax.grid(True, which="both", ls=":", alpha=0.3)
+
+    handles = [plt.Line2D([0], [0], color=REF_COLOR[r], marker="o", lw=1.0,
+                          ms=2.6, label=r.replace("ref_", "ref:"))
+               for r in FIG_REFS]
+    handles += [plt.Line2D([0], [0], color="k", ls="-",
+                           label=f"{variants[0]} (solid)")]
+    if len(variants) > 1:
+        handles += [plt.Line2D([0], [0], color="k", ls="--",
+                               label=f"{variants[1]} (dashed)")]
+    # 2 refs + 2 variants on one row. The handles and the inter-column gap are
+    # trimmed because four entries at 7 pt only just fit the 3.36 in column.
+    fig.legend(handles=handles, loc="outside lower center", ncol=len(handles),
+               frameon=False, fontsize=sa_style.LEGEND, handlelength=0.9,
+               handletextpad=0.3, columnspacing=0.6)
+
+    os.makedirs(figdir, exist_ok=True)
+    stem = "F9-overhead-vs-cadence"
+    w, h = sa_style.save(fig, Path(figdir) / f"{stem}.pdf", spec)
+    fig.savefig(os.path.join(figdir, f"{stem}.png"), dpi=SA_PNG_DPI,
+                bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {figdir}/{stem}.{{pdf,png}} ({w:.2f} x {h:.2f} in)")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("sweep_dir", nargs="?", default="results/p2-cadence-overhead")
     ap.add_argument("--out", default="docs/reports/p2-cadence-overhead.md")
     ap.add_argument("--tsv", default=None)
     ap.add_argument("--fig", default="results/figures/p2-cadence-sweep")
+    ap.add_argument("--sa-style", action="store_true",
+                    help="render F9 at the Seminario de Andamento's exact "
+                         "printed width (sa_style geometry). The TSV and the "
+                         "report are still written, so point --tsv/--out at a "
+                         "scratch path to leave a campaign snapshot untouched.")
     args = ap.parse_args()
     man = read_manifest(args.sweep_dir)
 
@@ -165,6 +243,8 @@ def main() -> int:
     # ---- F9 figure ----
     os.makedirs(args.fig, exist_ok=True)
     env0 = envs[0]
+    if args.sa_style:
+        return render_sa(ov, ci, intervals, variants, env0, args.fig)
     fig, ax = plt.subplots(figsize=(7.5, 4.8))
     style = {variants[0]: "-"}
     if len(variants) > 1:

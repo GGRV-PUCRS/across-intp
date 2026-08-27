@@ -36,8 +36,12 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
+import sa_style  # noqa: E402  (Seminario de Andamento printed geometry)
 import numpy as np
 import pandas as pd
+
+# The SA deck embeds the PNG siblings of these PDFs.
+SA_PNG_DPI = 300
 
 try:
     from scipy.stats import spearmanr
@@ -447,14 +451,105 @@ def fig_psp(df: pd.DataFrame, out: Path):
     plt.close(fig)
 
 
+# ── F3, Seminario de Andamento cut ──────────────────────────────────────────
+
+def render_sa_availability(cells, out: Path) -> None:
+    """F3 at the SA's printed width, with the cell text replaced by colour.
+
+    The SA embedded this figure 13.5 in wide inside a 7.03 in text block, the
+    largest downscale in the set (0.50), so its 7.5 pt cell text printed at
+    3.73 pt. Halving the width back to the text block leaves 0.30 in per
+    metric column, which is not enough for a legible glyph *and* a legible
+    column label -- so the glyph goes.
+
+    Availability is binary, which is exactly what a two-colour encoding says
+    best: green reports, grey does not. The legend keeps the figure's existing
+    vocabulary -- the swatches are labelled ``ok`` and ``--``, the same two
+    strings the 132 cells used to spell out one at a time -- so the QA gate's
+    content diff sees only the duplicates collapsing, never a new string.
+
+    The two-line suptitle moves to the LaTeX caption, which already carries
+    the message (sa_style.LATEX_CHANGES).
+    """
+    spec = sa_style.spec_for("F3-availability-grid")
+    sa_style.apply()
+
+    metrics = METRICS_PORTABLE + METRICS_REGIME + ["mbw", "llcocc", "llcmr"]
+    variants = sorted({k[1] for k in cells})
+    envs = ["bare"] + ENV_ORDER
+    OK, GONE = "#41ab5d", "#d9d9d9"
+
+    fig, axes = plt.subplots(
+        1, len(variants), figsize=(spec.width, spec.height),
+        sharey=True, squeeze=False, layout="constrained")
+    axes = axes[0]
+
+    for ax, var in zip(axes, variants):
+        for yi, env in enumerate(envs):
+            reps = [r for (e, v, _w), rl in cells.items()
+                    if e == env and v == var for r in rl]
+            for xi, m in enumerate(metrics):
+                ok = any(m in r for r in reps)
+                ax.add_patch(plt.Rectangle((xi, yi), 0.92, 0.92,
+                                           color=OK if ok else GONE))
+        ax.set_xlim(0, len(metrics))
+        ax.set_ylim(0, len(envs))
+        ax.set_xticks(np.arange(len(metrics)) + 0.46)
+        # 30 degrees: at 7 pt the longest name (idle_preempt) is wider than
+        # the 0.30 in column pitch, and 30 buys the separation for about
+        # 0.15 in of height -- cheaper than any of the alternatives.
+        ax.set_xticklabels(metrics, rotation=30, ha="right",
+                           rotation_mode="anchor", fontsize=sa_style.BODY)
+        ax.set_yticks(np.arange(len(envs)) + 0.46)
+        ax.set_yticklabels([ENV_SHORT[e] for e in envs],
+                           fontsize=sa_style.BODY)
+        ax.tick_params(length=0)
+        ax.invert_yaxis()
+        # The rule that separates the portable + regime block from the three
+        # RDT canonicals; the panel title says which side is which.
+        ax.axvline(len(METRICS_PORTABLE) + len(METRICS_REGIME),
+                   color="k", lw=1.0)
+        # The variant name alone. The wide cut appended "(left: portable +
+        # regime | right: RDT canonicals)" here, which is 3.4 in at 7.5 pt --
+        # wider than half the text block, so the two panels plus the y-label
+        # gutter no longer fit the page and the save clips. That reading note
+        # is what the LaTeX caption is for; sa_style.LATEX_CHANGES carries the
+        # instruction, and the gate's content diff lists the bare variant
+        # names as arrivals because they are the surviving half of a title
+        # that used to be one span.
+        ax.set_title(vlabel(var), fontsize=sa_style.TITLE)
+        ax.grid(False)
+
+    handles = [plt.Rectangle((0, 0), 1, 1, color=OK),
+               plt.Rectangle((0, 0), 1, 1, color=GONE)]
+    fig.legend(handles, ["ok", "--"], loc="outside lower center", ncol=2,
+               frameon=False, fontsize=sa_style.LEGEND,
+               handlelength=1.2, handleheight=1.0, columnspacing=1.2)
+
+    out.mkdir(parents=True, exist_ok=True)
+    w, h = sa_style.save(fig, out / "F3-availability-grid.pdf", spec)
+    fig.savefig(out / "F3-availability-grid.png", dpi=SA_PNG_DPI,
+                bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {out}/F3-availability-grid.{{pdf,png}} "
+          f"({w:.2f} x {h:.2f} in)")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("campaign_dir", type=Path)
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument("--sa-style", action="store_true",
+                    help="render only F3, at the Seminario de Andamento's "
+                         "exact printed width (sa_style geometry)")
     args = ap.parse_args()
     base = args.campaign_dir
     out = args.out or (base.parent / "figures" / base.name)
     out.mkdir(parents=True, exist_ok=True)
+
+    if args.sa_style:
+        render_sa_availability(scan_cells(base), out)
+        return 0
 
     tsv = base / "cross-deployment.tsv"
     if not tsv.exists():
