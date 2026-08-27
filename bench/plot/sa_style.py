@@ -110,8 +110,11 @@ SA_FIGURES: dict[tuple[str, str], FigSpec] = {
     # Two panels side by side at column width. The panel titles are the first
     # thing to go if the height fights back -- the .tex caption already says
     # what both panels are -- but the annotation bars must hold ANNOT_FLOOR.
+    # The drawn height is well under the budget because the band legend sits
+    # outside the axes: constrained_layout gives it its own strip, and the
+    # saved page comes out about 0.15 in taller than the figure canvas.
     ("sa", "w4-summary"): FigSpec(
-        COLUMN_WIDTH, 1.9, 1.88, "Sec. 3.3 (figure, \\linewidth)",
+        COLUMN_WIDTH, 1.9, 1.74, "Sec. 3.3 (figure, \\linewidth)",
         "w4-summary.pdf"),
 
     # The biggest single win in the set: the per-cell "ok"/"--" strings were

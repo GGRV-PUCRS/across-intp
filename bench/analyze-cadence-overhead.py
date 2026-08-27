@@ -91,21 +91,37 @@ def render_sa(ov, ci, intervals, variants, env0, figdir):
     if len(variants) > 1:
         style[variants[1]] = "--"
     ax.axhline(0, color="grey", lw=0.6)
-    for var in variants:
-        for ref in FIG_REFS:
-            d = ov.get((env0, var, ref), {})
-            if not d:
-                continue
-            xs = sorted(d)
-            ys = [d[x] for x in xs]
-            c = ci.get((env0, var, ref), {})
-            lo = [max(0.0, y - c[x][1]) if x in c and c[x][1] == c[x][1] else 0.0
-                  for x, y in zip(xs, ys)]
-            hi = [max(0.0, c[x][2] - y) if x in c and c[x][2] == c[x][2] else 0.0
-                  for x, y in zip(xs, ys)]
-            ax.errorbar(xs, ys, yerr=[lo, hi], fmt=style.get(var, "-"),
-                        marker="o", ms=2.6, color=REF_COLOR[ref], lw=1.0,
-                        alpha=0.9, capsize=1.8, elinewidth=0.7)
+    # Dodge the four series along the log x axis. The ref_stream CIs are wide
+    # -- three reps of an I/O-adjacent throughput probe -- and at 0.1 s and
+    # 5 s all four whiskers land on the same tick and cross each other, which
+    # at the column width reads as one unreadable stack. A multiplicative
+    # offset is the log-axis equivalent of the usual grouped-bar dodge: the
+    # spread is +/- 11 %, about 0.065 in on this axis, so each series keeps
+    # its own lane while staying visibly on its cadence. Past roughly 15 % the
+    # markers read as sitting between two cadences rather than beside each
+    # other, which is why this is not simply widened until nothing touches.
+    # Only x positions move, and only for drawing -- no value changes.
+    series = [(var, ref) for var in variants for ref in FIG_REFS]
+    span = 0.11
+    offsets = ({s_: 1.0 for s_ in series} if len(series) < 2 else
+               {s_: 1.0 + span * (2.0 * i / (len(series) - 1) - 1.0)
+                for i, s_ in enumerate(series)})
+    for var, ref in series:
+        d = ov.get((env0, var, ref), {})
+        if not d:
+            continue
+        xs = sorted(d)
+        ys = [d[x] for x in xs]
+        c = ci.get((env0, var, ref), {})
+        lo = [max(0.0, y - c[x][1]) if x in c and c[x][1] == c[x][1] else 0.0
+              for x, y in zip(xs, ys)]
+        hi = [max(0.0, c[x][2] - y) if x in c and c[x][2] == c[x][2] else 0.0
+              for x, y in zip(xs, ys)]
+        k = offsets[(var, ref)]
+        ax.errorbar([x * k for x in xs], ys, yerr=[lo, hi],
+                    fmt=style.get(var, "-"), marker="o", ms=2.6,
+                    color=REF_COLOR[ref], lw=1.0, alpha=0.9,
+                    capsize=1.6, elinewidth=0.6)
     ax.set_xscale("log")
     ax.set_xticks(intervals)
     ax.set_xticklabels([f"{iv:g}" for iv in intervals],

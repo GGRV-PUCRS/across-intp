@@ -109,7 +109,6 @@ def render_sa(ratios, cells, rho, pval, out: Path) -> None:
     ax1.set_yticks([0.8, 0.9, 1.0, 1.1])
     ax1.set_xticks([])
     ax1.set_ylabel("profiler / ground truth")
-    ax1.legend(loc="lower right", fontsize=sa_style.LEGEND, framealpha=0.9)
 
     xs = range(len(variants))
     vals = [rho[v] for v in variants]
@@ -126,6 +125,16 @@ def render_sa(ratios, cells, rho, pval, out: Path) -> None:
                         rotation=20, ha="right", rotation_mode="anchor")
     ax2.set_ylim(0.0, 1.0)
     ax2.set_ylabel(r"Spearman $\rho$ vs. ground truth")
+
+    # Figure-level, below both panels. Inside the left axes -- where the wide
+    # cut could afford to put it -- "observed ratio range" is 1.05 in of text
+    # in a 1.2 in panel, so it sits on top of the band it is naming. Outside
+    # it also matches every other figure in the SA set.
+    fig.legend(handles=[ax1.patches[0]] if ax1.patches else
+               [plt.Rectangle((0, 0), 1, 1, color=BAND_COLOR, alpha=0.55)],
+               labels=["observed ratio range"],
+               loc="outside lower center", frameon=False,
+               fontsize=sa_style.LEGEND, handlelength=1.2, handleheight=1.0)
 
     out.mkdir(parents=True, exist_ok=True)
     w, h = sa_style.save(fig, out / "w4-summary.pdf", spec)
