@@ -17,6 +17,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
 import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 
 TIER_DESC = {
@@ -94,7 +95,9 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default="results/figures/p2-iada-tiers")
     ap.add_argument("--transfer", action="store_true",
                     help="render the host->VM transfer table from tier-eval-transfer.tsv")
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
+    p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.tsv))
     args.out.mkdir(parents=True, exist_ok=True)
     if args.transfer:
         t = args.tsv if "transfer" in str(args.tsv) else \

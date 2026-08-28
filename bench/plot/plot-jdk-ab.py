@@ -40,6 +40,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import p2_ci                      # noqa: E402  rep-level bootstrap CI
+import fig_names  # noqa: E402  (figure naming registry)
 import p2_figio                   # noqa: E402  {png,pdf} output layout
 import paper_style                # noqa: E402  camera-ready typography
 
@@ -209,7 +210,9 @@ def main() -> int:
                     default=Path("results/iada-sim/tier-sim-reps.tsv"))
     ap.add_argument("--out-set", default="p2-jdk-ab")
     ap.add_argument("--figures-root", type=Path, default=Path("results/figures"))
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
+    p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.ab_dir))
 
     confirm_dir = args.confirm_dir or args.ab_dir
     legs = {}

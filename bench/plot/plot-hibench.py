@@ -10,7 +10,7 @@
 #          metadata.env, aggregate-means.tsv, and per-rep profiler.tsv files.
 #
 # Figures (paper reference in parens):
-#   fig00_canonical_intp_fig4_<P>.png (IntP Fig. 4 canonical) one PNG per
+#   fig00_hibench_canonical_intp_fig4_<P>.png (IntP Fig. 4 canonical) one per
 #                                              profile, variants side-by-side
 #   fig01_fingerprint_<P>.png    one PNG per profile, variants side-by-side
 #   fig02_sensitivity_<P>.png    Δ(<P> − standard) per variant; one PNG per
@@ -165,6 +165,7 @@ RESOURCE_COLORS = {
 # ---------------------------------------------------------------------------
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names   # noqa: E402  (figure naming registry)
 import paper_style  # noqa: E402  (shared camera-ready typography)
 import sa_style    # noqa: E402  (Seminario de Andamento printed geometry)
 
@@ -172,6 +173,9 @@ import sa_style    # noqa: E402  (Seminario de Andamento printed geometry)
 # Off by default so the exploratory HiBench figure set is unaffected.
 CAMERA_READY = False
 PAPER_SUBSET: str | None = None
+#: Campaign this render is drawing, for the output filenames. Set from
+#: --dataset, or derived from hibench_dir; see bench/plot/fig_names.py.
+DATASET: str | None = None
 # Which printed geometry camera-ready mode targets: paper_style (IEEEtran,
 # 3.45 in column) or sa_style (acmart sigconf, 3.36 in). The two modules share
 # their typography, so this only ever changes the page the figure is sized to.
@@ -250,15 +254,17 @@ def _save(fig, path: Path, label: str) -> None:
     """Save figure to each configured format under <path.parent>/<format>/.
 
     See plot-intp-bench._save for the contract — same multi-format scheme
-    so paper-bound PDFs and README-friendly PNGs coexist."""
+    so paper-bound PDFs and README-friendly PNGs coexist, and the same
+    `fig_names` naming so the file explains itself outside this tree."""
     base_dir = path.parent
     stem = path.stem
     spec = _spec_for(stem)
+    name = fig_names.name(stem, DATASET)
     written = []
     for fmt in FORMATS:
         sub = base_dir / fmt
         sub.mkdir(parents=True, exist_ok=True)
-        out = sub / f"{stem}.{fmt}"
+        out = sub / f"{name}.{fmt}"
         if spec is not None:
             w, h = STYLE.save(fig, out, spec)
         else:
@@ -992,7 +998,7 @@ def fig_canonical_intp_fig4(df: pd.DataFrame, outdir: Path) -> None:
                            f"HiBench: interference ratios per "
                            f"workload  (profile={profile})",
                            fontsize=11.5, extra_artists=extras)
-        _save(fig, outdir / f"fig00_canonical_intp_fig4_{profile}.png",
+        _save(fig, outdir / f"fig00_hibench_canonical_intp_fig4_{profile}.png",
               f"fig00[{profile}]")
         plt.close(fig)
 
@@ -1456,6 +1462,7 @@ def main() -> None:
                         "SBAC-PAD paper (IEEEtran, 3.45 in column) or the "
                         "Seminario de Andamento (acmart sigconf, 3.36 in). "
                         "'sa' takes no --paper-subset.")
+    fig_names.add_dataset_arg(p)
     args = p.parse_args()
     if args.camera_ready and args.style == "paper" and not args.paper_subset:
         sys.exit("--camera-ready --style paper requires --paper-subset "
@@ -1469,6 +1476,8 @@ def main() -> None:
 
     outdir = args.out or (hdir / "plots")
     outdir.mkdir(parents=True, exist_ok=True)
+    global DATASET
+    DATASET = args.dataset or fig_names.dataset_tag(hdir)
     global FORMATS
     FORMATS = [f.strip() for f in args.formats.split(",") if f.strip()] or ["png"]
 

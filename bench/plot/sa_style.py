@@ -30,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import fig_names   # noqa: E402  (figure naming registry)
 import paper_style  # noqa: E402
 
 # Imported wholesale so a figure rendered in SA geometry is typographically
@@ -115,7 +116,7 @@ SA_FIGURES: dict[tuple[str, str], FigSpec] = {
     # saved page comes out about 0.15 in taller than the figure canvas.
     ("sa", "w4-summary"): FigSpec(
         COLUMN_WIDTH, 1.9, 1.74, "Sec. 3.3 (figure, \\linewidth)",
-        "w4-summary.pdf"),
+        ""),
 
     # The biggest single win in the set: the per-cell "ok"/"--" strings were
     # 7.5 pt text scaled to 3.73 pt. Two colours plus one legend entry each
@@ -123,25 +124,25 @@ SA_FIGURES: dict[tuple[str, str], FigSpec] = {
     # room for 7 pt row and column labels at half the width.
     ("sa", "F3-availability-grid"): FigSpec(
         TEXT_WIDTH, 2.4, 2.38, "Sec. 3.4 (figure*, \\linewidth)",
-        "F3-availability-grid.pdf"),
+        ""),
 
     # 15 metric rows at 7 pt need about 0.14 in of pitch each, so the rows
     # alone are 2.1 in and the budget is mostly them. The shared legend stays
     # one row below the panels; the two-line suptitle moves to the caption.
     ("sa", "F10-victim-delta-forest"): FigSpec(
         TEXT_WIDTH, 3.4, 3.38, "Sec. 3.3 (figure*, \\linewidth)",
-        "F10-victim-delta-forest.pdf"),
+        ""),
 
     # Seven horizontal bars plus a two-entry legend at column width.
     ("sa", "F11-vmguest-portable-vs-canonical"): FigSpec(
         COLUMN_WIDTH, 2.4, 2.38, "Sec. 3.4 (figure, \\linewidth)",
-        "F11-vmguest-portable-vs-canonical.pdf"),
+        ""),
 
     # The three-line italic explainer inside the figure duplicated the LaTeX
     # caption almost sentence for sentence; removing it is most of the height.
     ("sa", "F13-tier-scheduling-idi"): FigSpec(
         TEXT_WIDTH, 3.0, 2.98, "Sec. 3.4 (figure*, \\linewidth)",
-        "F13-tier-scheduling-idi.pdf"),
+        ""),
 
     # The S8 psp rebank arm of the same float. Rendered alongside the banked
     # arm so the author can compare the two before the SA freeze and swap one
@@ -149,27 +150,27 @@ SA_FIGURES: dict[tuple[str, str], FigSpec] = {
     # is gated but costs no column-inches (see artifact_only).
     ("sa", "F13-tier-scheduling-idi-psp"): FigSpec(
         TEXT_WIDTH, 3.0, 2.98, "Sec. 3.4 alternative (S8 psp rebank)",
-        "F13-tier-scheduling-idi-psp.pdf", artifact_only=True),
+        "", artifact_only=True),
 
     # 7 rows x 4 cols of cell numbers: these are the ANNOT_FLOOR consumers,
     # and at column width the cell pitch is 0.34 in, which holds 6.5 pt.
     ("sa", "F8-cadence-sensitivity"): FigSpec(
         COLUMN_WIDTH, 2.4, 2.38, "Sec. 3.5 (figure, \\linewidth)",
-        "F8-cadence-sensitivity.pdf"),
+        ""),
 
     # Legend consolidated to one row: two refs x two variants read as 2+2
     # entries rather than the 4-entry two-column block, which is what lets the
     # curve keep its height at column width.
     ("sa", "F9-overhead-vs-cadence"): FigSpec(
         COLUMN_WIDTH, 2.5, 2.48, "Sec. 3.5 (figure, \\linewidth)",
-        "F9-overhead-vs-cadence.pdf"),
+        ""),
 
     # Already gate-compliant, for IEEEtran's 3.45 in column. Re-emitted at the
     # acmart column and otherwise untouched: same renderer, same layout, same
     # data, 0.09 in narrower.
     ("sa", "fig10_variant_resource_heatmap"): FigSpec(
         COLUMN_WIDTH, 3.0, 3.00, "Sec. 3.1 (figure, \\linewidth)",
-        "fig10_variant_resource_heatmap.pdf"),
+        ""),
 
     # Already at 7.00 in and 6.60 pt, i.e. already passing. Re-emitted only to
     # remove the residual 0.4 % downscale that 7.00 into a 7.03 in text block
@@ -177,7 +178,7 @@ SA_FIGURES: dict[tuple[str, str], FigSpec] = {
     # unchanged and this row is skipped (see render-sa-figures.py).
     ("sa", "schedule-plan-vs-actual"): FigSpec(
         TEXT_WIDTH, 4.0, 3.95, "Sec. 4 (figure*, \\textwidth)",
-        "schedule-plan-vs-actual.pdf"),
+        ""),
 }
 
 # Columns of page each float spans: 2 = figure*, 1 = figure. What costs page
@@ -296,6 +297,23 @@ def printed_width(stem: str, factor: float | None = None) -> float:
         factor = CURRENT_WIDTH_FACTOR.get(stem, 1.0)
     base = TEXT_WIDTH if SPAN.get(stem, 1) == 2 else COLUMN_WIDTH
     return factor * base
+
+
+def out_stem(stem: str) -> str:
+    """Campaign-independent filename stem for one Seminario figure."""
+    return fig_names.head(stem, SA_FIGURES[("sa", stem)].qualifier)
+
+
+def out_name(stem: str, dataset: str = fig_names.SA_DATASET,
+             ext: str = "pdf") -> str:
+    """Filename for one Seminario figure.
+
+    The SA cut is named after the document rather than after the seven
+    campaigns it draws from, so the ``.tex`` includes stay stable whichever
+    tree the figures were re-rendered out of.
+    """
+    return fig_names.name(stem, dataset,
+                          qualifier=SA_FIGURES[("sa", stem)].qualifier, ext=ext)
 
 
 def spec_for(stem: str) -> FigSpec | None:

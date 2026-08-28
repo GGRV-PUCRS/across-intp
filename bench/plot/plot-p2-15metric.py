@@ -35,13 +35,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
 import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 import sa_style  # noqa: E402  (Seminario de Andamento printed geometry)
 import numpy as np
 import pandas as pd
 
 # The SA deck embeds the PNG siblings of these PDFs.
-SA_PNG_DPI = 300
 
 try:
     from scipy.stats import spearmanr
@@ -526,13 +526,7 @@ def render_sa_availability(cells, out: Path) -> None:
                frameon=False, fontsize=sa_style.LEGEND,
                handlelength=1.2, handleheight=1.0, columnspacing=1.2)
 
-    out.mkdir(parents=True, exist_ok=True)
-    w, h = sa_style.save(fig, out / "F3-availability-grid.pdf", spec)
-    fig.savefig(out / "F3-availability-grid.png", dpi=SA_PNG_DPI,
-                bbox_inches="tight")
-    plt.close(fig)
-    print(f"wrote {out}/F3-availability-grid.{{pdf,png}} "
-          f"({w:.2f} x {h:.2f} in)")
+    p2_figio.save_flat(fig, out, "F3-availability-grid", spec)
 
 
 def main() -> int:
@@ -542,8 +536,10 @@ def main() -> int:
     ap.add_argument("--sa-style", action="store_true",
                     help="render only F3, at the Seminario de Andamento's "
                          "exact printed width (sa_style geometry)")
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
     base = args.campaign_dir
+    p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(base))
     out = args.out or (base.parent / "figures" / base.name)
     out.mkdir(parents=True, exist_ok=True)
 

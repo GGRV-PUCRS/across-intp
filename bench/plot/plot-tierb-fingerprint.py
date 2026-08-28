@@ -28,6 +28,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
 import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 import numpy as np
 
@@ -270,7 +271,9 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--envs", default="container,vm-guest",
                     help="comma-separated environments to show as row-bands")
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
+    p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.tsv))
     med, cls, apps, envs, variants = load(args.tsv)
     want = [e.strip() for e in args.envs.split(",")]
     envs_show = [e for e in want if e in envs] or \

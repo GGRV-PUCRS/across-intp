@@ -34,6 +34,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import p2_ci                      # noqa: E402
+import fig_names  # noqa: E402  (figure naming registry)
 import p2_figio                   # noqa: E402
 import paper_style                # noqa: E402
 
@@ -163,7 +164,9 @@ def main() -> int:
     ap.add_argument("--exp-dir", required=True, type=Path)
     ap.add_argument("--out-set", default="p2-sim-experiments")
     ap.add_argument("--figures-root", type=Path, default=Path("results/figures"))
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
+    p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.exp_dir))
 
     gate = load(args.exp_dir / "gate-default.tsv")
     gate_by_tier = {t: gate[gate.tier == t].idi_avg.to_numpy() for t in TIERS}

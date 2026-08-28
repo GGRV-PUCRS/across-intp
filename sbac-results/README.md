@@ -89,6 +89,13 @@ Each subfolder holds the same 10 paper figures as PDF + PNG: `fig01b_per_variant
 `fig02_pca_dendro`, `fig04_overhead_throughput`, `fig04b_overhead_cpu_jiffies`,
 `fig04c_overhead_sched_switch`, `fig05_fidelity_matrix`, `fig07_pairwise_heatmap_bare`,
 `fig10_variant_resource_heatmap`, `fig11_idi_bars`, `fig13_iada_segmented`.
+
+Those are the filenames **as shipped in release v0.1.0**. The pipeline now
+names every figure `<figure-id>-<what-it-shows>--<which-campaign>`
+(`bench/plot/fig_names.py`), so re-rendering this tree produces the same ten
+figures under descriptive names — `fig01b-per-variant-workload-fingerprint--…`
+and so on. The released asset is unchanged; see `docs/READER-MAP.md` for the
+current mapping.
 They are regenerated from the same data via the plotters' `--variants` flag, e.g.:
 
 ```bash

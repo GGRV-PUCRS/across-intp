@@ -30,12 +30,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
 import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 import sa_style  # noqa: E402  (Seminario de Andamento printed geometry)
 import numpy as np
 
 # The SA deck embeds the PNG siblings of these PDFs.
-SA_PNG_DPI = 300
 
 ORDER = ["netp", "nets", "blk", "mbw", "llcmr", "llcocc", "cpu",
          "schedlat", "psi_mem", "membw_est", "psi_io", "schedthr", "steal",
@@ -182,11 +182,7 @@ def fig_vmguest(cells, present, variants, out):
 # ── Seminario de Andamento cuts ─────────────────────────────────────────────
 
 def _sa_write(fig, out: Path, stem: str, spec) -> None:
-    out.mkdir(parents=True, exist_ok=True)
-    w, h = sa_style.save(fig, out / f"{stem}.pdf", spec)
-    fig.savefig(out / f"{stem}.png", dpi=SA_PNG_DPI, bbox_inches="tight")
-    plt.close(fig)
-    print(f"wrote {out}/{stem}.{{pdf,png}} ({w:.2f} x {h:.2f} in)")
+    p2_figio.save_flat(fig, out, stem, spec)
 
 
 def sa_forest(cells, present, variants, out: Path) -> None:
@@ -350,7 +346,9 @@ def main() -> int:
     ap.add_argument("--sa-style", action="store_true",
                     help="render F10 and F11 at the Seminario de Andamento's "
                          "exact printed widths (sa_style geometry)")
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
+    p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.tsv))
     cells, present, variants = load(args.tsv)
     out = args.out or Path("results/figures/p2-w5-victim-delta")
     out.mkdir(parents=True, exist_ok=True)

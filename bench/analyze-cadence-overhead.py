@@ -31,11 +31,11 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "plot"))
 import p2_ci     # noqa: E402  (shared rep-level bootstrap CI convention)
+import fig_names  # noqa: E402  (figure naming registry)
 import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 import sa_style  # noqa: E402  (Seminario de Andamento printed geometry)
 
 # The SA deck embeds the PNG siblings of these PDFs.
-SA_PNG_DPI = 300
 
 THPT_KEY = "bogo_ops_per_s_real"
 REFS = ["ref_cpu", "ref_stream", "ref_disk"]
@@ -144,13 +144,7 @@ def render_sa(ov, ci, intervals, variants, env0, figdir):
                frameon=False, fontsize=sa_style.LEGEND, handlelength=0.9,
                handletextpad=0.3, columnspacing=0.6)
 
-    os.makedirs(figdir, exist_ok=True)
-    stem = "F9-overhead-vs-cadence"
-    w, h = sa_style.save(fig, Path(figdir) / f"{stem}.pdf", spec)
-    fig.savefig(os.path.join(figdir, f"{stem}.png"), dpi=SA_PNG_DPI,
-                bbox_inches="tight")
-    plt.close(fig)
-    print(f"wrote {figdir}/{stem}.{{pdf,png}} ({w:.2f} x {h:.2f} in)")
+    p2_figio.save_flat(fig, figdir, "F9-overhead-vs-cadence", spec)
     return 0
 
 
@@ -165,7 +159,9 @@ def main() -> int:
                          "printed width (sa_style geometry). The TSV and the "
                          "report are still written, so point --tsv/--out at a "
                          "scratch path to leave a campaign snapshot untouched.")
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
+    p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.sweep_dir))
     man = read_manifest(args.sweep_dir)
 
     # th[(interval, env, arm, ref)] = [throughput per rep]

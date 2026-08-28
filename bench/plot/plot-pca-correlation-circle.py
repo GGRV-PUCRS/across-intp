@@ -45,6 +45,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
+
 try:
     import matplotlib
     matplotlib.use("Agg")
@@ -149,8 +152,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-polygons", action="store_true",
                    help="Disable per-workload convergence polygons on panel B.")
     p.add_argument("--output", type=Path, default=None,
-                   help="Output path stem. Default: <input-dir>/plots/fig_pca_correlation_circle "
-                        "(extension is taken from --formats; emitted under plots/<format>/).")
+                   help="Output directory plus figure stem, e.g. "
+                        "results/figures/p2-pca-geometry/F7-pca-correlation-circle. "
+                        "The stem selects the figure's registered description "
+                        "(bench/plot/fig_names.py); the filename on disk is "
+                        "<id>-<description>--<campaign>. Default: "
+                        "<input-dir>/plots/fig_pca_correlation_circle, emitted "
+                        "under plots/<format>/.")
+    fig_names.add_dataset_arg(p)
     p.add_argument("--formats", type=str, default="png,pdf",
                    help="Comma-separated output formats (default: png,pdf). "
                         "Each format is written under the parent dir's <format>/ subdir.")
@@ -371,12 +380,12 @@ def main() -> None:
         plots_dir = args.input.parent / "plots"
         out = plots_dir / "fig_pca_correlation_circle.png"
     base_dir = out.parent
-    stem = out.stem
+    name = fig_names.name(out.stem, args.dataset or fig_names.dataset_tag(args.input))
     written = []
     for fmt in formats:
         sub = base_dir / fmt
         sub.mkdir(parents=True, exist_ok=True)
-        path = sub / f"{stem}.{fmt}"
+        path = sub / f"{name}.{fmt}"
         fig.savefig(path, bbox_inches="tight")
         written.append(str(path))
     plt.close(fig)

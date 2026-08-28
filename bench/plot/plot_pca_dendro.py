@@ -12,8 +12,13 @@ Outputs:
   fig02_pca_dendro.pdf (and .png)
 
 Usage:
-  python3 plot_pca_dendro.py [<aggregate-means.csv>] [<outdir>]
+  python3 plot_pca_dendro.py [<aggregate-means.csv>] [<outdir>] \\
+      [--variants=v0.2,v2,v3.2] [--stem=F7-pca-dendro] [--dataset=TAG]
   defaults: ./aggregate-means.csv, ./out
+
+The stem selects the figure's registered description (bench/plot/fig_names.py):
+fig02_pca_dendro over the canonical seven metrics, F7-pca-dendro over the
+extended 15-metric set.
 
 Cluster labels are derived from the *dominant interference resource* of
 each cluster (the metric whose per-cluster mean is highest), not from
@@ -41,6 +46,7 @@ from sklearn.cluster import KMeans
 from scipy.cluster.hierarchy import linkage, dendrogram, set_link_color_palette
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
 import paper_style  # noqa: E402  (shared camera-ready typography)
 
 METRICS = ["netp", "nets", "blk", "mbw", "llcmr", "llcocc", "cpu"]
@@ -104,7 +110,7 @@ def per_workload_variant_means(df):
 
 
 def main(csv_path, outdir, variants=None, camera_ready=False,
-         paper_subset="merged"):
+         paper_subset="merged", stem="fig02_pca_dendro", dataset=None):
     outdir = Path(outdir)
     outdir.mkdir(parents=True, exist_ok=True)
 
@@ -313,13 +319,14 @@ def main(csv_path, outdir, variants=None, camera_ready=False,
 
     # Mirror plot-intp-bench.py's layout: <outdir>/pdf/ and <outdir>/png/,
     # so this figure lands beside fig02_pca_kmeans in the same plots/ tree.
-    stem = "fig02_pca_dendro"
+    # `stem` stays the registry key; the filename explains itself.
+    name = fig_names.name(stem, dataset or fig_names.dataset_tag(csv_path))
     pdf_dir = outdir / "pdf"
     png_dir = outdir / "png"
     pdf_dir.mkdir(parents=True, exist_ok=True)
     png_dir.mkdir(parents=True, exist_ok=True)
-    pdf_path = pdf_dir / f"{stem}.pdf"
-    png_path = png_dir / f"{stem}.png"
+    pdf_path = pdf_dir / f"{name}.pdf"
+    png_path = png_dir / f"{name}.png"
     if spec is not None:
         w, h = paper_style.save(fig, pdf_path, spec)
         paper_style.save(fig, png_path, spec)
@@ -344,6 +351,8 @@ if __name__ == "__main__":
     variants = None
     camera_ready = False
     paper_subset = "merged"
+    stem = "fig02_pca_dendro"
+    dataset = None
     for a in sys.argv[1:]:
         if a.startswith("--variants="):
             variants = a.split("=", 1)[1]
@@ -351,9 +360,13 @@ if __name__ == "__main__":
             camera_ready = True
         elif a.startswith("--paper-subset="):
             paper_subset = a.split("=", 1)[1]
+        elif a.startswith("--stem="):
+            stem = a.split("=", 1)[1]
+        elif a.startswith("--dataset="):
+            dataset = a.split("=", 1)[1]
     csv_path = Path(args[0]) if len(args) > 0 else Path("aggregate-means.csv")
     outdir = Path(args[1]) if len(args) > 1 else Path("out")
     if variants is None and len(args) > 2:
         variants = args[2]
     main(csv_path, outdir, variants, camera_ready=camera_ready,
-         paper_subset=paper_subset)
+         paper_subset=paper_subset, stem=stem, dataset=dataset)

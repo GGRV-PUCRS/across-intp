@@ -13,12 +13,16 @@ F15  Degradation tables (IADA 2022 Fig. 6 form): response-time multiplier by
      class x level, fork (JSS empirical) vs paper (CCPE/JSA printed) table --
      the two published tables `-Diada.degTable` selects between (N1/E5/W2.3).
 
-Inputs: `IADA-second-born/meyer-validation/kmeans-centers.tsv` (extracted from
-the .rda sets; provenance in results/PROVENANCE.md) and the tables hardcoded
-in `CloudSimInterference/src/cloudsim/interference/Degradation.java`.
+Inputs: `kmeans-centers.tsv` (extracted from the .rda sets; provenance in
+results/PROVENANCE.md) and the tables hardcoded in
+`CloudSimInterference/src/cloudsim/interference/Degradation.java`.
+
+    python3 bench/plot/plot-meyer-validation.py \\
+        <IADA-second-born>/meyer-validation/kmeans-centers.tsv [--out DIR]
 """
 from __future__ import annotations
 
+import argparse
 import csv
 import sys
 from collections import defaultdict
@@ -27,11 +31,13 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).parent))
+import fig_names  # noqa: E402  (figure naming registry)
 import p2_figio  # noqa: E402
 import paper_style  # noqa: E402
 
-CENTERS = Path.home() / "Desktop/intpismo/IADA-second-born/meyer-validation/kmeans-centers.tsv"
-OUT = Path(__file__).parents[2] / "results/figures/p2-meyer-validation"
+DEFAULT_CENTERS = (Path(__file__).parents[3] /
+                   "IADA-second-born/meyer-validation/kmeans-centers.tsv")
+DEFAULT_OUT = Path(__file__).parents[2] / "results/figures/p2-meyer-validation"
 
 # predict.kmeans level-defining column per class (CLASSIFIER-INTERNALS §4).
 LEVEL_COL = {"cpu": "cpu", "mem": "mbw", "disk": "blk", "net": "netp", "cache": "llcocc"}
@@ -57,15 +63,15 @@ TABLES = {
 }
 
 
-def load_centers():
+def load_centers(centers: Path):
     per = defaultdict(list)  # (source, class) -> [defining-metric values]
-    with CENTERS.open() as f:
+    with centers.open() as f:
         for row in csv.DictReader(f, delimiter="\t"):
             per[(row["source"], row["class"])].append(float(row[LEVEL_COL[row["class"]]]))
     return per
 
 
-def fig14(per):
+def fig14(per, out: Path):
     fig, axes = plt.subplots(1, 2, figsize=(paper_style.COLUMN_WIDTH * 2, 2.1),
                              sharey=True, sharex=True)
     panels = [("shipped", "shipped (R/forced-trained)"),
@@ -105,11 +111,11 @@ def fig14(per):
                           markeredgewidth=0.5, label=f"{l} (centroid rank)") for l in LEVELS]
     fig.legend(handles=handles, loc="lower center", ncol=3, frameon=False,
                fontsize=paper_style.LEGEND, bbox_to_anchor=(0.5, -0.16))
-    p2_figio.save(fig, OUT, "F14-kmeans-threshold-map")
+    p2_figio.save(fig, out, "F14-kmeans-threshold-map")
     plt.close(fig)
 
 
-def fig15():
+def fig15(out: Path):
     fig, axes = plt.subplots(1, 2, figsize=(paper_style.COLUMN_WIDTH * 2, 2.2),
                              sharey=True)
     width = 0.26
@@ -132,17 +138,31 @@ def fig15():
     axes[0].set_ylabel("response-time multiplier (solo = 1.00)")
     axes[1].legend(frameon=False, fontsize=paper_style.LEGEND, title="level",
                    title_fontsize=paper_style.LEGEND, loc="upper right")
-    p2_figio.save(fig, OUT, "F15-degradation-tables")
+    p2_figio.save(fig, out, "F15-degradation-tables")
     plt.close(fig)
 
 
-def main():
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("centers", type=Path, nargs="?", default=DEFAULT_CENTERS,
+                    help="kmeans-centers.tsv from the Meyer validation tree "
+                         f"(default: {DEFAULT_CENTERS})")
+    ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
+    fig_names.add_dataset_arg(ap)
+    args = ap.parse_args()
+    if not args.centers.exists():
+        sys.exit(f"missing {args.centers} -- pass the path to "
+                 f"kmeans-centers.tsv from the Meyer validation tree")
+    p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.centers))
+
     paper_style.apply()
-    per = load_centers()
-    fig14(per)
-    fig15()
-    print(f"wrote F14 + F15 under {OUT}/{{png,pdf}}/")
+    per = load_centers(args.centers)
+    fig14(per, args.out)
+    fig15(args.out)
+    print(f"wrote F14 + F15 under {args.out}/{{png,pdf}}/")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

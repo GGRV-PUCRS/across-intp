@@ -34,6 +34,7 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
 import paper_style  # noqa: E402
 import sa_style  # noqa: E402
 
@@ -98,6 +99,25 @@ def clipped(page) -> list[str]:
     return bad
 
 
+def _find(directory: Path, *stems: str) -> Path | None:
+    """The PDF in ``directory`` for one figure, whichever campaign it names.
+
+    Figures are written as ``<stem>--<campaign>.pdf`` (bench/plot/
+    fig_names.py). The gate is handed a directory, not a campaign, so it
+    matches the campaign-independent stem and accepts whatever tail follows.
+    Extra ``stems`` are fallbacks, which is how ``--compare-to`` still finds a
+    previous render made before this naming.
+    """
+    for stem in stems:
+        exact = directory / f"{stem}.pdf"
+        if exact.exists():
+            return exact
+        hits = sorted(directory.glob(f"{stem}--*.pdf"))
+        if hits:
+            return hits[0]
+    return None
+
+
 def text_counter(pdf: Path) -> Counter:
     """Multiset of the visible strings in a PDF's first page."""
     doc = fitz.open(pdf)
@@ -140,8 +160,15 @@ def main() -> int:
     style = sa_style if sa else paper_style
     figures = sa_style.SA_FIGURES if sa else paper_style.PAPER_FIGURES
 
+    # Figures are named <id>-<what-it-shows>--<campaign> (bench/plot/
+    # fig_names.py). The gate does not know which campaign the directory was
+    # rendered from, and does not need to: it matches on the campaign-
+    # independent stem and reads the tail off whatever it finds.
+    name_of = {k: (sa_style.out_stem(k[1]) if sa else paper_style.out_stem(k))
+               for k in figures}
+
     global PAPER_FIGURES_NAME
-    PAPER_FIGURES_NAME = {k: v.out_name for k, v in figures.items()}
+    PAPER_FIGURES_NAME = dict(name_of)
 
     out = args.out or args.figures.parent
     qa_dir = out / "qa"
@@ -152,20 +179,24 @@ def main() -> int:
     warnings = []
     deltas: list[tuple[str, list[str], list[str]]] = []
 
-    for (subset, stem), spec in sorted(
-            figures.items(),
-            key=lambda kv: (kv[1].paper_fig, kv[1].out_name)):
+    for key, spec in sorted(figures.items(),
+                            key=lambda kv: (kv[1].paper_fig, name_of[kv[0]])):
+        subset, stem = key
+        name = name_of[key]
         # Artifact-only figures never reach figures/, so they are measured
         # where they do land: the published/ tree the driver writes alongside.
         # The paper pipeline parks its artifact-only cuts under published/;
         # the SA writes every stem, alternative arms included, straight into
-        # the drop-in directory.
-        pdf = (args.figures / spec.out_name
-               if sa or not spec.artifact_only
-               else out / "published" / subset / f"{stem}.pdf")
-        if not pdf.exists():
-            failures.append(f"{spec.out_name}: missing")
-            rows.append((spec, subset, stem, None, None, None, "MISSING",
+        # the drop-in directory. Under published/ the file carries no subset
+        # qualifier -- the directory is the qualifier -- so it is matched on
+        # the stem's own name instead.
+        where = (args.figures if sa or not spec.artifact_only
+                 else out / "published" / subset)
+        wanted = name if sa or not spec.artifact_only else fig_names.head(stem)
+        pdf = _find(where, wanted)
+        if pdf is None:
+            failures.append(f"{name}: missing")
+            rows.append((spec, subset, stem, name, None, None, None, "MISSING",
                          "file not produced"))
             continue
 
@@ -178,7 +209,7 @@ def main() -> int:
 
         if not found:
             failures.append(
-                f"{spec.out_name}: no extractable text — the PDF is not "
+                f"{name}: no extractable text — the PDF is not "
                 f"embedding text as text (check pdf.fonttype = 42)")
             min_pt = None
             notes.append("no text spans found")
@@ -187,7 +218,7 @@ def main() -> int:
             if min_pt < style.ANNOT_FLOOR - 1e-6:
                 worst = sorted({t for s, t in found if s == min_pt})[:3]
                 failures.append(
-                    f"{spec.out_name}: min font {min_pt:.2f} pt < "
+                    f"{name}: min font {min_pt:.2f} pt < "
                     f"{style.ANNOT_FLOOR} pt floor "
                     f"(e.g. {', '.join(repr(w) for w in worst)})")
                 notes.append(f"below {style.ANNOT_FLOOR} pt floor")
@@ -196,7 +227,7 @@ def main() -> int:
         if cut:
             shown = sorted(set(cut))[:3]
             failures.append(
-                f"{spec.out_name}: text runs off the page box — the figure is "
+                f"{name}: text runs off the page box — the figure is "
                 f"cropped (e.g. {', '.join(repr(c) for c in shown)}). The "
                 f"figure is too short for its labels; shorten the label or "
                 f"raise the height, never the font.")
@@ -204,7 +235,7 @@ def main() -> int:
 
         if abs(width - spec.width) > WIDTH_TOL:
             failures.append(
-                f"{spec.out_name}: width {width:.3f} in != target "
+                f"{name}: width {width:.3f} in != target "
                 f"{spec.width:.2f} in (tolerance {WIDTH_TOL} in)")
             notes.append("width off target")
 
@@ -214,7 +245,7 @@ def main() -> int:
             over = height - spec.height_budget
             verdict = f"OVER by {over:.2f} in"
             warnings.append(
-                f"{spec.out_name}: height {height:.2f} in exceeds budget "
+                f"{name}: height {height:.2f} in exceeds budget "
                 f"{spec.height_budget:.2f} in by {over:.2f} in "
                 f"(kept to preserve the {style.AXIS_FLOOR} pt floor)")
         else:
@@ -222,21 +253,23 @@ def main() -> int:
 
         if not args.no_contact_sheet:
             pix = page.get_pixmap(dpi=CONTACT_DPI)
-            pix.save(qa_dir / (spec.out_name[:-4] + ".png"))
+            pix.save(qa_dir / f"{name}.png")
 
         if args.compare_to is not None:
-            prev = (args.compare_to / f"{stem}.pdf" if sa
-                    else args.compare_to / subset / f"{stem}.pdf")
-            if prev.exists():
+            # The previous render may predate this naming, so match on the
+            # stem's own name as well as the current one.
+            prev = _find(args.compare_to if sa else args.compare_to / subset,
+                         fig_names.head(stem), stem)
+            if prev is not None:
                 before = text_counter(prev)
                 after = Counter(t for _, t in found)
-                deltas.append((spec.out_name,
+                deltas.append((name,
                                sorted((before - after).elements()),
                                sorted((after - before).elements())))
             else:
-                deltas.append((spec.out_name, ["(no previous render found)"], []))
+                deltas.append((name, ["(no previous render found)"], []))
 
-        rows.append((spec, subset, stem, width, height, min_pt, verdict,
+        rows.append((spec, subset, stem, name, width, height, min_pt, verdict,
                      "; ".join(notes) if notes else "—"))
         doc.close()
 
@@ -278,16 +311,16 @@ def main() -> int:
         "fig02_pca_dendro": "`plot_pca_dendro.py`",
         "fig10_variant_resource_heatmap": "`plot-hibench.py`",
     })
-    for spec, subset, stem, *_ in rows:
+    for spec, subset, stem, name, *_ in rows:
         if sa:
             gen = gen_of.get(stem, "—")
             span = sa_style.SPAN.get(stem, 1)
             where = "figure*" if span == 2 else "figure"
-            lines.append(f"| {spec.paper_fig} | `{spec.out_name}` | {gen} "
+            lines.append(f"| {spec.paper_fig} | `{name}` | {gen} "
                          f"| {where} |")
         else:
             gen = gen_of.get(stem, "`plot-intp-bench.py`")
-            lines.append(f"| {spec.paper_fig} | `{spec.out_name}` | {gen} "
+            lines.append(f"| {spec.paper_fig} | `{name}` | {gen} "
                          f"| {subset} |")
 
     lines += [
@@ -298,12 +331,12 @@ def main() -> int:
         "Height budget | Notes |",
         "|---|---|---|---|---|---|---|",
     ]
-    for spec, _subset, _stem, width, height, min_pt, verdict, notes in rows:
+    for spec, _subset, _stem, name, width, height, min_pt, verdict, notes in rows:
         w = f"{width:.2f}" if width is not None else "—"
         h = f"{height:.2f}" if height is not None else "—"
         m = f"{min_pt:.2f}" if min_pt is not None else "—"
         lines.append(
-            f"| `{spec.out_name}` | {w} | {spec.width:.2f} | {h} | {m} | "
+            f"| `{name}` | {w} | {spec.width:.2f} | {h} | {m} | "
             f"{verdict} | {notes} |")
 
     if deltas:
@@ -370,13 +403,14 @@ def main() -> int:
         ]
         before_total = after_total = 0.0
         unpriced = []
-        for spec, subset, stem, _w, height, *_ in rows:
+        for spec, subset, stem, name, _w, height, *_ in rows:
             span = sa_style.SPAN.get(stem, 1)
             after = sa_style.column_inches(stem, height) if height else 0.0
             after_total += after
             before = None
-            prev = (args.compare_to / f"{stem}.pdf") if args.compare_to else None
-            if prev is not None and prev.exists():
+            prev = (_find(args.compare_to, fig_names.head(stem), stem)
+                    if args.compare_to else None)
+            if prev is not None:
                 d = fitz.open(prev)
                 pw = d[0].rect.width / PT_PER_IN
                 ph = d[0].rect.height / PT_PER_IN
@@ -385,11 +419,11 @@ def main() -> int:
                 before = 0.0 if spec.artifact_only else span * ph * scale
                 before_total += before
             elif not spec.artifact_only:
-                unpriced.append(spec.out_name)
+                unpriced.append(name)
             budget = ("—" if spec.artifact_only
                       else f"{span * spec.height_budget:.2f}")
             lines.append(
-                f"| `{spec.out_name}` | {span} | "
+                f"| `{name}` | {span} | "
                 f"{'—' if before is None else format(before, '.2f')} | "
                 f"{after:.2f} | "
                 f"{'—' if before is None else format(after - before, '+.2f')} "
@@ -516,7 +550,7 @@ def main() -> int:
             spec = paper_style.PAPER_FIGURES[m]
             h = height_of.get(m)
             lines.append(
-                f"- `{spec.out_name}` — {why}"
+                f"- `{paper_style.out_stem(m)}` — {why}"
                 + (f", {h * PT_PER_IN:.0f} pt tall" if h is not None else "")
                 + (f"; reinstating it as its own single-column float would cost "
                    f"about {h * PT_PER_IN + 38:.0f} pt." if h is not None else ""))

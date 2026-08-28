@@ -27,9 +27,11 @@ class W4SummaryPlotTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.tmpdir = Path(tempfile.mkdtemp(prefix="w4-summary-test-"))
+        # --dataset is pinned so the expected filename does not depend on
+        # where the fixture happens to live.
         proc = subprocess.run(
             [sys.executable, str(SCRIPT), str(FIXTURE),
-             "--out", str(cls.tmpdir)],
+             "--out", str(cls.tmpdir), "--dataset", "w4-fixture"],
             capture_output=True, text=True, check=False,
         )
         cls.proc = proc
@@ -44,11 +46,15 @@ class W4SummaryPlotTest(unittest.TestCase):
         shutil.rmtree(cls.tmpdir, ignore_errors=True)
 
     def test_outputs_exist(self) -> None:
+        # Spelled out rather than derived from fig_names, so a change to the
+        # registered description has to be made deliberately here too.
+        name = "faithfulness-cpu-absolute-and-llcmr-directional--w4-fixture"
         for fmt in ("png", "pdf"):
             with self.subTest(fmt=fmt):
                 self.assertTrue(
-                    (self.tmpdir / fmt / f"w4-summary.{fmt}").exists(),
-                    f"missing {fmt} output")
+                    (self.tmpdir / fmt / f"{name}.{fmt}").exists(),
+                    f"missing {fmt} output; produced "
+                    f"{sorted(p.name for p in (self.tmpdir / fmt).glob('*'))}")
 
     def test_parsed_ratio_band(self) -> None:
         self.assertIn("min=0.90 max=1.02", self.proc.stdout)

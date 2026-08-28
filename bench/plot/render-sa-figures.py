@@ -47,6 +47,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
 import sa_style  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
@@ -135,20 +136,25 @@ def main() -> None:
         sys.exit("required inputs are missing: " + ", ".join(missing))
 
     py = sys.executable
+    # The SA cut is named after the document, not after the seven campaign
+    # trees it draws from, so the .tex \\includegraphics lines stay stable
+    # whichever snapshot the figures were re-rendered out of.
+    tag = ["--dataset", fig_names.SA_DATASET]
 
     print("\n=== w4-summary ===")
-    run([py, HERE / "plot-w4-summary.py", w4, "--sa-style", "--out", out])
+    run([py, HERE / "plot-w4-summary.py", w4, "--sa-style", "--out", out, *tag])
 
     print("\n=== F3-availability-grid ===")
     run([py, HERE / "plot-p2-15metric.py", xdeploy, "--sa-style",
-         "--out", out])
+         "--out", out, *tag])
 
     print("\n=== F10 / F11 (colocation victim delta) ===")
-    run([py, HERE / "plot-w5-victim-delta.py", w5, "--sa-style", "--out", out])
+    run([py, HERE / "plot-w5-victim-delta.py", w5, "--sa-style", "--out", out,
+         *tag])
 
     print("\n=== F8-cadence-sensitivity ===")
     run([py, HERE / "plot-cadence-curves.py", cadence, "--sa-style",
-         "--out", out])
+         "--out", out, *tag])
 
     # This one recomputes from raw captures because the banked analyzer TSV
     # predates the bootstrap CI columns, and dropping the whiskers would be a
@@ -157,43 +163,45 @@ def main() -> None:
     print("\n=== F9-overhead-vs-cadence ===")
     run([py, BENCH / "analyze-cadence-overhead.py", overhead, "--sa-style",
          "--tsv", scratch / "overhead-vs-cadence.tsv",
-         "--out", scratch / "p2-cadence-overhead.md", "--fig", out])
+         "--out", scratch / "p2-cadence-overhead.md", "--fig", out, *tag])
 
     print("\n=== F13-tier-scheduling-idi (banked tier B) ===")
-    run([py, HERE / "plot-iada-sim.py", tiers, "--sa-style", "--out", out])
+    run([py, HERE / "plot-iada-sim.py", tiers, "--sa-style", "--out", out,
+         *tag])
 
     if args.tier_b_tsv:
         print("\n=== F13-tier-scheduling-idi-psp (S8 rebank arm) ===")
         run([py, HERE / "plot-iada-sim.py", tiers, "--sa-style",
              "--stem", "F13-tier-scheduling-idi-psp",
-             "--tier-b-tsv", args.tier_b_tsv, "--out", out])
+             "--tier-b-tsv", args.tier_b_tsv, "--out", out, *tag])
 
     if args.hibench:
         print("\n=== fig10_variant_resource_heatmap ===")
         hb = out / "hibench"
         run([py, HERE / "plot-hibench.py", args.hibench,
              "--variants", "v0.2,v2,v3.2", "--camera-ready", "--style", "sa",
-             "--formats", "pdf,png", "--out", hb])
+             "--formats", "pdf,png", "--out", hb, *tag])
+        stem = "fig10_variant_resource_heatmap"
         for fmt in ("pdf", "png"):
-            src = hb / fmt / f"fig10_variant_resource_heatmap.{fmt}"
+            src = hb / fmt / sa_style.out_name(stem, ext=fmt)
             if not src.exists():
                 sys.exit(f"expected render is missing: {src}")
             shutil.copyfile(src, out / src.name)
-        print(f"    collected fig10_variant_resource_heatmap.{{pdf,png}}")
+        print(f"    collected {sa_style.out_stem(stem)}.{{pdf,png}}")
     else:
         print("\n=== fig10_variant_resource_heatmap: SKIPPED "
               "(no --hibench campaign given) ===")
 
     if args.gantt_pdf:
         print("\n=== schedule-plan-vs-actual (copied) ===")
-        dst = out / "schedule-plan-vs-actual.pdf"
+        dst = out / sa_style.out_name("schedule-plan-vs-actual")
         shutil.copyfile(args.gantt_pdf, dst)
-        png = out / "schedule-plan-vs-actual.png"
+        png = dst.with_suffix(".png")
         note = "" if rasterize(dst, png) else "  (PNG skipped: no PyMuPDF)"
         print(f"    {args.gantt_pdf} -> {dst.name}{note}")
 
     produced = sorted(p.name for p in out.glob("*.pdf"))
-    expected = {s.out_name for s in sa_style.SA_FIGURES.values()}
+    expected = {sa_style.out_name(stem) for (_, stem) in sa_style.SA_FIGURES}
     print(f"\n{len(produced)} SA figures written to {out}")
     for name in produced:
         print(f"  {name}")

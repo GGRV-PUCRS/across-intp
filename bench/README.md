@@ -175,26 +175,31 @@ side -- the plotter will merge them if you point it at a parent dir.
 
 ## Figures produced
 
-| File                                  | Source stage   | Maps to                                                          |
-| ------------------------------------- | -------------- | ---------------------------------------------------------------- |
-| `fig00_canonical_intp_fig4.png`       | solo           | IntP Fig. 4 canonical reproduction (single panel per variant)    |
-| `fig01_per_workload_bars.png`         | solo           | per-workload bars, variants compared                             |
-| `fig01b_per_variant_bars.png`         | solo           | dual view — per-(env, variant) workload x metric heatmap         |
-| `fig02_pca_kmeans.png`                | solo           | PCA + k-means clustering (joint fit, variants overlaid)          |
-| `fig03_timeseries.png`                | timeseries     | long-trace metric profile (IntP Fig. 3)                          |
-| `fig04_overhead_throughput.png`       | overhead       | Volpert et al. 2025 — stress-ng bogo-ops/s slowdown              |
-| `fig04b_overhead_cpu_jiffies.png`     | overhead       | Volpert et al. 2025 — extra system-wide CPU jiffies              |
-| `fig04c_overhead_sched_switch.png`    | overhead       | Volpert et al. 2025 — sched:sched_switch perturbation            |
-| `fig05_fidelity_matrix.png`           | solo + GT      | Pearson r vs ground truth                                        |
-| `fig06_env_heatmap.png`               | solo (envs)    | dissertation Phase 3 (cross-env ratios; >=2 envs required)       |
-| `fig07_pairwise_heatmap_<env>.png`    | pairwise       | cross-variant interference map per env                           |
-| `fig08_metric_availability.png`       | any            | which (variant, metric) pairs reported non-zero signal           |
-| `fig09_radar_fingerprint.png`         | solo           | per-workload polar fingerprint, variants overlaid                |
-| `fig10_workload_clustermap.png`       | solo           | hierarchical (Ward) workload clustermap per variant              |
-| `fig11_idi_bars.png`                  | pairwise       | IADA Fig. 6 — interference degradation by resource family        |
-| `fig12_pairwise_timeseries.png`       | timeseries     | IntP Fig. 8 — mixed-load resource-family trace                   |
-| `fig13_iada_segmented.png`            | timeseries     | IADA Fig. 5 — segmented Loess-smoothed interference trace        |
-| `fig14_variant_resource_heatmap.png`  | solo+pairwise  | variant x resource summary heatmap                               |
+Listed by their internal stem. On disk each one is named
+`<figure-id>-<what-it-shows>--<which-campaign>` — see
+[plot/fig_names.py](plot/fig_names.py) and the "How the figures are named"
+section of [plot/README.md](plot/README.md).
+
+| Figure                            | Source stage   | Maps to                                                          |
+| --------------------------------- | -------------- | ---------------------------------------------------------------- |
+| `fig00_canonical_intp_fig4`       | solo           | IntP Fig. 4 canonical reproduction (single panel per variant)    |
+| `fig01_per_workload_bars`         | solo           | per-workload bars, variants compared                             |
+| `fig01b_per_variant_bars`         | solo           | dual view — per-(env, variant) workload x metric heatmap         |
+| `fig02_pca_kmeans`                | solo           | PCA + k-means clustering (joint fit, variants overlaid)          |
+| `fig03_timeseries`                | timeseries     | long-trace metric profile (IntP Fig. 3)                          |
+| `fig04_overhead_throughput`       | overhead       | Volpert et al. 2025 — stress-ng bogo-ops/s slowdown              |
+| `fig04b_overhead_cpu_jiffies`     | overhead       | Volpert et al. 2025 — extra system-wide CPU jiffies              |
+| `fig04c_overhead_sched_switch`    | overhead       | Volpert et al. 2025 — sched:sched_switch perturbation            |
+| `fig05_fidelity_matrix`           | solo + GT      | Pearson r vs ground truth                                        |
+| `fig06_env_heatmap`               | solo (envs)    | dissertation Phase 3 (cross-env ratios; >=2 envs required)       |
+| `fig07_pairwise_heatmap_<env>`    | pairwise       | cross-variant interference map per env                           |
+| `fig08_metric_availability`       | any            | which (variant, metric) pairs reported non-zero signal           |
+| `fig09_radar_fingerprint`         | solo           | per-workload polar fingerprint, variants overlaid                |
+| `fig10_workload_clustermap`       | solo           | hierarchical (Ward) workload clustermap per variant              |
+| `fig11_idi_bars`                  | pairwise       | IADA Fig. 6 — interference degradation by resource family        |
+| `fig12_pairwise_timeseries`       | timeseries     | IntP Fig. 8 — mixed-load resource-family trace                   |
+| `fig13_iada_segmented`            | timeseries     | IADA Fig. 5 — segmented Loess-smoothed interference trace        |
+| `fig14_variant_resource_heatmap`  | solo+pairwise  | variant x resource summary heatmap                               |
 
 Companion CSVs (`overhead_summary.csv`, `fidelity_matrix.csv`,
 `env_ratio.csv`, `pairwise_means.csv`, `metric_availability.csv`,
@@ -208,7 +213,7 @@ experiment. Each figure is also emitted as a vector PDF under
 `--reps N` controls repetitions per (env, variant, workload). Default 3
 balances runtime against variance; bump to 5 for the final run reported
 in the dissertation. Standard deviation across reps is included as error
-bars in `fig04_overhead_bars.png`; the other figures plot the mean.
+bars in the `fig04` overhead panels; the other figures plot the mean.
 
 ## Estimated runtime
 

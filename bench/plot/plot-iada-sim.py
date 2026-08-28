@@ -28,11 +28,11 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import p2_ci      # noqa: E402  (shared rep-level bootstrap CI convention)
+import fig_names  # noqa: E402  (figure naming registry)
 import p2_figio   # noqa: E402  (shared {png,pdf} output layout)
 import sa_style   # noqa: E402  (Seminario de Andamento printed geometry)
 
 # The SA deck embeds the PNG siblings of these PDFs.
-SA_PNG_DPI = 300
 
 TIER_DESC = {"T1": "Canonical 7-metric\n(RDT — IADA baseline)",
              "A": "Proxy-swap\n(portable mem proxy)",
@@ -107,11 +107,7 @@ def render_sa(idi, mig, tiers, out: Path, stem: str) -> None:
                   fontsize=sa_style.TITLE)
     ax2.grid(axis="y", ls=":", alpha=0.3)
 
-    out.mkdir(parents=True, exist_ok=True)
-    w, h = sa_style.save(fig, out / f"{stem}.pdf", spec)
-    fig.savefig(out / f"{stem}.png", dpi=SA_PNG_DPI, bbox_inches="tight")
-    plt.close(fig)
-    print(f"wrote {out}/{stem}.{{pdf,png}} ({w:.2f} x {h:.2f} in)")
+    p2_figio.save_flat(fig, out, stem, spec)
 
 
 def read_reps(tsv: Path, idi, mig, as_tier: str | None = None) -> None:
@@ -145,7 +141,9 @@ def main() -> int:
                     help="take tier B's reps from this TSV instead (the S8 "
                          "psp rebank arm). Selection only -- rows are read "
                          "as banked and relabelled B; nothing is recomputed.")
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
+    p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.tsv))
     idi = defaultdict(list); mig = defaultdict(list)
     read_reps(args.tsv, idi, mig)
     if args.tier_b_tsv is not None:

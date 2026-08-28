@@ -29,12 +29,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
 import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 import sa_style  # noqa: E402  (Seminario de Andamento printed geometry)
 import numpy as np
 
 # The SA deck embeds the PNG siblings of these PDFs.
-SA_PNG_DPI = 300
 
 THRESH = 0.05          # min max|Δref| for a metric to be drawn as a curve
 BAND = 0.10            # ±10% fidelity tolerance band
@@ -237,13 +237,7 @@ def sa_sensitivity(fid, cls, med, variants, workloads, fine, out: Path) -> None:
     cb.outline.set_linewidth(0.5)
     ax.grid(False)
 
-    out.mkdir(parents=True, exist_ok=True)
-    w_in, h_in = sa_style.save(fig, out / "F8-cadence-sensitivity.pdf", spec)
-    fig.savefig(out / "F8-cadence-sensitivity.png", dpi=SA_PNG_DPI,
-                bbox_inches="tight")
-    plt.close(fig)
-    print(f"wrote {out}/F8-cadence-sensitivity.{{pdf,png}} "
-          f"({w_in:.2f} x {h_in:.2f} in)")
+    p2_figio.save_flat(fig, out, "F8-cadence-sensitivity", spec)
 
 
 def main() -> int:
@@ -254,7 +248,9 @@ def main() -> int:
     ap.add_argument("--sa-style", action="store_true",
                     help="render only F8-cadence-sensitivity, at the "
                          "Seminario de Andamento's exact printed width")
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
+    p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.tsv))
     fid, dens, cls, med = load(args.tsv)
     variants = sorted({v for (v, _, _) in fid})
     workloads = sorted({w for (_, w, _) in fid})

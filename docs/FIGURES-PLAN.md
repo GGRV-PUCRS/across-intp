@@ -12,6 +12,13 @@ Conventions: variant labels use the descriptive names (stap-legacy / hybrid-c
 aggregates reps carries the rep count and BH-FDR-corrected significance from
 the analyzer TSVs (never recomputed in the plot layer).
 
+The `id` column below is the stem the renderers and reports use. **On disk the
+figure is named `<id>-<what-it-shows>--<which-campaign>`** — e.g. F1 renders as
+`F1-absolute-metric-ratio-versus-bare-metal--tier-a-cross-deployment.png` — so
+a figure still identifies itself outside the repository. The stem → description
+map is `bench/plot/fig_names.py`; adding a figure means adding it there, and an
+unregistered stem is an error rather than a fallback.
+
 ## P2 §results — cross-deployment portability (banked Tier-A 1/3)
 
 | id | Claim the figure carries | Data | Script | Ready |

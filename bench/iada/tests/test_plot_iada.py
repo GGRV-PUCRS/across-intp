@@ -26,10 +26,33 @@ M1_FIXTURE = FIXTURES / "manifest-m1.tsv"
 M2_FIXTURE = FIXTURES / "manifest-m2.tsv"
 
 
+#: Figures are named <what-they-show>--<campaign> (bench/plot/fig_names.py);
+#: the tag is pinned so the expected filenames do not depend on where the
+#: fixture manifest happens to live.
+DATASET = "iada-fixture"
+
+#: stem -> the name plot-iada.py writes. Spelled out rather than derived from
+#: fig_names, so a change to a registered description has to be made here too.
+NAME = {
+    "fig_iada_variant_ranking":
+        f"iada-degradation-index-per-profiler-variant--{DATASET}.png",
+    "fig_iada_migrations_vs_idi":
+        f"iada-migrations-versus-degradation-index--{DATASET}.png",
+    "fig_iada_wallclock":
+        f"iada-simulation-wall-clock-per-variant--{DATASET}.png",
+    "fig_iada_transfer_heatmap":
+        f"iada-degradation-index-per-variant-and-environment--{DATASET}.png",
+    "fig_iada_transfer_degradation":
+        f"iada-cross-environment-transfer-penalty--{DATASET}.png",
+    "fig_iada_fragility_vs_idi":
+        f"iada-profiler-fragility-versus-degradation-index--{DATASET}.png",
+}
+
+
 def run_plot(manifest: Path, out_dir: Path, modality: str | None = None,
              extra: list[str] | None = None) -> subprocess.CompletedProcess:
     cmd = [sys.executable, str(SCRIPT), str(manifest),
-           "--out-dir", str(out_dir)]
+           "--out-dir", str(out_dir), "--dataset", DATASET]
     if modality:
         cmd += ["--modality", modality]
     if extra:
@@ -47,17 +70,17 @@ class TestPlotIadaM1(unittest.TestCase):
 
             # M1 PNGs.
             for name in (
-                "fig_iada_variant_ranking.png",
-                "fig_iada_migrations_vs_idi.png",
-                "fig_iada_wallclock.png",
+                NAME["fig_iada_variant_ranking"],
+                NAME["fig_iada_migrations_vs_idi"],
+                NAME["fig_iada_wallclock"],
             ):
                 self.assertTrue((out_dir / name).is_file(),
                                 f"missing {name} in {out_dir}")
 
             # M2-only PNGs MUST NOT be present in M1.
             for name in (
-                "fig_iada_transfer_heatmap.png",
-                "fig_iada_transfer_degradation.png",
+                NAME["fig_iada_transfer_heatmap"],
+                NAME["fig_iada_transfer_degradation"],
             ):
                 self.assertFalse((out_dir / name).exists(),
                                  f"unexpected {name} in M1 output")
@@ -77,11 +100,11 @@ class TestPlotIadaM2(unittest.TestCase):
                              f"plot-iada.py failed: stderr=\n{res.stderr}")
 
             for name in (
-                "fig_iada_variant_ranking.png",
-                "fig_iada_migrations_vs_idi.png",
-                "fig_iada_wallclock.png",
-                "fig_iada_transfer_heatmap.png",
-                "fig_iada_transfer_degradation.png",
+                NAME["fig_iada_variant_ranking"],
+                NAME["fig_iada_migrations_vs_idi"],
+                NAME["fig_iada_wallclock"],
+                NAME["fig_iada_transfer_heatmap"],
+                NAME["fig_iada_transfer_degradation"],
             ):
                 self.assertTrue((out_dir / name).is_file(),
                                 f"missing {name} in {out_dir}")
@@ -98,14 +121,14 @@ class TestPlotIadaAuto(unittest.TestCase):
             out_dir = Path(td)
             res = run_plot(M1_FIXTURE, out_dir, modality="auto")
             self.assertEqual(res.returncode, 0, msg=res.stderr)
-            self.assertFalse((out_dir / "fig_iada_transfer_heatmap.png").exists())
+            self.assertFalse((out_dir / NAME["fig_iada_transfer_heatmap"]).exists())
 
     def test_auto_detects_m2(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             out_dir = Path(td)
             res = run_plot(M2_FIXTURE, out_dir, modality="auto")
             self.assertEqual(res.returncode, 0, msg=res.stderr)
-            self.assertTrue((out_dir / "fig_iada_transfer_heatmap.png").is_file())
+            self.assertTrue((out_dir / NAME["fig_iada_transfer_heatmap"]).is_file())
 
 
 if __name__ == "__main__":

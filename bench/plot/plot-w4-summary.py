@@ -33,12 +33,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
 import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 import sa_style  # noqa: E402  (Seminario de Andamento printed geometry)
 
 # The SA deck embeds the PNG siblings of these PDFs, so they are rendered at
 # projector resolution rather than p2_figio's screen default.
-SA_PNG_DPI = 300
 
 VARIANT_LABELS = {"v2.1": "C-ABI v2.1", "v3.3": "eBPF-CORE v3.3"}
 BAR_COLOR = {"v2.1": "#8aa9cf", "v3.3": "#2e5d8c"}
@@ -136,13 +136,8 @@ def render_sa(ratios, cells, rho, pval, out: Path) -> None:
                loc="outside lower center", frameon=False,
                fontsize=sa_style.LEGEND, handlelength=1.2, handleheight=1.0)
 
-    out.mkdir(parents=True, exist_ok=True)
-    w, h = sa_style.save(fig, out / "w4-summary.pdf", spec)
-    fig.savefig(out / "w4-summary.png", dpi=SA_PNG_DPI,
-                bbox_inches="tight")
-    plt.close(fig)
-    print(f"wrote {out}/w4-summary.{{pdf,png}} ({w:.2f} x {h:.2f} in) "
-          f"[titles -> caption: '{ptext}', cells {cells}]")
+    p2_figio.save_flat(fig, out, "w4-summary", spec)
+    print(f"  [titles -> caption: '{ptext}', cells {cells}]")
 
 
 def main() -> int:
@@ -155,7 +150,9 @@ def main() -> int:
                     help="render the Seminario de Andamento cut at its exact "
                          "printed width (sa_style geometry) instead of the "
                          "exploratory figure")
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
+    p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.report))
 
     ratios, cells, rho, pval = parse(args.report)
     lo, hi = min(ratios), max(ratios)
