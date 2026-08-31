@@ -91,7 +91,7 @@ here:
   measurement (§1), its two-mechanism decomposition (§2), and the `mbw` silent
   clip (§3). §3 has no camera-ready counterpart at all.
 - [docs/VARIANT-COMPARISON.md](VARIANT-COMPARISON.md) — the rationale for each
-  of the nine variants, including the five the paper mentions only as
+  of the eleven variants, including the six the paper mentions only as
   structural evidence.
 - [docs/METRICS-DEEP-DIVE.md](METRICS-DEEP-DIVE.md) — probe points, formulas
   and constants behind the seven metrics.

@@ -65,17 +65,20 @@ direct.
 |---|---|---|---|
 | V0 (stap-2022) | SystemTap, kernel <= 6.6 | Does not compile on kernel 6.8 (cqm_rmid removed) | Historical reference, archived evidence of ABI breakage |
 | V0.1 (stap-nollc) | SystemTap, kernel 6.8 minimal patch | Compiles, `llcocc=0` | Bridge step in the historical narrative |
+| V0.2 (legacy-intp-baseline) | SystemTap + userspace helper, kernel 5.15 GA | Works with full 7 metrics; stap-2022-faithful, RCU-safe | **Measured** legacy-faithful baseline (UB22 leg) |
 | V1 (stap-nohelper) | SystemTap, stap-native probes only | Works on 6.8; `mbw=0`, `llcocc=0` (no embedded I/O) | Reliability baseline for stap probes alone |
 | V1.1 (stap-modern) | SystemTap + userspace helper | Works on 6.8 with full 7 metrics; helper owns RCU-unsafe ops | RCU-safe stap path with hardware metrics restored |
 | V2 (C-ABI) | Pure C: procfs / `perf_event_open` / resctrl | Stable, no kernel modules | Modern reliability baseline |
 | V3.1 (bpftrace) | bpftrace + Python orchestrator + resctrl | Stable, BTF-driven | DSL-level eBPF baseline |
-| V3 (ebpf-ring) | C/libbpf + CO-RE eBPF | Stable, single binary | Canonical eBPF endpoint |
+| V3 (ebpf-ring) | C/libbpf + CO-RE eBPF | Stable, single binary | Predecessor; carries the context-switch amplification evidence |
+| V3.2 (eBPF-CORE) | C/libbpf + CO-RE, in-kernel aggregation | Stable, single binary; no ring-buffer amplification | **Measured** eBPF endpoint (UB24 leg) |
 
 For the container and cross-deployment work, two c-abi-cgroup
 descendants are the active profilers: **v2.1-c-abi-cgroup** (C/cgroup,
 descends from V2 (C-ABI)) and **v3.3-ebpf-core-cgroup** (eBPF/CO-RE with
 in-kernel aggregation, descends from V3 (ebpf-ring)/V3.2 (eBPF-CORE)).
-The V0-V3.2 rows above remain as comparison and structural evidence.
+The V0-V3.2 rows above are the Paper-1 set: v0.2, v2 and v3.2 are its three
+measured versions, the rest comparison and structural evidence.
 Every variant emits the same 7-metric contract, so cross-variant and
 cross-deployment analysis is direct.
 

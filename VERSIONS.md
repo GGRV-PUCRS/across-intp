@@ -42,9 +42,10 @@ implementations within the same paradigm.
 ## Mapping
 
 The **Name** column is the descriptive, paper-facing name used verbatim in the
-plot legends/titles (see `VARIANT_LABELS` in `bench/plot/*.py`). The four
-**measured** versions are **v0.2 (legacy-intp-baseline)**, **v1.1 (stap-modern)**,
-**v2 (C-ABI)** and **v3.2 (eBPF-CORE)**. In paper prose v0 is also referred
+plot legends/titles (see `VARIANT_LABELS` in `bench/plot/*.py`). The three
+**measured** versions are **v0.2 (legacy-intp-baseline)**, **v2 (C-ABI)** and
+**v3.2 (eBPF-CORE)**; **v1.1 (stap-modern)** is the kernel-6.8 architectural
+proof, not a measured endpoint. In paper prose v0 is also referred
 to as the "2022 baseline".
 
 | Current | Name | Legacy | Directory | Approach | Status |

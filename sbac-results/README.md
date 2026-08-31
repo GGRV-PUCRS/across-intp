@@ -1,8 +1,9 @@
 # sbac-results/ — published SBAC-PAD 2026 campaign artifact
 
 This directory holds the result tree behind the SBAC-PAD 2026 paper: the
-profiler TSVs, raw logs, and figures for the four reported variants —
-**v0.2 (legacy-intp-baseline), v1.1 (stap-modern), v2 (C-ABI), v3.2 (eBPF-CORE)**.
+profiler TSVs, raw logs, and figures for the three measured variants —
+**v0.2 (legacy-intp-baseline), v2 (C-ABI), v3.2 (eBPF-CORE)** — plus
+**v1.1 (stap-modern)**, carried as the kernel-6.8 architectural proof.
 
 It is the input consumed by the fragility extractor cited in the paper:
 

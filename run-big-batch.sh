@@ -163,9 +163,11 @@ COOLDOWN="${COOLDOWN:-10}"
 # vm      → stress-ng in QEMU/KVM guest (profiler measures qemu PID on host);
 #            requires /dev/kvm, cloud-localds, and VM_IMAGE pointing to a qcow2
 BENCH_ENVS="${BENCH_ENVS:-bare}"
-# Default measured matrix: the 4-variant UB22 campaign — v0.2 (the
-# v0-faithful, recalibrated baseline), v1.1, v2, v3. The planned next
-# campaign replaces v3 with v3.2 → BENCH_VARIANTS="v0.2,v1.1,v2,v3.2".
+# Default matrix: the 4-variant UB22 campaign — v0.2 (the v0-faithful,
+# recalibrated baseline), v1.1, v2, v3. The published SBAC-PAD campaign ran
+# v3.2 in place of v3 → BENCH_VARIANTS="v0.2,v1.1,v2,v3.2"; of those, the
+# paper reports v0.2, v2 and v3.2 as the measured versions (v1.1 is the
+# kernel-6.8 architectural proof).
 # Opt-in extras:
 #   v0   classic stap baseline — only builds on very old kernels; add with
 #        BENCH_VARIANTS="v0,v0.2,v1.1,v2,v3".
