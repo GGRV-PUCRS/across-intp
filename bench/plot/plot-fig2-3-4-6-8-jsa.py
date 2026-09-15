@@ -27,7 +27,6 @@ from __future__ import annotations
 import argparse
 import glob
 import statistics
-import textwrap
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -157,9 +156,9 @@ def fig_availability(cells, out: Path) -> None:
     OK, GONE = style.BLUISH_GREEN, style.GREY
 
     width = style.TEXT_WIDTH
-    height = 3.6
+    height = 3.0
     fig, axes = plt.subplots(1, len(variants), figsize=(width, height))
-    fig.subplots_adjust(left=0.075, right=0.685, top=0.86, bottom=0.30,
+    fig.subplots_adjust(left=0.075, right=0.98, top=0.80, bottom=0.27,
                          wspace=0.12)
     if len(variants) == 1:
         axes = [axes]
@@ -190,31 +189,20 @@ def fig_availability(cells, out: Path) -> None:
         ax.set_title(vlabel(var), fontsize=style.TITLE)
         for s in ax.spines.values():
             s.set_visible(False)
-        ax.tick_params(length=0)
+        ax.tick_params(length=0, pad=1)
 
     handles = [
         plt.Rectangle((0, 0), 1, 1, fc=OK, label="available"),
         plt.Rectangle((0, 0), 1, 1, fc=GONE, hatch="////",
                       label="structurally unavailable"),
     ]
-    axes[0].legend(handles=handles, loc="upper left",
-                   bbox_to_anchor=(0.0, -0.32), frameon=False,
-                   fontsize=style.LEGEND, ncol=1, handlelength=1.3)
-
-    # Side legend: metric code -> full name, so the figure decodes itself.
-    # Wrapped to the narrow right-margin column so it never runs past the
-    # figure's own right edge. Continuation lines hang at a fixed small
-    # indent so every entry starts flush left on the same grid.
-    lines = []
-    for m in metrics:
-        wrapped = textwrap.wrap(f"{m}: {METRIC_FULL.get(m, m)}", width=34,
-                                subsequent_indent="  ",
-                                break_long_words=False,
-                                break_on_hyphens=False)
-        lines.append("\n".join(wrapped))
-    fig.text(0.70, 0.90, "\n".join(lines), ha="left", va="top",
-             fontsize=style.ANNOT, family="monospace", linespacing=1.6,
-             multialignment="left")
+    # Centered, horizontal, below both panels. The metric-code -> full-name
+    # mapping moved to the manuscript text (author decision 2026-09-15), so
+    # the panels take the full text width and this legend is the only key
+    # the figure still carries.
+    fig.legend(handles=handles, loc="lower center", ncols=2, frameon=False,
+               fontsize=style.LEGEND, handlelength=1.3,
+               bbox_to_anchor=(0.5, 0.0))
 
     spec = style.FigSpec(width, height, "fig:availability")
     w, h = style.save(fig, out / "Figure_2.pdf", spec)
@@ -234,9 +222,9 @@ def fig_claimclass(df: pd.DataFrame, out: Path) -> None:
     all_metrics = sorted(df.metric.unique())
 
     width = style.TEXT_WIDTH
-    height = 3.8
+    height = 3.3
     fig, axes = plt.subplots(1, len(variants), figsize=(width, height))
-    fig.subplots_adjust(left=0.10, right=0.98, top=0.86, bottom=0.30,
+    fig.subplots_adjust(left=0.10, right=0.98, top=0.86, bottom=0.27,
                          wspace=0.12)
     if len(variants) == 1:
         axes = [axes]
@@ -247,12 +235,20 @@ def fig_claimclass(df: pd.DataFrame, out: Path) -> None:
                 s = sub[(sub.metric == m) & (sub.env == env)]
                 if s.empty:
                     continue
-                cls = s.claim_class.iloc[0]
+                # The TSV subclasses descriptive cells as descriptive(guard)
+                # (schedthr/steal) and descriptive(vm-only) (steal); the
+                # manuscript's four-class taxonomy (and the legend below)
+                # knows only the base class, and the #eeeeee fallback was
+                # indistinguishable from unavailable at these alphas.
+                cls = s.claim_class.iloc[0].split("(")[0]
                 best = max((SIG_ORDER.get(x, 0) for x in s.signif), default=0)
+                # n/a (-1) floors at the base shade: guard metrics read 0/flat
+                # by design, so their MW test is inapplicable -- the cell is
+                # still evidence at the descriptive level, not a non-result.
                 ax.add_patch(plt.Rectangle(
                     (xi, yi), 0.94, 0.94,
                     color=cls_color.get(cls, "#eeeeee"),
-                    alpha=0.30 + 0.23 * min(best, 3) / 3))
+                    alpha=0.30 + 0.23 * max(min(best, 3), 0) / 3))
         ax.set_xlim(0, len(ENV_ORDER))
         ax.set_ylim(0, len(all_metrics))
         ax.set_xticks(np.arange(len(ENV_ORDER)) + 0.5)
@@ -267,7 +263,7 @@ def fig_claimclass(df: pd.DataFrame, out: Path) -> None:
         ax.invert_yaxis()
         for s in ax.spines.values():
             s.set_visible(False)
-        ax.tick_params(length=0)
+        ax.tick_params(length=0, pad=1)
 
     handles = [plt.Rectangle((0, 0), 1, 1, color=c, alpha=0.55)
                for c in cls_color.values()]
@@ -282,7 +278,7 @@ def fig_claimclass(df: pd.DataFrame, out: Path) -> None:
     shade_labels = ["not significant", "significant (*/**)", "significant (***)"]
     fig.legend(handles, labels, loc="lower center", ncol=len(labels),
                fontsize=style.LEGEND, frameon=False,
-               bbox_to_anchor=(0.5, 0.11), handlelength=1.3)
+               bbox_to_anchor=(0.5, 0.07), handlelength=1.3)
     fig.legend(shade_handles, shade_labels, loc="lower center",
                ncol=len(shade_labels), fontsize=style.LEGEND, frameon=False,
                bbox_to_anchor=(0.5, 0.0), handlelength=1.3)
