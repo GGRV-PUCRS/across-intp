@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fig_names  # noqa: E402  (figure naming registry)
 import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 import sa_style  # noqa: E402  (Seminario de Andamento printed geometry)
+import jsa_style  # noqa: E402  (JSA manuscript printed geometry)
 import numpy as np
 
 # The SA deck embeds the PNG siblings of these PDFs.
@@ -240,6 +241,193 @@ def sa_sensitivity(fid, cls, med, variants, workloads, fine, out: Path) -> None:
     p2_figio.save_flat(fig, out, "F8-cadence-sensitivity", spec)
 
 
+def _sensitivity_matrix(fid, cls, med, variants, workloads, fine):
+    cols = [(w, v) for w in workloads for v in variants]
+    rows = [m for m in ORDER
+            if any(abs(med.get((v, w, m), {}).get(fine, 0)) >= FLOOR
+                   for (w, v) in cols)]
+    M = np.full((len(rows), len(cols)), np.nan)
+    for ri, m in enumerate(rows):
+        for ci, (w, v) in enumerate(cols):
+            if abs(med.get((v, w, m), {}).get(fine, 0)) < FLOOR:
+                continue
+            vals = [abs(d) for d in fid.get((v, w, m), {}).values()]
+            M[ri, ci] = max(vals) if vals else 0.0
+    return cols, rows, M
+
+
+def _draw_sensitivity(ax, cb_ax, cols, rows, M, cls, variants, workloads,
+                      fontsize, annot_fontsize):
+    im = ax.imshow(M, aspect="auto", cmap="YlOrRd", vmin=0, vmax=100)
+    ax.set_xticks(range(len(cols)))
+    ax.set_xticklabels([v for (_w, v) in cols], fontsize=fontsize)
+    span = len(variants)
+    for i, w in enumerate(workloads):
+        ax.text(i * span + (span - 1) / 2.0, -0.16, w.replace("_", " "),
+                transform=ax.get_xaxis_transform(), ha="center", va="top",
+                fontsize=fontsize)
+        if i:
+            ax.axvline(i * span - 0.5, color="black", lw=0.8)
+    ax.set_yticks(range(len(rows)))
+    ax.set_yticklabels([f"{m} ({cls.get(m,'?')})" for m in rows],
+                       fontsize=fontsize)
+    ax.tick_params(length=0)
+    for ri in range(len(rows)):
+        for ci in range(len(cols)):
+            if not np.isnan(M[ri, ci]):
+                v = M[ri, ci]
+                ax.text(ci, ri, f"{v:.0f}", ha="center", va="center",
+                        fontsize=annot_fontsize,
+                        color="white" if v > 55 else "black")
+    ax.grid(False)
+    cb = ax.figure.colorbar(im, cax=cb_ax) if cb_ax is not None else \
+        ax.figure.colorbar(im, ax=ax, fraction=0.046, pad=0.03)
+    cb.set_label("max |Δref| vs 0.1s (%)", size=fontsize)
+    cb.ax.tick_params(labelsize=fontsize)
+    cb.outline.set_linewidth(0.5)
+    return im
+
+
+def jsa_sensitivity(fid, cls, med, variants, workloads, fine, out_path):
+    """F8-cadence-sensitivity for the JSA manuscript (fig:whichmetrics /
+    figs/Figure_15.pdf). Same matrix as sa_sensitivity(); JSA geometry."""
+    jsa_style.apply()
+    cols, rows, M = _sensitivity_matrix(fid, cls, med, variants, workloads, fine)
+    fig, ax = plt.subplots(figsize=(jsa_style.TEXT_WIDTH, 0.30 * len(rows) + 1.3),
+                           layout="constrained")
+    _draw_sensitivity(ax, None, cols, rows, M, cls, variants, workloads,
+                      jsa_style.BODY, jsa_style.ANNOT)
+    spec = jsa_style.FigSpec(jsa_style.TEXT_WIDTH, 0.30 * len(rows) + 1.3,
+                             "fig:whichmetrics")
+    w, h = jsa_style.save(fig, Path(out_path), spec)
+    plt.close(fig)
+    print(f"wrote {out_path} ({w:.2f} x {h:.2f} in)")
+
+
+def jsa_fidelity(fid, dens, cls, med, variants, workloads, fine, out_path):
+    """F8-cadence-fidelity for the JSA manuscript (fig:fidelitycadence /
+    figs/Figure_16.pdf). Same curves as fig_fidelity(); JSA geometry, no
+    in-figure title (the caption already states the shaded-band definition
+    and the cadence-knee reading)."""
+    jsa_style.apply()
+    ncol = len(workloads) + 1
+    fig, axes = plt.subplots(1, ncol, figsize=(jsa_style.TEXT_WIDTH, 2.35),
+                             layout="constrained")
+    _draw_fidelity_panels(fig, axes, fid, dens, cls, med, variants, workloads,
+                          fine, jsa_style.BODY, jsa_style.LEGEND)
+    spec = jsa_style.FigSpec(jsa_style.TEXT_WIDTH, 2.35, "fig:fidelitycadence")
+    w, h = jsa_style.save(fig, Path(out_path), spec)
+    plt.close(fig)
+    print(f"wrote {out_path} ({w:.2f} x {h:.2f} in)")
+
+
+def _draw_fidelity_panels(fig, axes, fid, dens, cls, med, variants, workloads,
+                          fine, fontsize, legend_fontsize):
+    style = {variants[0]: "-"}
+    if len(variants) > 1:
+        style[variants[1]] = "--"
+    marker = {variants[0]: jsa_style.VARIANT_MARKER.get(variants[0], "o")}
+    if len(variants) > 1:
+        marker[variants[1]] = jsa_style.VARIANT_MARKER.get(variants[1], "^")
+
+    drawn_metrics = []
+    for w in workloads:
+        for m in ORDER:
+            if m in drawn_metrics:
+                continue
+            ref_mag = max((abs(med.get((v, w, m), {}).get(fine, 0)) for v in variants), default=0)
+            maxd = max((abs(d) for v in variants for d in fid.get((v, w, m), {}).values()), default=0)
+            if ref_mag >= FLOOR and maxd >= THRESH * 100:
+                drawn_metrics.append(m)
+    cmap = {m: COLORS[i % len(COLORS)] for i, m in enumerate(drawn_metrics)}
+    mmap = {m: MARKERS[i % len(MARKERS)] for i, m in enumerate(drawn_metrics)}
+
+    for wi, w in enumerate(workloads):
+        ax = axes[wi]
+        ax.axhspan(-BAND * 100, BAND * 100, color="green", alpha=0.08, zorder=0)
+        ax.axhline(0, color="grey", lw=0.6, zorder=1)
+        for m in drawn_metrics:
+            for v in variants:
+                if abs(med.get((v, w, m), {}).get(fine, 0)) < FLOOR:
+                    continue
+                series = fid.get((v, w, m), {})
+                if not series:
+                    continue
+                xs = sorted(series); ys = [series[x] for x in xs]
+                ax.plot(xs, ys, style.get(v, "-"), marker=mmap[m], ms=3.6,
+                        color=cmap[m], lw=1.3, alpha=0.9)
+        ax.set_xscale("log")
+        ax.set_xticks([0.1, 0.25, 0.5, 1, 2, 5])
+        ax.set_xticklabels(["0.1", "0.25", "0.5", "1", "2", "5"], fontsize=fontsize)
+        ax.set_xlabel("sampling interval (s)", fontsize=fontsize)
+        ax.set_ylabel("Δref from 0.1s (%)" if wi == 0 else "", fontsize=fontsize)
+        ax.set_title(w.replace("_", " "), fontsize=fontsize)
+        ax.grid(True, which="both", ls=":", alpha=0.3)
+        ax.tick_params(which="both", labelsize=fontsize)
+        # explicit major ticks/labels already carry every value that matters;
+        # matplotlib's auto minor-tick labels on a log axis render their
+        # exponent as a reduced-size mathtext superscript that falls below
+        # the annotation floor even after the manuscript's 1.3x upscale.
+        ax.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
+
+    axd = axes[-1]
+    (v0, w0), d0 = next(iter(sorted(dens.items())))
+    xs = sorted(d0); ys = [d0[x] for x in xs]
+    axd.plot(xs, ys, "-o", color="#333333", ms=3.6, lw=1.3)
+    axd.set_xscale("log"); axd.set_yscale("log")
+    axd.set_xticks([0.1, 0.25, 0.5, 1, 2, 5])
+    axd.set_xticklabels(["0.1", "0.25", "0.5", "1", "2", "5"], fontsize=fontsize)
+    axd.set_xlabel("sampling interval (s)", fontsize=fontsize)
+    axd.set_ylabel("sample density (rows/rep)", fontsize=fontsize)
+    axd.set_title("sample density", fontsize=fontsize)
+    axd.grid(True, which="both", ls=":", alpha=0.3)
+    axd.tick_params(which="both", labelsize=fontsize)
+    # log-scale y tick labels render as "10^n" with the exponent as a
+    # reduced-size mathtext superscript (~0.7x); bump the base size so that
+    # reduced glyph still clears the annotation floor after the manuscript's
+    # 1.3x display upscale.
+    axd.tick_params(axis="y", which="both", labelsize=fontsize + 2)
+    axd.xaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
+    axd.yaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
+    for x, y in zip(xs, ys):
+        axd.annotate(f"{int(y)}", (x, y), fontsize=fontsize - 1, ha="left", va="bottom")
+
+    handles = [plt.Line2D([0], [0], color=cmap[m], marker=mmap[m], lw=1.3,
+                          label=f"{m} ({cls.get(m,'?')})") for m in drawn_metrics]
+    for v in variants:
+        handles.append(plt.Line2D([0], [0], color="k", ls=style.get(v, "-"),
+                                  marker=marker.get(v, "o"),
+                                  label=jsa_style.VARIANT_LABEL.get(v, v)))
+    fig.legend(handles=handles, loc="outside lower center",
+              ncol=min(len(handles), 6), fontsize=legend_fontsize,
+              frameon=False, handlelength=1.2, handletextpad=0.4,
+              columnspacing=0.9)
+
+
+def jsa_merged(fid, dens, cls, med, variants, workloads, fine, out_path):
+    """Additive two-panel merge of Figure_15 (sensitivity) + Figure_16
+    (fidelity/density) into figs/Figure_15_v2.pdf. Suggested pairing:
+    \\label{fig:cadence}, one caption covering both panels -- see the
+    brief's note that the two separate floats "waste space"."""
+    jsa_style.apply()
+    cols, rows, M = _sensitivity_matrix(fid, cls, med, variants, workloads, fine)
+    ncol = len(workloads) + 1
+    height = 2.35 + 0.30 * len(rows) + 1.1
+    fig = plt.figure(figsize=(jsa_style.TEXT_WIDTH, height), layout="constrained")
+    gs = fig.add_gridspec(2, ncol, height_ratios=[2.35, 0.30 * len(rows) + 0.9])
+    axes = [fig.add_subplot(gs[0, i]) for i in range(ncol)]
+    _draw_fidelity_panels(fig, axes, fid, dens, cls, med, variants, workloads,
+                          fine, jsa_style.BODY, jsa_style.LEGEND)
+    ax2 = fig.add_subplot(gs[1, :])
+    _draw_sensitivity(ax2, None, cols, rows, M, cls, variants, workloads,
+                      jsa_style.BODY, jsa_style.ANNOT)
+    spec = jsa_style.FigSpec(jsa_style.TEXT_WIDTH, height, "fig:cadence")
+    w, h = jsa_style.save(fig, Path(out_path), spec)
+    plt.close(fig)
+    print(f"wrote {out_path} ({w:.2f} x {h:.2f} in) -- suggested "
+          f"\\label{{fig:cadence}}, merges fig:whichmetrics + fig:fidelitycadence")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("tsv", nargs="?", type=Path,
@@ -248,6 +436,16 @@ def main() -> int:
     ap.add_argument("--sa-style", action="store_true",
                     help="render only F8-cadence-sensitivity, at the "
                          "Seminario de Andamento's exact printed width")
+    ap.add_argument("--jsa-sensitivity", default=None,
+                    help="also render fig:whichmetrics for the JSA "
+                         "manuscript to this exact PDF path (Figure_15.pdf)")
+    ap.add_argument("--jsa-fidelity", default=None,
+                    help="also render fig:fidelitycadence for the JSA "
+                         "manuscript to this exact PDF path (Figure_16.pdf)")
+    ap.add_argument("--jsa-merged", default=None,
+                    help="also render the additive two-panel merge "
+                         "(suggested fig:cadence) to this exact PDF path "
+                         "(Figure_15_v2.pdf)")
     fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
     p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.tsv))
@@ -257,6 +455,14 @@ def main() -> int:
     fine = min((iv for d in med.values() for iv in d), default=0.1)
     out = args.out or Path("results/figures/p2-cadence-sweep")
     out.mkdir(parents=True, exist_ok=True)
+    if args.jsa_sensitivity:
+        jsa_sensitivity(fid, cls, med, variants, workloads, fine, args.jsa_sensitivity)
+    if args.jsa_fidelity:
+        jsa_fidelity(fid, dens, cls, med, variants, workloads, fine, args.jsa_fidelity)
+    if args.jsa_merged:
+        jsa_merged(fid, dens, cls, med, variants, workloads, fine, args.jsa_merged)
+    if args.jsa_sensitivity or args.jsa_fidelity or args.jsa_merged:
+        return 0
     if args.sa_style:
         sa_sensitivity(fid, cls, med, variants, workloads, fine, out)
         return 0

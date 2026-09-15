@@ -43,6 +43,9 @@ import p2_ci                      # noqa: E402  rep-level bootstrap CI
 import fig_names  # noqa: E402  (figure naming registry)
 import p2_figio                   # noqa: E402  {png,pdf} output layout
 import paper_style                # noqa: E402  camera-ready typography
+import jsa_style                  # noqa: E402  JSA manuscript typography
+
+TIER_LABEL = {"T1": "canonical-7", "A": "proxy-swap", "B": "full-fingerprint"}
 
 # Tier colours are the P2 set's existing mapping (bench/plot/plot-iada-sim.py:37).
 COLOR = {"T1": "#c0392b", "A": "#2980b9", "B": "#27ae60"}
@@ -198,6 +201,49 @@ def fig_delta(deltas, outdir):
     plt.close(fig)
 
 
+def jsa_delta(deltas, out_path: Path) -> None:
+    """Figure_A2 for the JSA manuscript (fig:a2): fig_delta's own interval
+    computation, JSA geometry, no in-figure title (the caption already
+    states the equivalence verdict), tier codenames spelled out."""
+    jsa_style.apply()
+    width, height = jsa_style.COLUMN_WIDTH * 1.55, 2.75
+    fig, ax = plt.subplots(figsize=(width, height), layout="constrained")
+    ax.axvline(0, color="#444444", lw=0.8, zorder=1)
+
+    ypos, ylabels = [], []
+    for ti, tier in enumerate(reversed(TIERS)):
+        tier_rows = [(dep, deltas[(tier, dep)]) for dep in DEPTHS
+                     if (tier, dep) in deltas]
+        for di, (depth, d) in enumerate(tier_rows):
+            final = di == len(tier_rows) - 1
+            y = ti * 2.3 + (len(tier_rows) - 1 - di) * 0.72
+            ypos.append(y)
+            ylabels.append(f"all ({d['n']})" if depth is None else f"{depth} reps")
+            ax.plot([d["lo"], d["hi"]], [y, y], lw=1.3, color=COLOR[tier],
+                    solid_capstyle="round", alpha=1.0 if final else 0.55,
+                    zorder=3)
+            ax.scatter([d["point"]], [y], s=13 if final else 9,
+                       color=COLOR[tier], edgecolor="white", linewidth=0.6,
+                       zorder=4, alpha=1.0 if final else 0.75)
+            ax.text(d["hi"], y + 0.30, f"{d['point']:+.0f}", ha="right",
+                    va="bottom", fontsize=jsa_style.ANNOT, color="#222222")
+
+    ax.set_yticks(ypos)
+    ax.set_yticklabels(ylabels, fontsize=jsa_style.BODY)
+    for ti, tier in enumerate(reversed(TIERS)):
+        ax.text(-0.32, ti * 2.3 + 0.36, TIER_LABEL[tier], transform=
+                ax.get_yaxis_transform(), ha="left", va="center",
+                fontsize=jsa_style.BODY, color=COLOR[tier])
+    ax.set_xlabel("difference in degradation index (rebuild − banked build)")
+    ax.set_ylim(-0.7, (len(TIERS) - 1) * 2.3 + 2.1)
+    ax.grid(axis="y", visible=False)
+
+    spec = jsa_style.FigSpec(width, height, "fig:a2")
+    w, h = jsa_style.save(fig, out_path, spec)
+    plt.close(fig)
+    print(f"wrote {out_path} ({w:.2f} x {h:.2f} in)")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -210,6 +256,9 @@ def main() -> int:
                     default=Path("results/iada-sim/tier-sim-reps.tsv"))
     ap.add_argument("--out-set", default="p2-jdk-ab")
     ap.add_argument("--figures-root", type=Path, default=Path("results/figures"))
+    ap.add_argument("--jsa", default=None,
+                    help="also render fig:a2 for the JSA manuscript to this "
+                         "exact PDF path (Figure_A2.pdf)")
     fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
     p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.ab_dir))
@@ -306,6 +355,8 @@ def main() -> int:
     equivalent = all(d["covers_zero"] for _, d in deepest.values())
     fig_levels(rows, banked, outdir, equivalent)
     fig_delta(deltas, outdir)
+    if args.jsa:
+        jsa_delta(deltas, Path(args.jsa))
 
     print("\n== per-build IDI ==");  print(tdf.to_string(index=False))
     print("\n== rebuild - banked build =="); print(ddf.to_string(index=False))

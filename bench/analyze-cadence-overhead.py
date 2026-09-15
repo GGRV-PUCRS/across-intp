@@ -34,6 +34,9 @@ import p2_ci     # noqa: E402  (shared rep-level bootstrap CI convention)
 import fig_names  # noqa: E402  (figure naming registry)
 import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 import sa_style  # noqa: E402  (Seminario de Andamento printed geometry)
+import jsa_style  # noqa: E402  (JSA manuscript printed geometry)
+
+BUDGET_PCT = 2.5  # the manuscript's disclosed overhead budget (fig:overhead caption)
 
 # The SA deck embeds the PNG siblings of these PDFs.
 
@@ -148,6 +151,80 @@ def render_sa(ov, ci, intervals, variants, env0, figdir):
     return 0
 
 
+def render_jsa(ov, ci, intervals, variants, env0, out_path):
+    """F9 for the JSA manuscript (fig:overhead / figs/Figure_5.pdf).
+
+    Same curve, points and bootstrap CIs as render_sa(); the differences are
+    the JSA printed geometry (jsa_style, full text width) and an explicit
+    2.5% budget line drawn and labeled in-plot -- the caption already asserts
+    "overhead stays at or below 2.5%", and that is a data-bearing claim, so
+    per the 2026-09-15 caption-policy update it belongs in the figure, not
+    only in the caption.
+    """
+    jsa_style.apply()
+    fig, ax = plt.subplots(figsize=(jsa_style.TEXT_WIDTH, 2.55),
+                           layout="constrained")
+    style = {variants[0]: "-"}
+    if len(variants) > 1:
+        style[variants[1]] = "--"
+    ax.axhline(0, color="grey", lw=0.6)
+    ax.axhline(BUDGET_PCT, color=jsa_style.VERMILLION, lw=0.9, ls=":",
+               zorder=1)
+    ax.text(intervals[0] * 0.92, BUDGET_PCT + 0.12,
+            f"{BUDGET_PCT:g}% overhead budget",
+            color=jsa_style.VERMILLION, fontsize=jsa_style.ANNOT,
+            ha="left", va="bottom")
+
+    series = [(var, ref) for var in variants for ref in FIG_REFS]
+    span = 0.11
+    offsets = ({s_: 1.0 for s_ in series} if len(series) < 2 else
+               {s_: 1.0 + span * (2.0 * i / (len(series) - 1) - 1.0)
+                for i, s_ in enumerate(series)})
+    ref_color = {"ref_cpu": jsa_style.BLUE, "ref_stream": jsa_style.BLUISH_GREEN}
+    for var, ref in series:
+        d = ov.get((env0, var, ref), {})
+        if not d:
+            continue
+        xs = sorted(d)
+        ys = [d[x] for x in xs]
+        c = ci.get((env0, var, ref), {})
+        lo = [max(0.0, y - c[x][1]) if x in c and c[x][1] == c[x][1] else 0.0
+              for x, y in zip(xs, ys)]
+        hi = [max(0.0, c[x][2] - y) if x in c and c[x][2] == c[x][2] else 0.0
+              for x, y in zip(xs, ys)]
+        k = offsets[(var, ref)]
+        marker = jsa_style.VARIANT_MARKER.get(var, "o")
+        ax.errorbar([x * k for x in xs], ys, yerr=[lo, hi],
+                    fmt=style.get(var, "-"), marker=marker, ms=4.0,
+                    color=ref_color[ref], lw=1.2, alpha=0.9,
+                    capsize=2.2, elinewidth=0.8)
+    ax.set_xscale("log")
+    ax.set_xticks(intervals)
+    ax.set_xticklabels([f"{iv:g}" for iv in intervals],
+                       fontsize=jsa_style.BODY)
+    ax.set_xlabel("sampling interval (s)")
+    ax.set_ylabel("profiler overhead\n(% throughput loss vs. baseline)")
+    ax.grid(True, which="both", ls=":", alpha=0.3)
+
+    handles = [plt.Line2D([0], [0], color=ref_color[r], marker="o", lw=1.2,
+                          ms=4.0, label=r.replace("ref_", "ref: "))
+               for r in FIG_REFS]
+    for var in variants:
+        handles.append(plt.Line2D(
+            [0], [0], color="k", ls=style.get(var, "-"),
+            marker=jsa_style.VARIANT_MARKER.get(var, "o"), ms=4.0,
+            label=jsa_style.VARIANT_LABEL.get(var, var)))
+    fig.legend(handles=handles, loc="outside lower center",
+              ncol=len(handles), frameon=False, fontsize=jsa_style.LEGEND,
+              handlelength=1.2, handletextpad=0.4, columnspacing=0.9)
+
+    spec = jsa_style.FigSpec(jsa_style.TEXT_WIDTH, 2.55, "fig:overhead")
+    w, h = jsa_style.save(fig, Path(out_path), spec)
+    plt.close(fig)
+    print(f"wrote {out_path} ({w:.2f} x {h:.2f} in)")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("sweep_dir", nargs="?", default="results/p2-cadence-overhead")
@@ -159,6 +236,10 @@ def main() -> int:
                          "printed width (sa_style geometry). The TSV and the "
                          "report are still written, so point --tsv/--out at a "
                          "scratch path to leave a campaign snapshot untouched.")
+    ap.add_argument("--jsa-style", default=None,
+                    help="also render F9 for the JSA manuscript (fig:overhead) "
+                         "to this exact PDF path, e.g. .../figs/Figure_5.pdf. "
+                         "The TSV/report/other renders are unaffected.")
     fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
     p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.sweep_dir))
@@ -255,6 +336,8 @@ def main() -> int:
     # ---- F9 figure ----
     os.makedirs(args.fig, exist_ok=True)
     env0 = envs[0]
+    if args.jsa_style:
+        render_jsa(ov, ci, intervals, variants, env0, args.jsa_style)
     if args.sa_style:
         return render_sa(ov, ci, intervals, variants, env0, args.fig)
     fig, ax = plt.subplots(figsize=(7.5, 4.8))
