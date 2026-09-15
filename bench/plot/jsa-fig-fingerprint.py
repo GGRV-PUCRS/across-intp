@@ -204,7 +204,7 @@ def render_grid(med, cls, apps, envs_show, variants, metrics, *,
                 ax.annotate(v, xy=(0.5, 1.20), xycoords="axes fraction",
                            ha="center", va="bottom", fontsize=style.TITLE,
                            fontweight="bold")
-        axes[ri][0].annotate(e, xy=(-0.34, 0.5), xycoords="axes fraction",
+        axes[ri][0].annotate(e, xy=(-0.48, 0.5), xycoords="axes fraction",
                             ha="center", va="center", rotation=90,
                             fontsize=style.TITLE, fontweight="bold")
     cb = fig.colorbar(im, ax=axes, shrink=0.7, pad=0.012, aspect=25)

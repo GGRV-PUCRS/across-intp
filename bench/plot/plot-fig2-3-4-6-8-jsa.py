@@ -163,7 +163,7 @@ def fig_availability(cells, out: Path) -> None:
                          wspace=0.12)
     if len(variants) == 1:
         axes = [axes]
-    for ax, var in zip(axes, variants):
+    for ai, (ax, var) in enumerate(zip(axes, variants)):
         for yi, env in enumerate(envs):
             reps = [r for (e, v, _w), rl in cells.items()
                     if e == env and v == var for r in rl]
@@ -181,7 +181,9 @@ def fig_availability(cells, out: Path) -> None:
                             rotation_mode="anchor", fontsize=style.BODY)
         ax.set_yticks(np.arange(len(envs)) + 0.47)
         ax.set_yticklabels([ENV_SHORT[e] for e in envs], fontsize=style.BODY)
-        ax.yaxis.set_tick_params(labelleft=True)
+        # Env labels on the left panel only: with wspace this tight the right
+        # panel's labels land on the left panel's llcocc/llcmr columns.
+        ax.yaxis.set_tick_params(labelleft=(ai == 0))
         ax.invert_yaxis()
         ax.axvline(len(METRICS_PORTABLE) + len(METRICS_REGIME), color="black",
                    lw=1.1)
@@ -201,14 +203,18 @@ def fig_availability(cells, out: Path) -> None:
 
     # Side legend: metric code -> full name, so the figure decodes itself.
     # Wrapped to the narrow right-margin column so it never runs past the
-    # figure's own right edge.
+    # figure's own right edge. Continuation lines hang at a fixed small
+    # indent so every entry starts flush left on the same grid.
     lines = []
     for m in metrics:
-        wrapped = textwrap.wrap(f"{m}: {METRIC_FULL.get(m, m)}", width=30,
-                                 subsequent_indent="    ")
+        wrapped = textwrap.wrap(f"{m}: {METRIC_FULL.get(m, m)}", width=34,
+                                subsequent_indent="  ",
+                                break_long_words=False,
+                                break_on_hyphens=False)
         lines.append("\n".join(wrapped))
     fig.text(0.70, 0.90, "\n".join(lines), ha="left", va="top",
-              fontsize=style.ANNOT - 1.0, family="monospace", linespacing=1.6)
+             fontsize=style.ANNOT, family="monospace", linespacing=1.6,
+             multialignment="left")
 
     spec = style.FigSpec(width, height, "fig:availability")
     w, h = style.save(fig, out / "Figure_2.pdf", spec)
@@ -234,7 +240,7 @@ def fig_claimclass(df: pd.DataFrame, out: Path) -> None:
                          wspace=0.12)
     if len(variants) == 1:
         axes = [axes]
-    for ax, var in zip(axes, variants):
+    for ai, (ax, var) in enumerate(zip(axes, variants)):
         sub = df[df.variant == var]
         for yi, m in enumerate(all_metrics):
             for xi, env in enumerate(ENV_ORDER):
@@ -254,6 +260,9 @@ def fig_claimclass(df: pd.DataFrame, out: Path) -> None:
                             rotation=30, ha="right", fontsize=style.BODY)
         ax.set_yticks(np.arange(len(all_metrics)) + 0.5)
         ax.set_yticklabels(all_metrics, fontsize=style.BODY)
+        # Metric labels on the left panel only: the right panel's would land
+        # on the left panel's kvm-guest column at this wspace.
+        ax.yaxis.set_tick_params(labelleft=(ai == 0))
         ax.set_title(vlabel(var), fontsize=style.TITLE)
         ax.invert_yaxis()
         for s in ax.spines.values():
@@ -319,7 +328,9 @@ def fig_psi(cells, out: Path) -> None:
     ax_bw.set_xticklabels([ENV_SHORT[e] for e in envs], rotation=30,
                            ha="right", fontsize=style.BODY)
     ax_bw.set_ylabel("membw_est, app05_streaming (MB/s, log)")
-    ax_bw.legend(fontsize=style.LEGEND, loc="lower right")
+    # Upper left is the only empty quadrant: the kvm-guest bars fill the
+    # right side to the top of the log axis.
+    ax_bw.legend(fontsize=style.LEGEND, loc="upper left")
 
     ax_psi.set_xticks(x)
     ax_psi.set_xticklabels([ENV_SHORT[e] for e in envs], rotation=30,
