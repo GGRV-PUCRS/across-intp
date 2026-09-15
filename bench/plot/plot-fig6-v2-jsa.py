@@ -90,7 +90,7 @@ def draw_ratio_row(fig, subgrid, d: pd.DataFrame) -> None:
                     fontsize=style.ANNOT - 0.5, color="#2f6b4f",
                     ha="left", va="top")
             ax.set_xticks(range(len(wls)))
-            ax.set_xticklabels([w.split("_")[0] for w in wls],
+            ax.set_xticklabels([style.wl_label(w, short=True) for w in wls],
                                fontsize=style.ANNOT, rotation=30, ha="right")
             ax.set_ylim(0, 3.6)
             ax.set_title(f"{ratio_mod.vlabel(var)}\n{m}",

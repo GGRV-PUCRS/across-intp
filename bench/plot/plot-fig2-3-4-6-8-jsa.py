@@ -450,7 +450,7 @@ def fig_ratio(df: pd.DataFrame, out: Path) -> None:
                     transform=ax.get_yaxis_transform(), fontsize=style.ANNOT - 0.5,
                     color="#2f6b4f", ha="left", va="top")
             ax.set_xticks(range(len(wls)))
-            ax.set_xticklabels([w.split("_")[0] for w in wls],
+            ax.set_xticklabels([style.wl_label(w, short=True) for w in wls],
                                 fontsize=style.ANNOT, rotation=30, ha="right")
             ax.set_ylim(0, 3.6)
             ax.set_title(f"{vlabel(var)}\n{m}", fontsize=style.TITLE)
@@ -523,7 +523,7 @@ def fig_preempt(df: pd.DataFrame, out: Path) -> None:
         ax.set_xticklabels([ENV_SHORT[e] for e in ENV_ORDER], rotation=30,
                             ha="right", fontsize=style.BODY)
         ax.set_yticks(range(len(wls)))
-        ax.set_yticklabels([w.replace("_", " ") for w in wls],
+        ax.set_yticklabels([style.wl_label(w) for w in wls],
                             fontsize=style.BODY)
         ax.set_title(vlabel(var), fontsize=style.TITLE)
 
