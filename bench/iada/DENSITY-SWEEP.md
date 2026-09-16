@@ -98,11 +98,17 @@ sweep has five points, not enough to characterize the shape between 2.82
 and 4.0, and the brief's original request (10-20 reps/point, more density
 points) would sharpen this if the maintainer wants to invest more compute.
 
-**Step 3 (scoring).** Run under current (self-referential) scoring only —
-oracle scoring (S13/Phase 3.2) was not completed this pass, so there is
-nothing to run the sweep under a second time yet. If 3.2 lands later, rerun
-this sweep under `-Diada.oracleLabels=on` once that flag actually does
-something, and add the second curve to `F-simexp-density`.
+**Step 3 (scoring).** Run under current (self-referential) scoring only.
+Oracle scoring landed later the same day (S13), but the sweep is tier B
+only, and tier B is its own oracle reference, so an oracle rerun would
+reproduce these numbers exactly (S13's self-consistency check). A second
+curve only becomes informative if the sweep is extended to T1/A.
+
+**Figure fix (2026-09-16).** `plot-sim-experiments.py`'s converged test
+marked both timed-out points (elapsed 400/401 s) as converged, because it
+compared reps against the point's own max elapsed time. It now tests
+against the 400 s per-rep timeout. The JSA appendix version is
+`figA_density.pdf` (`plot-fig-baselines-oracle-jsa.py`, `fig_density()`).
 
 **Why 48/32 report exactly 0.00, sd 0.00, not a converged low number.** Both
 points hit their 400s per-rep timeout on every one of 5 reps, every time —

@@ -12,8 +12,8 @@ altered anything they'd be compared against:**
 
 | target | banked (prior campaigns) | this session's reproduction | agreement |
 |---|---|---|---|
-| T1 gate idi_avg | ≈6399 | 6497.2 ± 190.1 (n=10) | within ~1.5% |
-| A gate idi_avg | ≈3629 | 3592.8 ± 251.6 (n=10) | within ~1% |
+| T1 gate idi_avg | ≈6399 | 6520.9 ± 185.3 (n=10) | within ~1.9% |
+| A gate idi_avg | ≈3629 | 3618.8 ± 242.9 (n=10) | within ~0.3% |
 | within-env CV accuracy (all tiers/envs) | 0.998–1.000 | 0.998–1.000 (flat, unmodified `cv_eval`, before the grouped-CV fix) | exact |
 | host→VM transfer accuracy (T1/A/B) | 0.507/0.426/0.780 | 0.508/0.426/0.780 | exact to 3 decimals |
 

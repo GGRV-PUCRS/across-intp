@@ -64,6 +64,7 @@ GROUP_OF = {"e1": "E1 co-execution window", "e2": "E2 ablation",
 # their baseline and colour are tier B's.
 TIER_ALIAS = {"B-psp": "B"}
 HOSTS_GATE = 12
+DENSITY_TIMEOUT_S = 400  # per-rep TIMEOUT used by the density sweep (DENSITY-SWEEP.md)
 
 
 def load(path: Path) -> pd.DataFrame:
@@ -265,11 +266,8 @@ def main() -> int:
         for ratio, sub in sorted(ddf.groupby("ratio")):
             vals = sub["idi_avg"].dropna().to_numpy()
             mean, lo, hi = p2_ci.rep_ci(vals, seed_offset=700 + int(ratio * 100))
-            # "converged" here means at least one rep in this point actually
-            # finished within its timeout (elapsed < timeout ceiling); a
-            # point where every rep hit the same ceiling is interval-1-only.
-            converged = sub["elapsed"].astype(float).lt(sub["elapsed"].astype(float).max()).any() \
-                if sub["elapsed"].nunique() > 1 else float(sub["elapsed"].iloc[0]) < 300
+            # a point where every rep hit the per-rep timeout is interval-1-only
+            converged = not (sub["elapsed"].astype(float) >= DENSITY_TIMEOUT_S).all()
             points.append((float(ratio), mean, lo, hi, converged))
         fig_density(points, outdir)
 

@@ -415,7 +415,12 @@ reporting EVEN's `idi_avg` as `0` — what the raw TSV literally contains —
 would misread as "zero interference," which is not what happened.
 `interference_avg` for comparison, IASA gate (this session, n=10 each,
 matching S3/S10's protocol): T1 **6497.2 ± 190.1**, A **3592.8 ± 251.6**,
-B (psp-keyed) **4283.5 ± 138.2** (S10, n=20). **EVEN is 6.7-16.2x worse than
+B (psp-keyed) **4248.3 ± 145.8** (S10, n=20). (Corrected 2026-09-16: these
+are `interference_avg`, not `idi_avg`; the `idi_avg` equivalents, which
+add the logged migration term and are what the gate/CIAPA tables compare,
+are T1 6520.9 ± 185.3, A 3618.8 ± 242.9, B 4283.5 ± 138.2. B was
+previously quoted here from the `idi_avg` column by mistake. Ratios below
+move by <1%.) **EVEN is 6.7-16.2x worse than
 IASA's search on every tier** (T1 7.7x, A 16.2x, B 7.7x) — a single static
 round-robin placement with no interference-aware search or migration leaves
 a large amount of avoidable interference on the table, which is the
@@ -470,10 +475,10 @@ zero migrations.
 
 **CIAPA baseline, n=10/tier, `-Diada.approach=CIAPA`:**
 
-| tier | n | idi_avg mean | sd | IASA gate (best) | EVEN (worst) |
+| tier | n | idi_avg mean | sd | IASA gate idi_avg (best) | EVEN (worst) |
 |---|---|---|---|---|---|
-| T1 | 10 | **15946.6** | 1079.9 | 6497.2 ± 190.1 | 49796.5 |
-| A  | 10 | **13164.7** | 338.5 | 3592.8 ± 251.6 | 58263.1 |
+| T1 | 10 | **15946.6** | 1079.9 | 6520.9 ± 185.3 | 49796.5 |
+| A  | 10 | **13164.7** | 338.5 | 3618.8 ± 242.9 | 58263.1 |
 | B  | 10 | **13004.4** | 341.9 | 4283.5 ± 138.2 (S10) | 32790.7 |
 
 **A coherent three-way ordering emerges for every tier: IASA < CIAPA <
@@ -561,26 +566,41 @@ attempts, third one correct:**
    3519.31/3519.31, ... all 10 reps of tier B against itself). Validated.
 
 **T1/A/B, self vs. oracle (tier B classifier), n=10/tier, full-window,
-bootstrap 95% CI (N=10000, seed 20260607, house convention):**
+paired rep-level bootstrap 95% CI of (oracle − self) (N=10000, seed
+20260607, house convention):**
 
-| tier | self_idi mean ± sd | oracle_idi mean ± sd | Δ (oracle−self) | 95% CI | reading |
+| tier | self_idi mean ± sd | oracle_idi mean ± sd | Δ (oracle−self), paired | 95% CI | reading |
 |---|---|---|---|---|---|
-| T1 | 4810.6 ± 276.0 | 3843.6 ± 275.9 | **−967.0** | [−1196.4, −741.6] * | T1's own (7-feature, VM-blind) classifier reads its own placement as **significantly worse** than tier B's richer classifier does |
-| A  | 3817.0 ± 302.0 | 3978.7 ± 402.2 | +161.7 | [−127.6, +458.9] n.s. | statistically indistinguishable from the common yardstick — the portable proxy (`membw_est` for `mbw`) is enough to close the gap T1 shows |
-| B  | 3606.9 ± 128.4 | 3606.9 ± 128.4 | +0.0 | [−107.7, +106.9] (trivial) | exact self-consistency check, by construction |
+| T1 | 4810.6 ± 276.0 | 3843.6 ± 275.9 | **−967.0** (sd 128.2) | [−1047.3, −894.2] * (paired t p=1.9e-9) | T1's own (7-feature, VM-blind) classifier reads its own placement as **substantially worse** (−20.1%) than tier B's richer classifier does |
+| A  | 3817.0 ± 302.0 | 3978.7 ± 402.2 | **+161.7** (sd 196.3) | [+57.6, +282.9] * (paired t p=0.029) | small, significant bias the other way: A's classifier reads its placement as slightly **better** (+4.2%) than the common yardstick does |
+| B  | 3606.9 ± 128.4 | 3606.9 ± 128.4 | 0.0 | [0, 0] (trivial) | exact self-consistency check, by construction |
 
-**Reading.** T1's self-reported IDI isn't merely "on a different scale"
-from a common yardstick — it's a *significant, one-directional* distortion
-in a specific direction (pessimistic: T1 rates its own placements worse
-than a richer classifier does), consistent with the classifier defaulting
-to higher-severity levels when key RDT signals are unavailable in the VM
-rather than defaulting to a neutral/optimistic read. A, which restores the
-mem-class signal via `membw_est`, is not distinguishable from the common
-yardstick at this sample size — a materially different, and better,
-picture than T1's. This is the first evidence the paper has that the
-self-scoring problem (S13's original finding) is not just a theoretical
-comparability caveat but a measurable, directional bias for the canonical-7
-tier specifically.
+**Correction (2026-09-16, same day).** The first version of this table
+bootstrapped self and oracle as independent samples (T1 [−1196.4, −741.6],
+A [−127.6, +458.9] n.s.). They are not independent — both score the same
+placement in the same rep — so the paired test is the correct one. Under
+it A's +161.7 is significant, and the earlier reading "A is statistically
+indistinguishable from the common yardstick" is withdrawn. T1's direction
+and significance are unchanged.
+
+**Cross-tier comparison under the common yardstick** (different runs per
+tier, so unpaired; Welch t, rep-level bootstrap CI of the difference):
+T1 3843.6 vs A 3978.7 — Δ(A−T1) +135 [−149, +421], p=0.39, **n.s.**;
+B 3606.9 vs T1 — Δ −237 [−421, −68], p=0.029; B vs A — Δ −372 [−629, −138],
+p=0.018. For contrast, the same runs' own `idi_avg` (self-scored,
+per-interval windows) give T1 6487.8 vs A 3498.7 (−46%), and self-scored
+full-window gives T1 4810.6 vs A 3817.0 (−21%).
+
+**Reading.** Each tier's self-reported IDI is biased relative to a common
+yardstick, in opposite directions for T1 (pessimistic, large) and A
+(optimistic, small). The consequence matters more than either bias alone:
+**scored by one common classifier, T1's and A's placements are not
+distinguishable** (A nominally 3.5% worse, n.s.), while B's placements are
+modestly but significantly better than both (−6% vs T1, −9% vs A). The
+T1-vs-A gap in the self-scored index (the paper's 43%) is therefore a gap in
+what each classifier *estimates*, not demonstrated evidence that the
+portable proxy produces better placements. Caveats: the yardstick is itself
+a classifier (tier B's), not measured ground truth, and n=10/tier.
 
 **Not rerun:** tier B's own gate/E-series numbers (S10-S12) are unaffected
 by any of this — `oracleRescore` only fires when `-Diada.oracleLabels=on`,

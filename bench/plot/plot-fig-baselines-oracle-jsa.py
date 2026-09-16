@@ -12,11 +12,11 @@ this session's Phase 3.2/3.4 follow-up work (jsa-repo-fix-brief.md):
 
   fig_oracle.pdf (fig:oracle) -- each tier's own self-reported IDI vs. a
     common (tier B) classifier's re-score of the SAME converged placement,
-    both over an identical (full-trace) classification window. T1's own
-    (RDT-blind) classifier reads its own placements as significantly worse
-    than the common yardstick does; A is statistically indistinguishable
-    from it; B is an exact self-consistency check by construction (the
-    same classifier scoring itself).
+    both over an identical (full-trace) classification window. Significance
+    is a paired rep-level bootstrap of (oracle - self): T1's own classifier
+    reads its placements as markedly worse than the common yardstick does,
+    A's as slightly better; B is an exact self-consistency check by
+    construction (the same classifier scoring itself).
 
 Sources of record (no value recomputed here, only re-presented):
   bench/iada/results/sim-experiments-20260916/{even,ciapa}-baseline-t1ab-n10.tsv
@@ -119,9 +119,10 @@ def fig_baselines(data_root: Path, out: Path) -> None:
 def fig_oracle(data_root: Path, out: Path) -> None:
     self_v = defaultdict(list)
     oracle_v = defaultdict(list)
-    for r in csv.DictReader((data_root / "oracle-t1ab-n10.tsv").open(), delimiter="\t"):
-        if r.get("self_idi") in (None, "", "FAIL"):
-            continue
+    rows = [r for r in csv.DictReader((data_root / "oracle-t1ab-n10.tsv").open(), delimiter="\t")
+            if r.get("self_idi") not in (None, "", "FAIL")]
+    # self and oracle score the same placement per rep, so keep rep order aligned for pairing
+    for r in sorted(rows, key=lambda r: (r["tier"], int(r["rep"]))):
         self_v[r["tier"]].append(float(r["self_idi"]))
         oracle_v[r["tier"]].append(float(r["oracle_idi"]))
 
@@ -144,10 +145,7 @@ def fig_oracle(data_root: Path, out: Path) -> None:
         if np.allclose(s, o):
             sig_label[t] = "self-check\n(Δ=0)"
             continue
-        rng = np.random.default_rng(p2_ci.BOOTSTRAP_SEED + ti)
-        d = (rng.choice(o, (p2_ci.BOOTSTRAP_N, len(o))).mean(1)
-             - rng.choice(s, (p2_ci.BOOTSTRAP_N, len(s))).mean(1))
-        dlo, dhi = np.percentile(d, list(p2_ci.CI_PCTILES))
+        _, dlo, dhi = p2_ci.rep_ci(o - s, seed_offset=100 + ti)
         sig_label[t] = "*" if not (dlo <= 0 <= dhi) else "n.s."
 
     self_err = p2_ci.yerr_many(list(zip(self_m, self_lo, self_hi)))
@@ -176,6 +174,47 @@ def fig_oracle(data_root: Path, out: Path) -> None:
     print(f"wrote {out / 'fig_oracle.pdf'}")
 
 
+DENSITY_TIMEOUT_S = 400  # per-rep timeout of the density sweep (DENSITY-SWEEP.md)
+
+
+def fig_density(data_root: Path, out: Path) -> None:
+    by_ratio = defaultdict(list)
+    for r in csv.DictReader((data_root / "density-sweep" / "density-sweep-combined.tsv").open(),
+                            delimiter="\t"):
+        by_ratio[float(r["ratio"])].append((float(r["idi_avg"]), float(r["elapsed"])))
+
+    xs, ms, los, his, conv = [], [], [], [], []
+    for i, ratio in enumerate(sorted(by_ratio)):
+        vals = [v for v, _ in by_ratio[ratio]]
+        m, lo, hi = p2_ci.rep_ci(vals, seed_offset=700 + i)
+        xs.append(ratio); ms.append(m); los.append(lo); his.append(hi)
+        conv.append(not all(e >= DENSITY_TIMEOUT_S for _, e in by_ratio[ratio]))
+
+    width, height = style.TEXT_WIDTH * 0.62, 2.2
+    fig, ax = plt.subplots(figsize=(width, height), layout="constrained")
+    color = "#27ae60"  # tier B, matches plot-iada-sim.py
+    ax.fill_between(xs, los, his, color=color, alpha=0.15, linewidth=0)
+    ax.plot(xs, ms, color=color, lw=1.2, marker="o", markersize=3.5,
+            markeredgecolor="white", markeredgewidth=0.5, label="converged search")
+    bad = [(x, m) for x, m, c in zip(xs, ms, conv) if not c]
+    if bad:
+        ax.plot(*zip(*bad), ls="none", marker="x", markersize=6, color=style.VERMILLION,
+                label="timed out (initial placement only)", zorder=5)
+    top = max(his)
+    for x, m in zip(xs, ms):
+        ax.text(x, m + top * 0.04, f"{m:.0f}", ha="center", va="bottom", fontsize=style.ANNOT)
+    ax.set_ylim(0, top * 1.18)
+    ax.set_xticks(xs)
+    ax.set_xticklabels([f"{x:g}" for x in xs])
+    ax.set_xlabel("applications per host")
+    ax.set_ylabel("interference degradation index")
+    style.compact_legend(ax, *ax.get_legend_handles_labels(), ncol=2)
+
+    style.save(fig, out / "figA_density.pdf", style.FigSpec(width, height, "fig:a4"))
+    plt.close(fig)
+    print(f"wrote {out / 'figA_density.pdf'}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-root", type=Path,
@@ -186,6 +225,7 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     fig_baselines(args.data_root, args.out)
     fig_oracle(args.data_root, args.out)
+    fig_density(args.data_root, args.out)
     return 0
 
 
