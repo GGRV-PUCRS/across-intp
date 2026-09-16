@@ -189,17 +189,18 @@ def fig_fingerprint(med, status, cls, apps, envs_show, variants, out):
                                show_y=(ci == 0), show_x=(ri == nr - 1),
                                show_classlabels=(ri == 0), status=status)
             if ri == 0:                      # variant column header (above class row)
-                ax.annotate(v, xy=(0.5, 1.16), xycoords="axes fraction",
+                ax.annotate(v, xy=(0.5, 1.17), xycoords="axes fraction",
                             ha="center", va="bottom", fontsize=12, fontweight="bold")
         # environment row label, just outboard of the app ticks (-0.42 left a
-        # blank gutter between the label and the tick text)
-        axes[ri][0].annotate(e, xy=(-0.26, 0.5), xycoords="axes fraction",
+        # blank gutter between the label and the tick text; -0.26 still had
+        # more gutter than needed once the app-name column itself is short)
+        axes[ri][0].annotate(e, xy=(-0.19, 0.5), xycoords="axes fraction",
                              ha="center", va="center", rotation=90,
                              fontsize=12, fontweight="bold", color="#333333")
     # Fix the grid FIRST, then hand the colorbar its own axes: colorbar(ax=axes)
     # placed the bar before subplots_adjust moved the grid, so it ended up on
     # top of the rightmost panel's ticks.
-    fig.subplots_adjust(left=0.075, right=0.912, top=0.845, bottom=0.15,
+    fig.subplots_adjust(left=0.075, right=0.912, top=0.80, bottom=0.15,
                         hspace=0.22, wspace=0.06)
     cax = fig.add_axes([0.928, 0.15, 0.008, 0.695])
     cb = fig.colorbar(im, cax=cax)
