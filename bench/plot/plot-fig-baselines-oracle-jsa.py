@@ -174,6 +174,123 @@ def fig_oracle(data_root: Path, out: Path) -> None:
     print(f"wrote {out / 'fig_oracle.pdf'}")
 
 
+REF_COLOR = {"T1": style.SKY_BLUE, "A": style.REDDISH_PURPLE, "B": style.ORANGE}
+
+
+def fig_oracle_matrix(data_root: Path, s15_root: Path, out: Path) -> None:
+    """fig:oracle_matrix -- the full placement-tier x reference-classifier matrix.
+
+    fig_oracle() shows one column of this matrix (reference = tier B), which
+    favours B by construction: B's search optimized against the very classifier
+    that then scores it. S15 completes the other two columns, so the reader can
+    see whether any placement ordering survives a change of reference.
+
+    Grouped bars: one group per PLACEMENT tier, one bar per REFERENCE
+    classifier. The tier's own self score (its classifier, same full window)
+    is drawn as a tick on each bar, so the self-vs-oracle gap is visible per
+    cell. Diagonal cells (placement == reference) are exact self-consistency
+    checks and are tagged as such rather than starred.
+
+    No value is recomputed here beyond the CIs, which use the same rep-level
+    bootstrap convention as every other figure in the set.
+    """
+    sources = {
+        "B": data_root / "oracle-t1ab-n10.tsv",
+        "T1": s15_root / "oracle-refT1-t1ab-n10.tsv",
+        "A": s15_root / "oracle-refA-t1ab-n10.tsv",
+    }
+    refs = [r for r in TIER_ORDER if sources[r].exists()]
+    if not refs:
+        print("fig_oracle_matrix: no oracle TSVs found, skipped")
+        return
+
+    self_v, oracle_v = {}, {}
+    for r in refs:
+        self_v[r] = _read_idi(sources[r], col="self_idi")
+        oracle_v[r] = _read_idi(sources[r], col="oracle_idi")
+
+    width = style.TEXT_WIDTH
+    height = 2.6
+    fig, ax = plt.subplots(figsize=(width, height), layout="constrained")
+
+    x0 = np.arange(len(TIER_ORDER))
+    group_w = 0.8
+    bar_w = group_w / len(refs)
+
+    top = 0.0
+    for ri, r in enumerate(refs):
+        means, errs_lo, errs_hi, tags, selfs, diag = [], [], [], [], [], []
+        for ti, t in enumerate(TIER_ORDER):
+            o = np.asarray(oracle_v[r].get(t, []), dtype=float)
+            s_ = np.asarray(self_v[r].get(t, []), dtype=float)
+            if o.size == 0:
+                means.append(np.nan); errs_lo.append(np.nan); errs_hi.append(np.nan)
+                tags.append(""); selfs.append(np.nan)
+                continue
+            om, olo, ohi = p2_ci.rep_ci(o, seed_offset=200 + ri * 10 + ti)
+            means.append(om); errs_lo.append(olo); errs_hi.append(ohi)
+            selfs.append(float(s_.mean()) if s_.size else np.nan)
+            if s_.size == o.size and np.allclose(s_, o):
+                tags.append(r"$\Delta{=}0$")  # diagonal: exact self-consistency check
+                diag.append(len(means) - 1)
+            else:
+                # paired bootstrap of (oracle - self): same placement, same rep.
+                _, dlo, dhi = p2_ci.rep_ci(o - s_, seed_offset=400 + ri * 10 + ti)
+                tags.append("*" if not (dlo <= 0 <= dhi) else "n.s.")
+            top = max(top, ohi)
+
+        xs = x0 - group_w / 2 + bar_w * (ri + 0.5)
+        yerr = [[max(0.0, m - lo) for m, lo in zip(means, errs_lo)],
+                [max(0.0, hi - m) for m, hi in zip(means, errs_hi)]]
+        bars = ax.bar(xs, means, bar_w * 0.9, yerr=yerr, capsize=2.0,
+                      color=REF_COLOR[r], alpha=0.88, edgecolor="black", linewidth=0.4,
+                      label=f"reference: {TIER_DESC[r].lower()}")
+        # Diagonal cells (placement == reference) are the exact self-consistency
+        # check, not a measurement: hatch them so they read as structurally
+        # different from the six off-diagonal comparisons.
+        for di in diag:
+            bars[di].set_hatch("////")
+        # Self-score tick. Deliberately narrower than the bar: at full bar width
+        # the ticks of adjacent bars abut and read as one continuous rule across
+        # the group, which is exactly the wrong reading -- each tick belongs to
+        # its own run.
+        for xi, sv, m in zip(xs, selfs, means):
+            if np.isnan(sv):
+                continue
+            # Dotted stem from the bar top to the self tick: the quantity the
+            # starred paired test is about IS this gap, so draw it rather than
+            # leaving the tick floating free of the bar it belongs to.
+            ax.plot([xi, xi], [m, sv], ls=":", lw=0.8, color="black", zorder=5)
+            ax.plot([xi - bar_w * 0.30, xi + bar_w * 0.30], [sv, sv],
+                    color="black", lw=1.1, zorder=6, solid_capstyle="butt")
+        for xi, hi, sv, tag in zip(xs, errs_hi, selfs, tags):
+            if tag:
+                y = hi if np.isnan(sv) else max(hi, sv)
+                ax.text(xi, y + top * 0.03, tag, ha="center", va="bottom",
+                        fontsize=style.ANNOT_FLOOR,
+                        fontweight="bold" if tag == "*" else "normal")
+
+    ax.set_ylim(0, top * 1.34)
+    ax.set_xticks(x0)
+    ax.set_xticklabels([f"{TIER_DESC[t]}\nplacements" for t in TIER_ORDER],
+                       fontsize=style.BODY)
+    ax.set_ylabel("interference degradation index\n(full-window re-score)",
+                  fontsize=style.BODY)
+    ax.grid(axis="y", ls=":", alpha=0.3)
+    # One extra handle explaining the tick and the diagonal tag, so the caption
+    # does not have to carry them.
+    from matplotlib.lines import Line2D
+    handles, labels = ax.get_legend_handles_labels()
+    handles.append(Line2D([0], [0], color="black", lw=1.1))
+    labels.append("self score (own classifier); hatched = self-check")
+    style.compact_legend(ax, handles, labels, ncol=2)
+
+    spec = style.FigSpec(width, height, "fig:oracle_matrix")
+    style.save(fig, out / "fig_oracle_matrix.pdf", spec)
+    plt.close(fig)
+    print(f"wrote {out / 'fig_oracle_matrix.pdf'}")
+
+
 DENSITY_TIMEOUT_S = 400  # per-rep timeout of the density sweep (DENSITY-SWEEP.md)
 
 
@@ -220,12 +337,17 @@ def main() -> int:
     ap.add_argument("--data-root", type=Path,
                     default=Path("bench/iada/results/sim-experiments-20260916"))
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--s15-root", type=Path, default=None,
+                    help="S15 rerun results dir; enables fig_oracle_matrix. "
+                         "fig_oracle.pdf is left unchanged either way.")
     args = ap.parse_args()
     style.apply()
     args.out.mkdir(parents=True, exist_ok=True)
     fig_baselines(args.data_root, args.out)
     fig_oracle(args.data_root, args.out)
     fig_density(args.data_root, args.out)
+    if args.s15_root is not None:
+        fig_oracle_matrix(args.data_root, args.s15_root, args.out)
     return 0
 
 

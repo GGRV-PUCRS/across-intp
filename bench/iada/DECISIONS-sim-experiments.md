@@ -630,3 +630,272 @@ backed up to `paper-assets/figs-orig/` where a prior version existed.
 `.tex` wiring (new `\widefig`/`\label` for the two new figures) left to the
 maintainer — see `PAPER-SYNC.md` rows for `sec:methodology:pipeline` and
 `sec:cost`.
+
+## S15 — Section 7.4 rerun on one toolchain; the oracle matrix completed (2026-09-16)
+
+Driven by `jsa-sim-rerun-brief.md`. Goal: every sensitivity number quoted in
+`main-jsa.tex` §7.4 should come from the same toolchain as `fig_tiers`,
+`fig_baselines` and `fig_oracle`, and the common-yardstick result (S13) should
+stop using tier B as its only reference. Raw:
+`bench/iada/results/sim-experiments-20260916-s15/`; per-arm-x-tier summary
+`summary-s15.tsv`; `main-jsa.tex` untouched, edits handed over in
+`TEX-PATCH-S15.md`.
+
+### Toolchain (this pass)
+
+| Component | Version |
+|---|---|
+| build | `javac 17.0.20 --release 8` → class file **major 52** |
+| runtime | **OpenJDK 1.8.0_502** (JDK 8 mandatory: JRI `Rengine.stop()` calls `Thread.stop()`, removed in JDK 20+) |
+| R | 4.5.2 |
+| rJava / e1071 / dplyr / stringr / caret / fossil | 1.0.14 / 1.7.17 / 1.2.1 / 1.6.0 / 7.0.1 / 0.4.0 |
+| kernel | 7.0.0-31-generic |
+
+**Toolchain delta vs the 20260916 pass**, which ran R 4.3.3 / rJava 1.0.18 on a
+different machine and user account. The preflight gate (below) absorbs it: all
+three tiers reproduce their banked gate within noise, so the R-stack difference
+is not a confound for anything in this entry.
+
+### Environment reconstruction
+
+This checkout had **no** CloudSim `bin/`, no trace trees, no classifier folders
+and no JDK 8 — all stood up fresh, exactly as S10 had to:
+
+- `CloudSimInterference` rebuilt from source (280 classes, major 52 verified)
+  against the **system** JRI jars; the vendored ones predate the installed
+  R/rJava and do not link (S10).
+- 28-trace vm-guest/v3.3 trees regenerated for T1/A/B from
+  `results/p2-15metric-xdeploy-1of3` (7 workloads x 4 canonical patterns, 12
+  reps median-merged, `--no-clamp`), in
+  `/home/norodell/Documents/iada-trees-20260916/`. Widths verified: T1 7-col,
+  A 7-col with `membw_est` in the `mbw` slot, B 15-col with `membw_est` at
+  col 10 and `psp` at col 14.
+- R inference dependencies `dplyr`, `stringr` and `caret` were missing and were
+  installed into a merged library dir (no system modification). Without them
+  `MLClassifier` fails inside R (`could not find function "bind_rows"` /
+  `"str_count"`) and the resulting `NullPointerException` lands **inside the
+  discrete-event thread**, which stalls the event loop — the run hangs to
+  TIMEOUT instead of failing fast. Same failure shape as the S12 CIAPA crash.
+
+### Invariant checks before any arm (brief §1)
+
+1. **External `B/kmeans.R` was schedlat-keyed on this checkout** —
+   `predict.kmeans(object, newdata, 8)`. **The S10 wiring gap had recurred.**
+   Fixed by copying the in-repo `bench/iada/tier-b-R/kmeans.R`; `cmp` now
+   reports byte-identical; backup kept as
+   `kmeans.R.bak-schedlat-preS8-20260916`. Had this not been checked, every
+   tier-B number in this entry would have been silently wrong.
+   *Independent confirmation:* the canonical snapshot in `latest_results.zip`
+   (`latest-data/02-classifier/models/{T1,A,B}`) is **byte-identical** to the
+   folders used here for all three tiers, so the repair restored exactly the
+   canonical psp-keyed state rather than merely something self-consistent.
+2. **Trace pairing verified by identifier, not count** (brief Phase 4 item 2).
+   The sorted relative-path listing of all three trees is byte-identical
+   (`md5 00369b39c7ec30add980bf78c51cebfe`, 28 files each, laid out as
+   `<workload>/<pattern>.csv`), so `listSortedTraces` pairs cloudlet *k* with
+   the same (workload, pattern) in every tree. **No pairing fix was needed.**
+3. **Feature-width safety of the folder swap** (brief Phase 4 item 1).
+   `MLClassifier.getMLClass` derives the frame width from the *reference*
+   folder's own training frame (`feat_cols <- setdiff(names(total),
+   "category")`), so a 5-class/7-feature reference and a 6-class/15-feature
+   placement tier cannot mismatch **provided `oracleRFolder` and
+   `oracleTreeDir` name the same tier** — which `run-sim-arm.sh` enforces
+   structurally.
+
+### Phase 1 — preflight gate (required to pass before any arm)
+
+| arm | n | idi_avg | sd | vs reference | 95% CI | |
+|---|---|---|---|---|---|---|
+| B-psp rerun (this pass) | 10 | **4298.0** | 168.9 | +14.5 vs banked 4283.5 | [−99.5, +130.2] | **PASS** (Welch p=0.82) |
+| T1 rerun | 10 | 6435.7 | 253.2 | −85.2 vs banked 6520.9 | [−270.5, +99.2] | n.s. |
+| A rerun | 10 | 3612.6 | 325.8 | −6.2 vs banked 3618.8 | [−247.4, +235.3] | n.s. |
+
+**All three tiers reproduce**, on a different machine and a different R stack.
+Per brief §2 the B reference for every delta below is the banked `n=20` pooled
+with this preflight: **4288.4 ± 146.4 (n=30)**.
+
+**Deviation from the brief, deliberate.** The brief points Phase 3's T1/A deltas
+at the banked `gate-T1-A-n10.tsv`, measured on the previous checkout. Since the
+stated purpose of the T1/A arm is to keep the "scales by X to Y%" range inside a
+*single build*, a T1/A gate was re-measured here
+(`gate-T1-A-rerun-n10.tsv`) and used as the reference; the banked values agree
+(table above) and are reported alongside.
+
+### Phase 2 — E4 ramp shape (tier B, psp-keyed), vs B reference 4288.4
+
+| arm | n | idi_avg | sd | delta | 95% CI | Welch p | % of default |
+|---|---|---|---|---|---|---|---|
+| step `1.90,1.93,1.95` | 10 | 5284.1 | 339.9 | **+995.8** | [+807.0, +1212.7] * | 3.8e-06 | 123.2% |
+| measured `1.10,1.25,1.41` | 10 | 3723.2 | 188.5 | **−565.1** | [−679.4, −438.4] * | 1.04e-06 | 86.8% |
+| convex `1.07,1.55,1.95` (optional) | 10 | 4358.3 | 234.0 | +70.0 | [−64.8, +225.6] n.s. | 0.392 | 101.6% |
+
+Both quoted arms reproduce S8's direction and significance (+1200 / −619) at
+somewhat smaller magnitudes. **Neither CI covers zero**, so §7.4's lead-in
+"both magnitude and shape move the index" stands; only the two numbers change.
+Convex remains n.s. and is still not quoted in the paper.
+
+### Phase 3 — E5 published degradation table, one build, all three tiers
+
+| tier | default | paper table | sd | delta | 95% CI | % of default | scaling |
+|---|---|---|---|---|---|---|---|
+| T1 | 6435.7 | 5016.3 | 228.8 | −1419.4 | [−1626.1, −1220.0] * | 77.9% | −22.0% |
+| B | 4288.4 | 3507.1 | 159.1 | −781.3 | [−885.7, −674.4] * | 81.8% | −18.2% |
+| A | 3612.6 | 2499.6 | 141.5 | −1113.0 | [−1329.2, −906.1] * | 69.2% | −30.8% |
+
+- **Scaling range widens from "16 to 25%" to "18 to 31%"**, driven by tier A
+  dropping hardest.
+- **Tier ordering is preserved**: T1 (5016) > B (3507) > A (2500) under the
+  published table, matching the default ordering T1 > B > A.
+- **Supersedes both** the old E5 arm and the S8 combined run (3458.7 ± 87); the
+  single-build B value here, 3507.1 ± 159.1, agrees with it closely, so the
+  paper's parenthetical is replaced rather than contradicted.
+
+### Phase 4 — oracle matrix: placement tier x reference classifier
+
+Self-consistency held **exactly** on all three diagonals (`self_idi ==
+oracle_idi`, Δ = 0.000, every rep, all 10 reps each) — T1-under-T1,
+A-under-A, B-under-B. This is the check S13's window-mismatch episode
+motivated; it passed first time here.
+
+Paired (oracle − self) per cell, rep-level paired bootstrap:
+
+| reference | T1 placements | A placements | B placements |
+|---|---|---|---|
+| B (S13, existing) | −967.0 [−1044, −894] * | +161.7 [+60, +285] * | 0.0 self-check |
+| T1 (new) | 0.0 self-check | +1706.3 [+1356, +2058] * | +1359.5 [+1194, +1553] * |
+| A (new) | −597.7 [−779, −412] * | 0.0 self-check | +1399.0 [+693, +2274] * |
+
+Cross-tier placement comparisons (unpaired bootstrap of the difference, Welch
+secondary; higher index = worse placement):
+
+| reference | A − T1 | B − T1 | B − A |
+|---|---|---|---|
+| **B** | +135.1 [−143, +423] p=0.39 **n.s.** | −236.7 [−428, −65] * | −371.8 [−635, −137] * |
+| **T1** | **+936.0 [+608, +1234]** p=6.2e-05 * | +89.7 [−169, +366] **n.s.** | −846.3 [−1173, −486] * |
+| **A** | **−226.5 [−437, −22]** Welch p=0.057 † | +937.6 [+278, +1776] * | +1164.1 [+497, +1999] * |
+
+† Reported as marginal, not clean: the bootstrap CI excludes zero but the
+secondary Welch test gives p=0.0569, just above 0.05. Recorded as a
+disagreement between the two tests rather than resolved in either direction.
+
+**Interpretation: Case 4 (mixed / reference-dependent).** Every reference ranks
+its own configuration first — B's reference puts B ahead of both, T1's puts T1
+ahead of A, A's puts A ahead of T1. The T1-vs-A ordering therefore changes sign
+with the reference: n.s. under B, T1 clearly better under T1, A marginally
+better under A. **No reference-free placement ordering exists at n=10.**
+The construction bias the paper already concedes for tier B is not special to
+B; it is symmetric across all three.
+
+This does **not** rescue a placement-quality claim for the proxy (Case 2), and
+it is not the clean "proxy is worse" of Case 3. It removes the ground for any
+reference-free ordering — which leaves the paper's *underlying* caution intact
+(the 45% self-scored gap is an estimation effect, not demonstrated placement
+quality) while invalidating the specific justification currently given for it
+("indistinguishable on a common yardstick", which holds only on B's reference).
+
+**Why tier B moves so much under the five-class references** (brief Phase 4
+item 1 asked this to be documented, not handled). Replicating `getMLClass`
+per row over the regime workload's four traces
+(`bench/iada/scripts/label-app16-under-references.R`):
+
+| reference | `app16_cpu_oversub` labelling, 480 rows |
+|---|---|
+| T1 (5 classes) | `cpu` = 480 (**100.0%**) |
+| A (5 classes) | `cpu` = 480 (**100.0%**) |
+| B (6 classes) | `regime` = 480 (**100.0%**) |
+
+Under a T1/A reference the regime workload loses its regime class entirely and
+is priced as plain CPU, so B's placements — chosen by a search that *used* the
+regime multiplier — are re-scored without the term that motivated them. No
+special handling was added, as instructed.
+
+### Phase 5 — E1 startup delay, all three tiers (optional arms, run)
+
+Deltas vs each tier's own default reference. `vmStartup` is in seconds; the
+committed default is 100.
+
+| tier | 0 s | 10 s | 50 s |
+|---|---|---|---|
+| T1 | −52.6 [−258.1, +158.3] n.s. | +86.8 [−94.4, +259.9] n.s. | +126.2 [−45.5, +290.5] n.s. |
+| A | −142.8 [−355.3, +65.2] n.s. | +9.4 [−239.2, +258.7] n.s. | −4.1 [−251.3, +247.4] n.s. |
+| B | +9.8 [−88.8, +112.8] n.s. | +123.3 [−26.9, +294.7] n.s. | +52.0 [−62.4, +172.8] n.s. |
+
+**All nine cells null**, reproducing the August result on the rebuilt,
+psp-keyed toolchain. `main-jsa.tex`'s startup sentence ("finds no significant
+effect for any configuration") therefore needs **no change**, and §7.4's
+provenance sentence can drop the startup-delay arm from its list of arms that
+predate the rebuild.
+
+Worth recording as a standing oddity rather than a result: at the committed
+delay of 100 s against a 119-sample horizon, only ~19 post-startup samples
+exist and no cloudlet finishes, yet moving the delay to 0 changes nothing
+measurable on any tier. Raised with the simulator's owner as Q2 in
+`CLOUDSIM-VALIDATION-REQUEST.md`.
+
+### Campaign hygiene
+
+240 reps across 15 arms, **zero failed or timed-out reps**; no FAIL row was
+written and no `idi_avg` cell is empty. One operational note for whoever runs
+this next: `run-iada-experiment.sh` rewrites a **single shared symlink**
+(`$CS/bin/resources/workload/interference`), so two arms must never run
+concurrently — an overlapping stray run was caught and the affected gate
+attempt was discarded and re-run rather than kept.
+
+### Numbers superseded by this entry
+
+| superseded | by | where quoted |
+|---|---|---|
+| E4 step **+1200** [+832, +1631] (S8, Aug) | **+995.8** [+807.0, +1212.7] | `main-jsa.tex` §7.4 ramp sentence |
+| E4 measured **−619** [−744, −482] (S8, Aug) | **−565.1** [−679.4, −438.4] | same sentence |
+| E5 scaling range **16 to 25%** (Aug, mixed builds) | **18 to 31%** | §7.4 table sentence |
+| S8 combined re-key x published table **3458.7 ± 87** | **3507.1 ± 159.1** (single build) | §7.4 table sentence |
+| E1 startup arms (Aug, banked build, pre-re-key) | this pass, all tiers, still null | §7.4 startup sentence |
+| Oracle reading "indistinguishable on a common yardstick" (S13) | **Case 4**, reference-dependent | abstract, highlight 4, contribution list, §7.5, discussion, conclusion |
+
+**Not superseded.** Tier B's gate (4283.5 ± 138.2), E2, E6, the density sweep,
+the EVEN/CIAPA baselines and the B-reference oracle column (S10–S13) all stand;
+this pass reproduced the gates rather than replacing them. E3 was not rerun, by
+the brief's instruction — the density sweep already explains its flatness
+structurally.
+
+### Code changes made this pass
+
+1. **`IntContainerDataCenter.java:136-142`** (CloudSimInterference) — the oracle
+   log label was the hardcoded literal `"tier B classifier"`. Now derived from
+   the oracle R folder's basename, since the reference is no longer always B.
+   Verified safe: `parse-cloudsim-output.py:107-111` keys on the substrings
+   `"self re-score"` / `"oracle re-score"` only, never on the tier name.
+2. **`bench/iada/scripts/run-sim-arm.sh`** (new) — one arm = one TSV, with the
+   trace-tree root, classifier root and oracle *reference* parameterized.
+   `run-tier-sim-reps.sh` hardcodes `/tmp/tree-<tier>-vm-guest` and cannot
+   express a per-arm reference classifier, so it could not drive Phase 4. Writes
+   the `oracle_ref` column and records FAIL rows rather than dropping them.
+3. **`bench/iada/scripts/s15_stats.py`** (new) — the house statistics
+   conventions without the pandas dependency `p2_ci.py` assumes, and with the
+   paired/unpaired distinction made explicit in the API so the S13 mistake
+   (bootstrapping paired quantities as independent) cannot be repeated silently.
+4. **`bench/iada/scripts/analyze-s15.py`** (new) — phase tables + `summary-s15.tsv`.
+   **Validated against banked numbers**: it reproduces S13's B-reference column
+   exactly (T1 −967.0, A +161.7, A−T1 +135 [−149, +421] p=0.39).
+5. **`bench/iada/scripts/label-app16-under-references.R`** (new) — per-row
+   replication of `getMLClass` used for the regime-labelling table above.
+6. **`bench/plot/plot-fig-baselines-oracle-jsa.py`** — added `fig_oracle_matrix()`
+   behind a new `--s15-root` flag. `fig_oracle()` and `fig_oracle.pdf` are
+   unchanged; the maintainer chooses which figure to use.
+
+**No trace-pairing fix was needed** (check 2 above), contrary to the brief's
+contingency.
+
+### Caveats
+
+- **n = 10 per cell** in the oracle matrix. Case 4 is a statement about what
+  cannot be concluded at this sample size, not proof that a reference-free
+  ordering does not exist.
+- **The A-reference T1-vs-A cell disagrees between tests** (bootstrap CI
+  excludes zero, Welch p=0.057). Treated as marginal.
+- **Every reference is a classifier, not measured application slowdown.** The
+  S13 caveat is unchanged and Case 4 does not weaken it — it makes it sharper,
+  since the choice of classifier now demonstrably determines the ordering.
+- **Toolchain differs from the 20260916 pass** (R 4.5.2/rJava 1.0.14 vs
+  4.3.3/1.0.18, different machine). The preflight gate covers all three tiers
+  and passes, but that is reproduction within noise, not bit-identity.
