@@ -151,6 +151,10 @@ def main():
     ap.add_argument("campaign_dir")
     ap.add_argument("--out", default=None)
     ap.add_argument("--tsv", default=None)
+    ap.add_argument("--tag-status", action="store_true",
+                    help="append a status column (OK/PROXY/UNAVAILABLE, "
+                         "intp_metrics.parse_backend_status) per row; default "
+                         "output filename gains a '-tagged' suffix unless --tsv is given.")
     args = ap.parse_args()
     base = args.campaign_dir.rstrip("/")
 
@@ -158,6 +162,19 @@ def main():
     if not apps:
         sys.exit(f"no data (expected {base}/<env>/<variant>/solo/<app>/rep*/portable.tsv)")
     med, avail, nreps = collect(base, envs, variants, apps)
+    status = {}
+    if args.tag_status:
+        for env in envs:
+            for var in variants:
+                for a in apps:
+                    reps = sorted(glob.glob(f"{base}/{env}/{var}/solo/{a}/rep*"))
+                    if not reps:
+                        continue
+                    for fn in ("portable.tsv", "profiler.tsv"):
+                        p = os.path.join(reps[0], fn)
+                        if os.path.exists(p):
+                            status[(env, var, a)] = M.parse_backend_status(p)
+                            break
 
     L = []
     def w(s=""):
@@ -334,8 +351,12 @@ def main():
         print(report)
 
     # ---- machine-readable TSV for the plot layer (F12 radar/heatmap) ----
-    tsv_path = args.tsv or os.path.join(base, "fingerprints.tsv")
-    rows = ["env\tvariant\tapp\tmetric\tclass\tmedian\tavail_frac\tnreps"]
+    default_name = "fingerprints-tagged.tsv" if args.tag_status else "fingerprints.tsv"
+    tsv_path = args.tsv or os.path.join(base, default_name)
+    hdr = "env\tvariant\tapp\tmetric\tclass\tmedian\tavail_frac\tnreps"
+    if args.tag_status:
+        hdr += "\tstatus"
+    rows = [hdr]
     for env in envs:
         for var in variants:
             for a in apps:
@@ -345,9 +366,12 @@ def main():
                 for m in METRICS_ALL:
                     mv = med[(env, var, a)].get(m)
                     av = avail[(env, var, a)].get(m, 0)
-                    rows.append(f"{env}\t{var}\t{a}\t{m}\t{CLASS_OF.get(m,'?')}\t"
-                                + ("" if mv is None else f"{mv:.6g}")
-                                + f"\t{av:.3g}\t{n}")
+                    row = (f"{env}\t{var}\t{a}\t{m}\t{CLASS_OF.get(m,'?')}\t"
+                           + ("" if mv is None else f"{mv:.6g}")
+                           + f"\t{av:.3g}\t{n}")
+                    if args.tag_status:
+                        row += "\t" + status.get((env, var, a), {}).get(m, "OK")
+                    rows.append(row)
     with open(tsv_path, "w") as fh:
         fh.write("\n".join(rows) + "\n")
     print(f"[wrote {tsv_path} ({len(rows) - 1} rows)]")

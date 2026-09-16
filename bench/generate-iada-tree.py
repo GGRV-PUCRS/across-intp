@@ -355,12 +355,19 @@ def materialize_aggregated(link: LinkedFile, method: str, force: bool, dry_run: 
             f"truncating to {min_rows} rows"
         )
 
+    # Column width is read from the data (7 for T1/A, 15 for B), not hardcoded --
+    # a fixed range(7) here silently truncated every tier-B merge (portable +
+    # regime columns 8-15 dropped) whenever a multi-rep pattern (mean/median)
+    # was requested, e.g. any campaign with >4 reps/workload needing to merge
+    # onto the canonical inc/dec/osc/con set. All series share one row width
+    # (guaranteed by write_meyer_csv's source format), so series[0][0] is safe.
+    width = len(series[0][0])
     merged: list[list[int]] = []
     for idx in range(min_rows):
         merged.append(
             [
                 aggregate_metric([trace[idx][metric_idx] for trace in series], method)
-                for metric_idx in range(7)
+                for metric_idx in range(width)
             ]
         )
     write_meyer_csv(dst, merged)

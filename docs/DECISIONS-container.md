@@ -1234,3 +1234,137 @@ environment: 15 of 19 figures byte-identical, 4 changed and all 4 intended.
 Aspect drift max 2.3 % (F9, from a third title line), the rest at or under
 0.1 %, so the seminar deck geometry survives the swap. `pytest bench/plot/tests`
 green (17 passed, 24 subtests); all six analyzers still import.
+
+### C36 — P5's "v2.1 correctly emits `--`" falsified: v2.1 vm-guest `llcocc` is a live proxy, not a gap (2026-09-16)
+
+**Continues the P5/C26 thread (line 664-676, C26 line 742).** P5's plan text
+reads: *"mbw/llcocc remain STRUCTURALLY unavailable in a stock KVM guest...
+recorded with an availability status distinct from `missing`... BLOCKER to fix
+before any vm-guest data is trusted: v3.3 reportedly emits silent zeros for
+mbw/llcocc/llcmr in an RDT-less guest instead of `--`... the exact 'do not
+fake it' violation the brief forbids (v2.1 correctly emits `--`)."* C26 later
+validated the v3.3 half of this ("v3.3 `--`-not-`0` (P5) ✓"). **The v2.1 half
+was never independently re-checked against the final campaign data, and it is
+false.**
+
+**Finding.** `llcocc`'s backend registry in v2.1 (`variants/v2.1-c-abi-cgroup/
+src/llcocc.c:130-142`) falls back `resctrl -> proxy_from_miss_ratio`. In a KVM
+guest (no resctrl), v2.1 does not emit `--` for `llcocc` — it silently emits a
+value derived from `llcmr` via the proxy backend. `v3.3` has no such fallback
+and correctly emits `--`. This is detectable, not guesswork: every `v2.1`
+`portable.tsv` header carries the backend registry verbatim (`# v2 backends:
+... llcocc=proxy_from_miss_ratio ...` in `vm-guest`, vs `llcocc=resctrl`
+everywhere else), and the actual data columns confirm it — a full scan of
+every `portable.tsv` under `results/p2-15metric-xdeploy-1of3{,-w5}`,
+`results/p2-tierb`, `results/p2-tierc` (all envs × both variants) finds
+exactly one (variant, env, metric) triple with this property:
+`v2.1 × vm-guest × llcocc = PROXY`, deterministic across every workload and
+repetition sampled. `mbw` (`mbw=none` in the same header line) has no such
+fallback and correctly stays `--` in v2.1 too — only `llcocc` is proxied.
+
+Downstream, this silently inflated `avail_frac`/median columns in three
+already-banked artifacts: `cross-deployment.tsv` (v2.1 vm-guest `llcocc` has
+5/5 workload rows with real, often-significant deltas, e.g. app11_sort_net
+78.0->1.0, `**bare_median=78, env_median=1.0, cliffs_delta=-1.0, ***`), the
+w5-victim-delta counterpart (5/5 workload rows), and `p2-tierb`/
+`p2-realapps-combined`'s `fingerprints.tsv` (all 5 real apps, `avail_frac=1`).
+Where v3.3 correctly goes blind (0/5, 0/5 rows respectively), v2.1 reports —
+a genuinely interesting asymmetry (v2.1 has a directional fallback where v3.3
+has none) worth keeping visible, not a defect to silently patch away.
+
+**Fix (analysis-layer only — no hardware re-run, no C-backend change).**
+- `bench/intp_metrics.py`: new `parse_backend_status(path)`, reading the
+  `#`-comment backend-registry line(s) of a `portable.tsv`/`profiler.tsv` and
+  classifying each metric `OK`/`PROXY`/`UNAVAILABLE`. The **data column is
+  authoritative** for OK-vs-UNAVAILABLE, not the declared backend string —
+  v3.3's header declares `llcocc:resctrl[mon_group]` even inside a vm-guest
+  where every row is `--` (the declaration names the *attempted* source, not
+  a guarantee it produced data); the declared string is trusted only to
+  detect an explicit `proxy` fallback.
+- `bench/analyze-cross-deployment.py`: new `--tag-status` flag (both the
+  cross-deployment and `--w5` modes) appends a `status` column, writing
+  `cross-deployment-tagged.tsv` / `w5-victim-delta-tagged.tsv` alongside the
+  originals (parallel outputs, per the brief — the banked files are
+  untouched). Row counts are byte-identical (711 / 421 lines incl. header);
+  only the new trailing column is added.
+- `bench/analyze-tierb.py`: same `--tag-status` flag, same convention, for
+  `results/p2-tierb` and `results/p2-tierc` (`p2-realapps-combined/
+  fingerprints.tsv` is their straight concatenation — confirmed byte-for-byte
+  — so the tagged combined file is assembled the same way).
+- Five figures regenerated with a third, distinct visual mark for PROXY cells
+  (never conflated with either "available" or "structurally unavailable"):
+  **Fig 1** (`fig:availability`, `plot-fig2-3-4-6-8-jsa.py`) — third hatch
+  (`"...."`, vs `"////"` for unavailable); **Fig 3** (`fig:claimclass`, same
+  file) — hatch overlay on the claim-class cell; **Fig 12** (`fig:vmproxy`,
+  `plot-fig11-fig12-jsa.py`) — third bar hatch, was previously showing v2.1's
+  proxied `llcocc` bar identically to a genuine RDT reading; **Fig 13**
+  (`fig:victim`, same file) — a colored ring around the marker, composable
+  with the existing saturation ring; **Fig 14** (`fig:fingerprint`,
+  `plot-tierb-fingerprint.py`) — a small triangle marker in the cell corner
+  (imshow cells can't carry a `Rectangle`-style hatch). All five keep full
+  backward compatibility (`--tag-status` off / no `status` column -> identical
+  output to before this change; verified byte-reproducible for the no-flag
+  path). `pytest bench/plot/tests`: 42 passed / 158 subtests, no regressions.
+- **Checked, not changed:** Fig 8 (`fig:w4faith`) and Fig 10 (`fig:preempt`)
+  plot `cpu`/`llcmr` and `psp` respectively — the full-campaign scan above
+  confirms PROXY never occurs for any metric other than `llcocc`, so these
+  two figures have nothing to mark. Fig 11 (`fig:anomaly`) does include
+  `llcocc` among its per-env Kruskal-Wallis panels, but its design point is
+  the unrelated, already-fixed T3/P7 container-attribution bug (root
+  `mon_group` fallthrough), and its box/violin panel layout has no clean
+  hatch-equivalent for a single proxied env among several — left as a
+  follow-up if the maintainer wants it, not silently dropped.
+
+**Incidental finding (out of scope, flagged not chased):** building the
+per-rep status scan surfaced that `schedthr` in `container-lxc` (both
+variants) flickers between a real `0` reading and `--` **within the same
+cell**, sometimes within the same rep — 18 such disagreements logged across
+the two 15-metric campaigns, all confined to `container-lxc`. This looks like
+intermittent CFS-throttle read flakiness specific to that runtime, distinct
+from the deterministic RDT/proxy story above (which never disagrees across
+reps). Not investigated further here — out of scope for this pass, but worth
+a dedicated look before `schedthr` claims are tightened for `container-lxc`.
+
+**Not a repo fix:** the C backend's `resctrl -> proxy_from_miss_ratio`
+fallback itself is untouched — changing it would require re-measuring, which
+is out of scope for this pass (see `jsa-repo-fix-brief.md` Phase 1 framing).
+This entry is about correctly *labeling* data already collected.
+
+### C37 — vm-guest `cpu` ratio hypothesis: host/guest CPU-count denominator mismatch, checked (2026-09-16)
+
+**Finding.** Guest `cpu` ratios of 1.45-3.35x (vs bare) line up almost exactly
+with 48 host logical threads / 16 guest vCPUs = 3.0x (the banked one-third
+footprint; `bench_cpus=16` confirmed in a live vm-guest `run.json`) and 48/32
+= 1.5x (the superseded two-thirds-footprint run). Hypothesis: the host's
+`cpu` reading normalizes to the full 48 physical threads while the guest's
+normalizes to its own 16 vCPUs, so identical absolute work reads ~3x higher
+inside the guest — a denominator mismatch, not a fidelity defect.
+
+**Checked (no rerun).** New `results/p2-15metric-xdeploy-1of3/vm-cpu-
+renormalized.tsv`, additive to the existing ratio column (raw ratio kept,
+`ratio_renormalized = ratio_raw * 16/48` added alongside, both auditable):
+
+| workload | variant | ratio_raw | in 0.8-1.25? | ratio_renorm | in 0.8-1.25? |
+|---|---|---|---|---|---|
+| app01_ml_llc | v2.1 | 3.351 | no | 1.117 | **yes** |
+| app05_streaming | v2.1 | 3.000 | no | 1.000 | **yes** |
+| app10_search | v2.1/v3.3 | 3.030 | no | 1.010 | **yes** |
+| app11_sort_net | v2.1/v3.3 | 3.030 | no | 1.010 | **yes** |
+| app01_ml_llc | v3.3 | 3.237 | no | 1.079 | **yes** |
+| app13_query_scan | v2.1 | 1.000 | yes | 0.333 | no |
+| app05_streaming | v3.3 | 1.700 | no | 0.567 | no |
+| app13_query_scan | v3.3 | 1.500 | no | 0.500 | no |
+
+Raw: 1/10 cells inside the 0.8-1.25 corridor. Renormalized: **7/10**. The
+hypothesis collapses the ratio cleanly for every workload with meaningful CPU
+load (>=18% bare-metal `cpu`); the two `app13_query_scan` rows (2-3% bare
+`cpu` — the disk workload, essentially idle on this metric) and
+`app05_streaming`/v3.3 (an existing outlier elsewhere in this campaign, not
+reproduced by v2.1 on the same workload) don't fully collapse — most likely
+noise dominating at low absolute utilization rather than a falsification,
+but this is disclosed, not asserted.
+
+**Disposition:** the hypothesis is checked and substantially confirmed, not
+proven for every cell. Goes to `PAPER-SYNC.md` as a caveat sentence
+regardless of the residual 3 cells — per the brief, the paper needs to
+disclose the hypothesis and what was checked either way.

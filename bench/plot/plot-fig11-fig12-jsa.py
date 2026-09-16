@@ -64,7 +64,9 @@ def load(tsv: Path):
             cd = float(r["cliffs_delta"])
         except ValueError:
             continue
-        cells[(env, var, m)].append((cd, r["signif"] not in SIG))
+        # status ("OK"/"PROXY"/"UNAVAILABLE") is only present with
+        # --tag-status (bench/analyze-cross-deployment.py); absent otherwise.
+        cells[(env, var, m)].append((cd, r["signif"] not in SIG, r.get("status", "OK")))
     return cells, present, sorted(variants)
 
 
@@ -72,7 +74,10 @@ def agg(cells, env, var, m):
     xs = cells.get((env, var, m))
     if not xs:
         return None
-    return median(c for c, _ in xs), sum(s for _, s in xs) / len(xs)
+    # status is deterministic per (env,var,metric) -- verified across the
+    # full campaign, 2026-09-16 -- so any entry's value is authoritative.
+    return (median(c for c, _, _ in xs), sum(s for _, s, _ in xs) / len(xs),
+            xs[0][2])
 
 
 def fig_victim(cells, present, variants, out: Path) -> None:
@@ -105,7 +110,7 @@ def fig_victim(cells, present, variants, out: Path) -> None:
                                 fontsize=style.AXIS_FLOOR, color="grey",
                                 ha="center", va="center")
                     continue
-                cd, fs = a
+                cd, fs, st = a
                 off = 0.16 if var == variants[0] else -0.16
                 saturated = abs(cd) >= 0.995
                 # Saturated |delta|=1.0 cells get a black outline ring behind
@@ -114,6 +119,12 @@ def fig_victim(cells, present, variants, out: Path) -> None:
                 if saturated:
                     ax.plot(cd, yc + off, mark.get(var, "o"), ms=10.5,
                             mfc="none", mec="black", mew=1.1, zorder=2.5)
+                # PROXY: a real reading via a substitute backend (e.g. v2.1
+                # vm-guest llcocc's miss-ratio fallback) -- a colored ring
+                # distinct from the saturation ring so it composes with it.
+                if st == "PROXY":
+                    ax.plot(cd, yc + off, "o", ms=13, mfc="none",
+                            mec=style.VERMILLION, mew=1.0, zorder=2.4)
                 ax.plot(cd, yc + off, mark.get(var, "o"), ms=6,
                         color=col, mfc=(col if fs >= 0.5 else "white"),
                         mec=col, mew=1.2, zorder=3)
@@ -139,6 +150,9 @@ def fig_victim(cells, present, variants, out: Path) -> None:
                    ms=5.5, label="not signif. (open)"),
         plt.Line2D([0], [0], marker="o", color="k", mfc="none", mec="black",
                    mew=1.1, ls="", ms=9, label="saturated |δ|=1.0"),
+        plt.Line2D([0], [0], marker="o", color="k", mfc="none",
+                   mec=style.VERMILLION, mew=1.0, ls="", ms=11,
+                   label="proxy backend"),
     ]
     if len(variants) > 1:
         handles += [
@@ -189,11 +203,16 @@ def fig_vmproxy(cells, present, variants, out: Path) -> None:
                 hatch.append("////")
                 notes.append("unavailable" if unavailable else "n/a")
             else:
-                cd, fs = b
+                cd, fs, st = b
                 vals.append(cd)
                 cols.append(FAM_COLOR[fam] if fam != "canon" else style.BLUE)
-                hatch.append(None)
-                notes.append("signif." if fs >= 0.5 else "n.s.")
+                # PROXY: the bar IS real data, but from a substitute backend
+                # (e.g. v2.1 vm-guest llcocc's miss-ratio fallback) -- distinct
+                # from both a genuine reading (no hatch) and a structurally
+                # absent one ("////" above).
+                hatch.append("...." if st == "PROXY" else None)
+                note = "signif." if fs >= 0.5 else "n.s."
+                notes.append(note + " (proxy)" if st == "PROXY" else note)
         bars = ax.barh(yy, vals, color=cols, alpha=0.9, zorder=2,
                         edgecolor="black", linewidth=0.3)
         for b, h in zip(bars, hatch):
@@ -219,8 +238,10 @@ def fig_vmproxy(cells, present, variants, out: Path) -> None:
         plt.Rectangle((0, 0), 1, 1, fc=style.BLUISH_GREEN, label="portable proxy"),
         plt.Rectangle((0, 0), 1, 1, fc=style.GREY, hatch="////",
                       label="unavailable in this deployment"),
+        plt.Rectangle((0, 0), 1, 1, fc=style.BLUE, hatch="....",
+                      label="reading via substitute backend"),
     ]
-    fig.legend(handles=handles, loc="outside lower center", ncol=3,
+    fig.legend(handles=handles, loc="outside lower center", ncol=4,
                frameon=False, fontsize=style.LEGEND, handlelength=1.2,
                handletextpad=0.4, columnspacing=1.0)
 

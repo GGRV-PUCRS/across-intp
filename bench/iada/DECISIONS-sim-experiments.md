@@ -238,12 +238,307 @@ Full evidence: `bench/iada/CONFORMANCE.md` (findings N1–N8, V1–V4).
    O(n²) memory and OOM-killed the campaign machine twice before being
    replaced by the exact contingency form (V2).
 
+## S10 — S8 adopted: tier B's banked gate is now psp-keyed (2026-09-16)
+
+Driven by `jsa-repo-fix-brief.md` Phase 3.0/3.1. Resolves the "adoption
+pending owner decision" note on S8 and the wiring gap it depended on.
+
+**3.0 — wiring gap found and fixed.** The S8 patch
+(`bench/iada/patches/s8-regime-psp-rekey.patch`) was already applied to the
+in-repo, version-controlled copy of tier B's inference R
+(`bench/iada/tier-b-R/kmeans.R`, commit `2d1017f`) — but `MLClassifier.java`
+actually loads tier B's `.rda` models and R sources from an **external**,
+non-versioned directory via `INTP_R_FOLDER`
+(`/home/saccilotto/iada-tier-rda/B/` on this checkout), and *that* copy's
+`kmeans.R` was still schedlat-keyed (`predict.kmeans(object, newdata, 8)`).
+The freeze into version control was never re-synced to the directory the
+simulator actually reads. Fixed by applying the identical 3-line change
+(var 8 → 14) to the external copy (backup kept:
+`iada-tier-rda/B/kmeans.R.bak-schedlat-preS8-20260916`); the two copies are
+now byte-identical.
+
+**Toolchain note.** This checkout had no R, no JDK, and no pre-built
+CloudSim `bin/`/IADA source tree; all three were stood up fresh (R 4.5.2 +
+rJava/JRI, `CloudSimInterference` compiled with `--release 8` against the
+system's JRI jars — the vendored ones predate the installed R/rJava and
+don't link — and a fresh 28-trace vm-guest/v3.3 tier-B source tree via
+`convert-profiler-to-meyer.py` + `generate-iada-tree.py` against
+`results/p2-15metric-xdeploy-1of3`). Building the tier-B tree surfaced two
+real bugs in `generate-iada-tree.py`, both now fixed: its `median`/`mean`
+pattern-merge path hardcoded `range(7)` when writing merged CSVs, silently
+truncating every tier-B (15-column) merge to 7 columns whenever a campaign
+had more than 4 reps/workload (any `--pattern-merge median|mean` run); and
+its `--no-clamp` flag exists but must be passed explicitly (undocumented
+outside its own `--help`) or portable-metric magnitudes (e.g. `membw_est`
+in the thousands) get silently clamped to 100. Neither bug is specific to
+this rerun — any future tier-B tree build hits both.
+`Rengine.stop()` (JRI) calls the now-removed `Thread.stop()`, which JDK 20+
+throws `UnsupportedOperationException` on; JDK 8 (this project's own
+documented target) was used for the actual simulation runs. JDK 25 (this
+sandbox's default) cannot run this simulator at all, independent of any
+other change.
+
+**3.1 — gate rerun, psp-keyed, n=20 (12 hosts, 28 traces, matching S8's own
+convention):**
+
+| arm | n | idi_mean | sd | vs old schedlat gate (5382.5, sd 337) |
+|---|---|---|---|---|
+| B-psp gate (this rerun) | 20 | **4283.5** | 138.2 | −1099.0, ≈20.4% lower |
+| B-psp gate (S8's own extension arm, 2026-08-12) | 20 | 4402.3 | 133 | −980, ≈18.2% lower |
+
+The two independent n=20 psp-keyed reruns agree to within 2.7% of each
+other (4283.5 vs 4402.3) — both well inside one sd of either run — and both
+land far below the schedlat-keyed baseline, confirming S8's finding
+independently rather than just re-reading it. The small residual gap is
+consistent with the SA scheduler's own unseeded randomness (`CONFORMANCE.md`
+F3) plus this rerun's independently-regenerated source tree (median-merged
+from this checkout's own `p2-15metric-xdeploy-1of3` reps, not necessarily
+the identical rep→pattern assignment the original run used) — not a
+methodology divergence. Raw:
+`bench/iada/results/sim-experiments-20260916/gate-B-psp-n20.tsv`.
+
+**Rebank, effective now:** tier B's banked gate is **4283.5 ± 138.2 (n=20,
+psp-keyed)**, adopted as the default (not a separate S8/B-psp arm). The
+prior numbers are kept as superseded history, not deleted:
+- **5382.5 ± 337 (n=10, schedlat-keyed)** — this campaign's own rel8 gate
+  re-measurement of the pre-S8 config (2026-08-11/12).
+- **5753 ± 534** — the paper's currently-quoted headline number (`main-jsa.tex`
+  `fig:tiers` caption, a different/older measurement lineage than this
+  campaign's rel8 rebuild). `PAPER-SYNC.md` flags this as a headline-number
+  change requiring the maintainer's sign-off.
+The F13 annotation "10% lower IDI vs canonical" (vs T1's ~6399) becomes
+**≈33% lower** under the rebanked B (was ≈31% under S8's own 4402.3
+estimate; both supersede the 10% figure, which was computed against the
+schedlat-keyed 5382.5/5753).
+
+**E2 rerun against the rebanked B (n=10, `-Diada.regime=off`):**
+
+| arm | n | idi_mean | sd | delta vs B-psp gate |
+|---|---|---|---|---|
+| B-psp, regime off | 10 | 3293.4 | 146.0 | **−990.2** [−1089.6, −883.4] * |
+
+The regime term now carries **≈23.1%** of B-psp's IDI over the no-regime
+baseline (was ≈39% of the schedlat-keyed B's IDI in the original E2 arm) —
+qualitatively the same finding (the regime multiplier is a real, substantial
+contributor, not noise), with a smaller absolute/relative share now that the
+level signal itself is properly calibrated rather than a tie-break artifact.
+Raw: `bench/iada/results/sim-experiments-20260916/e2-regime-off-B-psp-n10.tsv`.
+
+**Not rerun this pass:** E1/E3/E4/E5 against the rebanked B (E4's ramp-shape
+arms in particular would be the most informative rerun, since S8's own note
+says "the tie-break levels were destroying the ramp experiment's
+statistical power" — expected to now show real, resolvable shape effects).
+Flagged as follow-up, not attempted here — out of the brief's explicit
+Phase 3.1 scope (S8 adoption + E2 only).
+
+## S11 — Phase 3.3: migration-cost repair implemented and sensitivity-tested (2026-09-16)
+
+Driven by `jsa-repo-fix-brief.md` Phase 3.3. The caveat itself was already
+precisely located (`CONFORMANCE.md` §4.3, N3/F2/C5): `migvalue = 10`
+(`IntContainerDataCenter.java:1097`) is added only inside the *reported*
+`interf with mig` log line, never inside the SA/SAO objective
+(`Solution.getTotalInterferenceCost()`, `Placement.java`) that a mutation is
+actually accepted or rejected against — the search is migration-blind; only
+the monotone-migration ratchet at the best-update step limits runaway
+migration counts, and that ratchet is unchanged here.
+
+**Repair implemented** (the sketch in `CONFORMANCE.md` §4.3, not previously
+applied): `-Diada.migCost=<v>` (default `0`, keeping every existing call
+byte-identical) added at the accept/reject comparison in both
+`Placement.SimulatedAnnealing` and `Placement.SimulatedAnnealingOptimized`
+— `newCost += newSolution.getNumberOfMigrations(currentSolution) * migCost`
+before the `acceptanceProbability` check. Plain `SimulatedAnnealing` (CIAPA's
+algorithm) got the identical change for consistency, though CIAPA itself
+cannot currently be exercised (S12, below).
+
+**E6 — migration-cost sensitivity arm, tier B-psp, n=10, `-Diada.migCost=10`
+(the same magnitude as the existing `migvalue` reporting constant), vs the
+S10 ratchet-only gate (n=20, mean 4283.5, sd 138.2):**
+
+| metric | gate (n=20) | E6 migCost=10 (n=10) | delta | 95% CI |
+|---|---|---|---|---|
+| idi_avg | 4283.5 ± 138.2 | 4284.7 ± 201.2 | +1.2 | [−112.2, +146.2] n.s. |
+| migrations/rep | 21.1 ± 10.6 | 26.0 ± 11.8 | +4.85 | [−3.65, +12.95] n.s. |
+
+**Null result, both metrics.** At `migCost=10`, penalizing migrations inside
+the SA acceptance step changes neither the final IDI nor the migration count
+— the CI on both deltas comfortably includes zero. Two plausible mechanisms,
+not distinguished by this single arm: (a) the SAO temperature schedule
+starts at 10,000,000 (`Placement.java:147`), so
+`acceptanceProbability`'s `exp((currentCost−newCost)/temperature)` is
+essentially insensitive to a cost perturbation the size of one migration's
+`migvalue` until temperature has cooled by orders of magnitude, by which
+point most of the search has already happened; (b) the best-update ratchet
+(`currentSolution.getNumberOfMigrations(best) < nCloudlets`, unchanged) may
+already be the dominant constraint on migration count, leaving little room
+for an objective-level penalty to move the needle further. Disclosed as a
+genuine null, not chased further — a `migCost` sweep (10, 100, 1000, ...)
+would be the natural follow-up if the maintainer wants to resolve which
+mechanism dominates, out of scope for this pass. Raw:
+`bench/iada/results/sim-experiments-20260916/e6-migcost10-B-psp-n10.tsv`.
+
 ## Open questions
 
-1. ~~**S8** — psp-keyed regime level column.~~ Ratified above; adoption
-   into the banked campaign pending owner decision.
+1. ~~**S8** — psp-keyed regime level column.~~ Ratified above; **adopted
+   as the banked default 2026-09-16 (S10)** — no longer pending.
 2. Whether E1's startup-delay result justifies moving the *default* to a
    shorter delay (breaks banked comparability; would need a rebank).
 3. Application-level runtime ground truth for ramp magnitudes — W5 has stall
    fractions (psi_*) but no response-time capture; out of scope for the
    simulation-only campaign.
+
+## S12 — Phase 3.4: EVEN/CIAPA baselines run for the first time; CIAPA crashes; Segmented isn't code (2026-09-16)
+
+Driven by `jsa-repo-fix-brief.md` Phase 3.4. `IntContainerDataCenter.
+InterferenceClassifier()` had working `IASA`/`EVEN`/`CIAPA` branches, but
+`String approach = "IASA";` was a hardcoded local literal
+(`IntContainerDataCenter.java:1098`, pre-fix) — nothing in this repo ever
+selected EVEN or CIAPA at runtime, so no result for either exists anywhere
+in the banked history. Fixed: `approach = System.getProperty("iada.approach",
+"IASA")` — default unchanged, `-Diada.approach=EVEN|CIAPA` now reachable.
+
+**EVEN (algorithm="RR", single `fillInitialSolution`, no migrations by
+construction — confirmed in code, not just by absence of a print block):**
+
+| tier | n | interference_avg | idi_avg | note |
+|---|---|---|---|---|
+| T1 | 10 | **49796.48** (every rep, identical) | n/a | RR placement is deterministic — no `Math.random()` in its path, so 10 reps is redundant, not a sampling estimate |
+| A  | 10 | **58263.10** (every rep, identical) | n/a | same |
+| B  | 10 | **32790.74** (every rep, identical) | n/a | same |
+
+`idi_avg` is `n/a` for EVEN, not zero: `parse-cloudsim-output.py` derives it
+only from the "interf with mig" log section, which EVEN never prints (no
+migrations occur under a single static placement, so there is nothing to
+report there). `interference_avg` (`getTotalInterferenceCost()`, logged
+identically for every approach) is the fair cross-approach yardstick;
+reporting EVEN's `idi_avg` as `0` — what the raw TSV literally contains —
+would misread as "zero interference," which is not what happened.
+`interference_avg` for comparison, IASA gate (this session, n=10 each,
+matching S3/S10's protocol): T1 **6497.2 ± 190.1**, A **3592.8 ± 251.6**,
+B (psp-keyed) **4283.5 ± 138.2** (S10, n=20). **EVEN is 6.7-16.2x worse than
+IASA's search on every tier** (T1 7.7x, A 16.2x, B 7.7x) — a single static
+round-robin placement with no interference-aware search or migration leaves
+a large amount of avoidable interference on the table, which is the
+expected qualitative result and the reason this comparison is worth having
+in the paper.
+
+**CIAPA (algorithm="SA", hardcoded two-interval schedule) — crashes, does
+not produce a result:**
+
+```
+java.lang.IndexOutOfBoundsException: Index: 120, Size: 120
+	at java.util.ArrayList.rangeCheck(ArrayList.java:659)
+	at java.util.ArrayList.get(ArrayList.java:435)
+	at cloudsim.interference.Interference.getIntByLine(Interference.java:136)
+	at cloudsim.interference.MLClassifier.getMLClass(MLClassifier.java:165)
+	at cloudsim.interference.datacenter.IntContainerDataCenter.fillInitialSolution(IntContainerDataCenter.java:1390)
+	at cloudsim.interference.datacenter.IntContainerDataCenter.InterferenceClassifier(IntContainerDataCenter.java:1298)
+```
+
+`IntContainerDataCenter.java:1294` hardcodes CIAPA's first analysis window
+to `interval = 600` (seconds/rows) regardless of trace length; this
+campaign's traces are 120 rows (120 s at 1 Hz). `fillInitialSolution`
+requests row 600 from a 120-row `Interference` object, `getIntByLine`
+does an unchecked `ArrayList.get`, and the simulation thread dies mid-event
+with no recovery — the run then hangs to the process's `TIMEOUT` rather
+than exiting promptly (same failure shape, different root cause, as the
+Thread.stop()/JDK crash noted in S10 — an uncaught exception inside
+`updateCloudletProcessing`'s event-processing thread stalls the whole
+discrete-event loop). **Not fixed here** — deciding CIAPA's correct
+behavior against traces shorter than its hardcoded 600 s assumption (clamp
+the interval? scale it? treat as a single-interval case like EVEN?) is a
+design decision belonging to whoever specified CIAPA's two-interval
+scheme, not a bug this pass should silently paper over. Documented so the
+"no result exists" state has a precise, evidenced reason instead of an
+absence.
+
+**"Segmented" (paper §4.5/2.5, cited as "the per-class k-means degradation
+variant of the classifier lineage [20]"):** `grep -ril "segmented"
+CloudSimInterference/src` returns **zero matches**. It is not a distinct
+code path anywhere in this fork — `MLClassifier`/`Degradation` have exactly
+the T1/A/B tier machinery already covered above, no fourth variant. Stated
+plainly rather than invented: `PAPER-SYNC.md` needs to either drop the
+"Segmented" promise from §4.5/2.5 or point it at an external citation only,
+not at a result this repo can produce.
+
+Raw: `bench/iada/results/sim-experiments-20260916/{even-baseline-t1ab-n10,
+gate-T1-A-n10}.tsv`.
+## S13 — Phase 3.2: oracle-scoring design investigated; not implemented this pass (2026-09-16)
+
+Driven by `jsa-repo-fix-brief.md` Phase 3.2, the brief's own "most
+open-ended item." Per the brief's explicit fallback ("state clearly what
+was and wasn't done" if the full redesign doesn't land in time) — this
+entry is that statement.
+
+**The finding being addressed (unchanged, already well-located):**
+`MLClassifier` trains/predicts per tier with its own feature width; each
+cost lookup (`IntContainerDataCenter.java:1400/1426/1452/1490`,
+`MLCR = MLC.getMLClass(...)`) uses that tier's OWN self-prediction. T1/A/B's
+gate IDI numbers (S1/S10) are each measured on a different yardstick — a
+placement can look better under one tier purely because that tier's
+classifier assigns lower degradation levels, independent of whether the
+underlying placement is actually better.
+
+**Option (b) checked, not tractable with the data on hand.** The brief
+prefers labels "derived directly from the colocation victim-delta campaign
+(measured Cliff's δ/significance) rather than any SVM prediction" — this
+removes classifier circularity entirely. Checked against
+`results/p2-15metric-xdeploy-1of3-w5/w5-victim-delta.tsv`: the W5 campaign's
+victim set is `{app01_ml_llc, app07_ordering, app10_search, app11_sort_net,
+app13_query_scan}` (the 5-class W4/W5 spine) — **not** the 7-workload set
+this session's 28-trace tree uses (S10/S12; adds `app05_streaming`,
+`app16_cpu_oversub`, `app17_mem_pressure`, drops `app07_ordering`, which
+isn't in the 15-metric campaign at all). A from-measurement oracle would
+have real Cliff's-δ-derived levels for 5 of 7 cloudlet workloads and
+**invented** ones for the other 2 (including the regime workload,
+`app16_cpu_oversub` — the one class this whole 15-metric/psp story is
+about). Not attempted; inventing 2/7 workloads' oracle labels to complete
+a "measured oracle" would misrepresent what the number actually is.
+
+**Option (a) attempted, found to need more than a flag swap, and rolled
+back before producing numbers.** Built the infrastructure: `MLClassifier`
+gained a `MLClassifier(String rFolder)` constructor (kept; overloads the
+existing env-var-only constructor, default behaviour unchanged) so a second
+classifier instance can point at a different tier's R folder independently.
+The first implementation attempt then routed **every** in-search
+classification call (`MLC.getMLClass` → a shared oracle instance) through
+tier B's classifier for all three tiers. **This is the wrong design and was
+reverted before running anything with it** — routing every in-loop call
+through B's classifier doesn't give "T1/A/B's own searches, scored on a
+common yardstick," it gives "T1/A/B's search all run against B's classifier
+during the search itself," which conflates two different questions: *does
+a narrower classifier make WORSE placement decisions* (what T1/A/B's own
+searches already test) vs. *what does a common classifier think of the
+placement a narrower search found* (what an oracle re-score should answer).
+The reverted version would have answered neither cleanly.
+
+**What the correct implementation needs (not built):** each tier's SA
+search must stay untouched — T1 must still search blind, that's the
+mechanism under test — and only the FINAL converged `best` `Solution` gets
+re-scored, after the fact, by feeding each of its cloudlets' full 15-metric
+fingerprint (not the tier's own 7-wide slice) to tier B's classifier and
+recomputing `getTotalInterferenceCost()`-equivalent from those oracle
+costs. That requires either (i) loading a second, 15-wide `Interference`
+trace set inside the Java simulator alongside whichever tier's own
+narrower traces drive its search, with a post-search re-scoring pass over
+`best`'s placement map, or (ii) parsing the final placement (host↔cloudlet
+assignment, already printed via `Solution.print()`) out of each tier's
+`cloudsim.log` and re-scoring it in Python/R against the oracle-trace tree
+this session already built (`/tmp/tree-B-vm-guest`, 15-wide, 28 cloudlets,
+kept in `bench/iada/results/sim-experiments-20260916/` — note this exact
+tree is only in `/tmp`, not preserved; regenerate via the recipe in S10 if
+picking this up), replicating `Degradation`'s multiplier tables (they're
+short enough to port directly, `Degradation.java` is 476 lines total) and
+`Solution.getCostFromHost`'s per-host product logic. Route (ii) is
+probably faster to implement correctly since it needs no Java rebuild risk
+to the already-validated S10-S12 numbers.
+
+**Disposition:** not completed this pass. `MLClassifier(String rFolder)`
+stays as useful groundwork; nothing else oracle-related is wired into the
+live cost path — the S10/S12 numbers above are unaffected by this
+investigation (call sites confirmed reverted to `MLC.getMLClass`, rebuild
+confirmed clean). `PAPER-SYNC.md` carries the one-sentence caveat this
+section supports: T1/A/B's IDI numbers are each self-scored, not
+cross-tier-comparable on a common yardstick; that comparison remains
+future work.
+

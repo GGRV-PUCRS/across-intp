@@ -54,6 +54,7 @@ CLASS_COLOR = {"cpu": "#1f77b4", "mem": "#2ca02c", "cache": "#9467bd",
 
 def load(tsv: Path):
     med = defaultdict(dict)     # (env,var,app) -> {metric: median}
+    status = defaultdict(dict)  # (env,var,app) -> {metric: 'OK'/'PROXY'/'UNAVAILABLE'}
     cls = {}                    # metric -> class
     apps, envs, variants = [], [], []
     with tsv.open() as fh:
@@ -62,10 +63,12 @@ def load(tsv: Path):
             cls[m] = r["class"]
             if r["median"] != "":
                 med[(e, v, a)][m] = float(r["median"])
+            if "status" in r:
+                status[(e, v, a)][m] = r["status"]
             for lst, x in ((apps, a), (envs, e), (variants, v)):
                 if x not in lst:
                     lst.append(x)
-    return med, cls, sorted(apps), envs, sorted(variants)
+    return med, status, cls, sorted(apps), envs, sorted(variants)
 
 
 def save(fig, out: Path, name: str):
@@ -112,12 +115,13 @@ def _class_spans(metrics):
 
 
 def heatmap_panel(ax, med, key, apps, applabels, metrics, norm_max,
-                  show_y, show_x, show_classlabels):
+                  show_y, show_x, show_classlabels, status=None):
     """One env·variant heatmap: apps (rows) × metrics (cols). Colour normalized
     per metric to norm_max[metric] (env-scoped). Label visibility is controlled
     by the grid position so nothing overlaps: class labels only on the top row,
     metric ticks only on the bottom row, app ticks only on the left column."""
     env, var = key
+    status = status or {}
     M = np.full((len(apps), len(metrics)), np.nan)
     raw = np.full((len(apps), len(metrics)), np.nan)
     for ri, a in enumerate(apps):
@@ -140,6 +144,13 @@ def heatmap_panel(ax, med, key, apps, applabels, metrics, norm_max,
                 txt = f"{raw[ri,ci]:.0f}" if abs(raw[ri, ci]) >= 1 else "0"
                 ax.text(ci, ri, txt, ha="center", va="center", fontsize=6,
                         color="white" if M[ri, ci] > 0.6 else "black")
+                # PROXY (e.g. v2.1 vm-guest llcocc via the miss-ratio fallback):
+                # a real reading via a substitute backend -- a small triangle
+                # marker in the cell corner, since imshow cells can't carry a
+                # matplotlib hatch the way a Rectangle patch can.
+                if status.get((env, var, apps[ri]), {}).get(metrics[ci]) == "PROXY":
+                    ax.plot(ci + 0.32, ri - 0.32, marker="^", ms=4,
+                            color="black", zorder=5, clip_on=False)
             else:
                 ax.text(ci, ri, "—", ha="center", va="center", fontsize=6, color="grey")
     for _, c, left, span in _class_spans(metrics):
@@ -152,7 +163,7 @@ def heatmap_panel(ax, med, key, apps, applabels, metrics, norm_max,
     return im
 
 
-def fig_fingerprint(med, cls, apps, envs_show, variants, out):
+def fig_fingerprint(med, status, cls, apps, envs_show, variants, out):
     """2×2 (environment × variant) grid: each env is a row-band, each variant a
     column. Colour is normalized per (env, metric) so each environment band is
     internally comparable; raw medians annotated in every cell."""
@@ -176,7 +187,7 @@ def fig_fingerprint(med, cls, apps, envs_show, variants, out):
             nm = {m: norm_max[(e, m)] for m in metrics}
             im = heatmap_panel(ax, med, (e, v), apps, applabels, metrics, nm,
                                show_y=(ci == 0), show_x=(ri == nr - 1),
-                               show_classlabels=(ri == 0))
+                               show_classlabels=(ri == 0), status=status)
             if ri == 0:                      # variant column header (above class row)
                 ax.annotate(v, xy=(0.5, 1.16), xycoords="axes fraction",
                             ha="center", va="bottom", fontsize=12, fontweight="bold")
@@ -199,6 +210,7 @@ def fig_fingerprint(med, cls, apps, envs_show, variants, out):
                  "(rows = environment, columns = "
                  "profiler variant; cell = raw median; colour normalized per metric "
                  "within each environment; ⚠ = under-driven at the 1/3 footprint; "
+                 "▲ = reading via substitute backend (proxy); "
                  "solo)", fontsize=11, y=0.985)
     save(fig, out, "F12-fingerprint")
 
@@ -274,13 +286,13 @@ def main() -> int:
     fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
     p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.tsv))
-    med, cls, apps, envs, variants = load(args.tsv)
+    med, status, cls, apps, envs, variants = load(args.tsv)
     want = [e.strip() for e in args.envs.split(",")]
     envs_show = [e for e in want if e in envs] or \
                 [e for e in ("container", "vm-guest", "bare") if e in envs] or envs
     out = args.out or Path("results/figures/p2-tierb-realapps")
     out.mkdir(parents=True, exist_ok=True)
-    fig_fingerprint(med, cls, apps, envs_show, variants, out)
+    fig_fingerprint(med, status, cls, apps, envs_show, variants, out)
     fig_activation(med, apps, envs_show, variants, out)
     return 0
 

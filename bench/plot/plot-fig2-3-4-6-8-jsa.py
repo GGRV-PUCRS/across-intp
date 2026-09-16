@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import glob
 import statistics
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -41,6 +42,9 @@ except ImportError:
     spearmanr = None
 
 import jsa_style as style
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import intp_metrics as M  # noqa: E402
 
 VARIANT_LABELS = {"v2.1": "c-abi-cgroup", "v3.3": "ebpf-core-cgroup"}
 ENV_ORDER = ["container", "container-podman", "container-lxc",
@@ -119,6 +123,21 @@ def scan_cells(base: Path):
     return cells
 
 
+def scan_backend_status(base: Path):
+    """(env, variant) -> {metric: 'OK'|'PROXY'|'UNAVAILABLE'}, one portable.tsv
+    sampled per cell (the status is a deterministic property of (env,variant),
+    verified across the full campaign, 2026-09-16 -- see intp_metrics.
+    parse_backend_status)."""
+    status: dict[tuple, dict] = {}
+    for f in sorted(glob.glob(str(base / "*/v*/solo/*/rep*/portable.tsv"))):
+        p = Path(f)
+        env, var = p.parts[-6], p.parts[-5]
+        if (env, var) in status:
+            continue
+        status[(env, var)] = M.parse_backend_status(f)
+    return status
+
+
 def cell_median(cells, env, var, wl, metric):
     reps = cells.get((env, var, wl), [])
     vals = [r[metric] for r in reps if metric in r]
@@ -149,11 +168,12 @@ def gt_llc_miss(rep_dir: Path) -> float | None:
 # Figure_2 / fig:availability
 # ---------------------------------------------------------------------
 
-def fig_availability(cells, out: Path) -> None:
+def fig_availability(cells, out: Path, status=None) -> None:
     metrics = METRICS_PORTABLE + METRICS_REGIME + ["mbw", "llcocc", "llcmr"]
     variants = sorted({k[1] for k in cells})
     envs = ["bare"] + ENV_ORDER
     OK, GONE = style.BLUISH_GREEN, style.GREY
+    status = status or {}
 
     width = style.TEXT_WIDTH
     height = 3.0
@@ -168,11 +188,17 @@ def fig_availability(cells, out: Path) -> None:
                     if e == env and v == var for r in rl]
             for xi, m in enumerate(metrics):
                 ok = any(m in r for r in reps)
+                # PROXY (e.g. v2.1 vm-guest llcocc via the miss-ratio fallback,
+                # DECISIONS-container.md P5/C26/2026-09): a real reading, but
+                # from a substitute backend -- distinct hatch from both a
+                # genuine backend reading and a structurally absent one.
+                st = status.get((env, var), {}).get(m, "OK" if ok else "UNAVAILABLE")
+                proxy = ok and st == "PROXY"
                 ax.add_patch(plt.Rectangle(
                     (xi, yi), 0.94, 0.94,
                     facecolor=OK if ok else GONE,
                     edgecolor="white", linewidth=0.6,
-                    hatch=None if ok else "////"))
+                    hatch=("...." if proxy else None) if ok else "////"))
         ax.set_xlim(0, len(metrics))
         ax.set_ylim(0, len(envs))
         ax.set_xticks(np.arange(len(metrics)) + 0.47)
@@ -193,6 +219,8 @@ def fig_availability(cells, out: Path) -> None:
 
     handles = [
         plt.Rectangle((0, 0), 1, 1, fc=OK, label="available"),
+        plt.Rectangle((0, 0), 1, 1, fc=OK, hatch="....",
+                      label="available (proxy backend)"),
         plt.Rectangle((0, 0), 1, 1, fc=GONE, hatch="////",
                       label="structurally unavailable"),
     ]
@@ -200,7 +228,7 @@ def fig_availability(cells, out: Path) -> None:
     # mapping moved to the manuscript text (author decision 2026-09-15), so
     # the panels take the full text width and this legend is the only key
     # the figure still carries.
-    fig.legend(handles=handles, loc="lower center", ncols=2, frameon=False,
+    fig.legend(handles=handles, loc="lower center", ncols=3, frameon=False,
                fontsize=style.LEGEND, handlelength=1.3,
                bbox_to_anchor=(0.5, 0.0))
 
@@ -245,10 +273,16 @@ def fig_claimclass(df: pd.DataFrame, out: Path) -> None:
                 # n/a (-1) floors at the base shade: guard metrics read 0/flat
                 # by design, so their MW test is inapplicable -- the cell is
                 # still evidence at the descriptive level, not a non-result.
+                # PROXY (status column, --tag-status): the reading is real but
+                # comes from a substitute backend (e.g. v2.1 vm-guest llcocc's
+                # miss-ratio fallback) -- same claim class, marked distinctly
+                # so it isn't read as an unqualified same-backend measurement.
+                proxy = "status" in s and s.status.iloc[0] == "PROXY"
                 ax.add_patch(plt.Rectangle(
                     (xi, yi), 0.94, 0.94,
                     color=cls_color.get(cls, "#eeeeee"),
-                    alpha=0.30 + 0.23 * max(min(best, 3), 0) / 3))
+                    alpha=0.30 + 0.23 * max(min(best, 3), 0) / 3,
+                    hatch="...." if proxy else None))
         ax.set_xlim(0, len(ENV_ORDER))
         ax.set_ylim(0, len(all_metrics))
         ax.set_xticks(np.arange(len(ENV_ORDER)) + 0.5)
@@ -271,6 +305,10 @@ def fig_claimclass(df: pd.DataFrame, out: Path) -> None:
     handles.append(plt.Rectangle((0, 0), 1, 1, facecolor="white",
                                   edgecolor="#999999"))
     labels.append("unavailable (blank)")
+    if "status" in df:
+        handles.append(plt.Rectangle((0, 0), 1, 1, color=style.GREY,
+                                      alpha=0.55, hatch="...."))
+        labels.append("proxy backend")
     # Shading-intensity legend: three alpha steps of one class colour.
     shade_handles = [plt.Rectangle((0, 0), 1, 1, color=style.BLUE,
                                     alpha=0.30 + 0.23 * k / 3)
@@ -545,19 +583,24 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("campaign_dir", type=Path)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--tag-status", action="store_true",
+                    help="read cross-deployment-tagged.tsv (bench/analyze-cross-deployment.py "
+                         "--tag-status) and mark PROXY-backend cells distinctly in "
+                         "fig_availability/fig_claimclass instead of showing them as plain OK.")
     args = ap.parse_args()
 
     style.apply()
     base = args.campaign_dir
     args.out.mkdir(parents=True, exist_ok=True)
 
-    tsv = base / "cross-deployment.tsv"
+    tsv = base / ("cross-deployment-tagged.tsv" if args.tag_status else "cross-deployment.tsv")
     df = pd.read_csv(tsv, sep="\t")
     for c in ("ratio", "ci_lo", "ci_hi", "cliffs_delta"):
         df[c] = pd.to_numeric(df[c], errors="coerce")
     cells = scan_cells(base)
+    status = scan_backend_status(base) if args.tag_status else None
 
-    fig_availability(cells, args.out)
+    fig_availability(cells, args.out, status=status)
     fig_claimclass(df, args.out)
     fig_psi(cells, args.out)
     fig_membw(base, cells, args.out)

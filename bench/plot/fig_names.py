@@ -140,6 +140,7 @@ FIGURES: dict[str, str] = {
     # --- simulator sensitivity and the JDK rebuild check --------------------
     "F-simexp-deltas":                "which-simulator-knobs-move-the-degradation-index",
     "F-simexp-hosts":                 "degradation-index-is-flat-across-the-host-count-sweep",
+    "F-simexp-density":               "degradation-index-rises-with-genuine-placement-density",
     "F-jdk-ab-idi":                   "jdk17-rebuild-leaves-the-degradation-index-unchanged",
     "F-jdk-ab-delta":                 "jdk17-versus-java8-build-difference-covers-zero",
 

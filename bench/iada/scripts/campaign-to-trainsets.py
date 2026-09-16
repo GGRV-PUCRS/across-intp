@@ -52,8 +52,10 @@ CSV_NAME = {"cpu": "cpu100.csv", "mem": "memory100.csv", "disk": "disk100.csv",
             "net": "net100.csv", "cache": "cache100.csv", "regime": "regime100.csv"}
 
 
-def parse_portable(path):
-    """yield dict(metric->float) per data row; '--'/missing -> 0.0."""
+def parse_portable(path, rep_id=None):
+    """yield dict(metric->float) per data row; '--'/missing -> 0.0. If rep_id is
+    given, it's stamped onto every row under '_rep_id' (kept out of the feature
+    set consumed downstream -- see write_csv/eval-tiers.R's cv_eval grouping)."""
     hdr = None
     for line in open(path, errors="ignore"):
         line = line.rstrip("\n")
@@ -77,17 +79,24 @@ def parse_portable(path):
                 row[m] = float(v) if v not in ("--", "") else 0.0
             except ValueError:
                 row[m] = 0.0
+        if rep_id is not None:
+            row["_rep_id"] = rep_id
         yield row
 
 
 def gather(campaign, variant, envs, workloads):
-    """all sample rows (list of metric-dicts) for the given workloads/envs."""
+    """all sample rows (list of metric-dicts) for the given workloads/envs.
+    Each row carries '_rep_id' = env|variant|workload|repN -- adjacent seconds
+    of the same repetition are highly correlated, so this is the grouping key
+    a leakage-free CV must fold on (see eval-tiers.R cv_eval's `group` mode)."""
     rows = []
     for env in envs:
         for wl in workloads:
             for f in glob.glob(os.path.join(campaign, env, variant, "solo", wl,
                                             "rep*", "portable.tsv")):
-                rows.extend(parse_portable(f))
+                rep = os.path.basename(os.path.dirname(f))   # "repN"
+                rep_id = f"{env}|{variant}|{wl}|{rep}"
+                rows.extend(parse_portable(f, rep_id=rep_id))
     return rows
 
 
@@ -96,10 +105,16 @@ def fmt(v):
 
 
 def write_csv(path, rows, cols):
+    """Feature columns first (retrain.R's legacy fixed-width layout, unchanged
+    -- retrain.R and the iada-tier-rda/*/forced/ datasets never read from this
+    output root, only eval-tiers.R does), then '_rep_id' as one extra trailing
+    column. eval-tiers.R's read_split() knows to split it back off before
+    building the feature matrix."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as fh:
         for r in rows:
-            fh.write(";".join(fmt(r.get(c, 0.0)) for c in cols) + "\n")
+            feat = ";".join(fmt(r.get(c, 0.0)) for c in cols)
+            fh.write(f"{feat};{r.get('_rep_id', '')}\n")
 
 
 def main():

@@ -15,6 +15,7 @@ callers that need them (plot-cross-environment.py, the Spearman/MW paths), so an
 analyzer can import this module without acquiring a hard numpy dependency.
 """
 import os
+import re
 import statistics
 from collections import OrderedDict
 
@@ -245,6 +246,68 @@ def parse_capture(path):
                     row[nm] = None            # '--'
             rows.append(row)
     return rows[1:]   # drop the warmup/priming first sample
+
+
+# metric=backend (v2.x) and metric:backend (v3.x) tokens in a header comment line
+_BACKEND_TOKEN_EQ = re.compile(r"\b(\w+)=([\w\[\]./:-]+)")
+_BACKEND_TOKEN_COLON = re.compile(r"\b(\w+):([\w\[\]./-]+)")
+_METRICS_ALL_SET = set(METRICS_ALL)
+
+
+def parse_backend_status(path):
+    """Read a portable.tsv/groundtruth.tsv's `#`-comment header and classify
+    each metric's data-source provenance: 'OK' (a real backend), 'PROXY' (the
+    backend string contains "proxy", e.g. v2.1's llcocc->miss-ratio fallback,
+    DECISIONS-container.md P5/C26/2026-09), or 'UNAVAILABLE' (backend declared
+    `none`, or no backend declared and the data column is `--`).
+
+    Detectable, not guesswork: the backend registry is emitted verbatim in the
+    header (`# v2 backends: metric=backend ... | portable: metric=backend ...`
+    for v2.x; `metric:backend[...]` tokens in the v3.x eBPF-core line), so this
+    only reads what the profiler already recorded about itself.
+    """
+    declared = {}
+    data_seen_null = set()
+    data_seen_val = set()
+    names = None
+    with open(path, errors="ignore") as fh:
+        for line in fh:
+            s = line.rstrip("\n")
+            if not s:
+                continue
+            if s[0] == "#":
+                for rx in (_BACKEND_TOKEN_EQ, _BACKEND_TOKEN_COLON):
+                    for key, val in rx.findall(s):
+                        if key in _METRICS_ALL_SET and key not in declared:
+                            declared[key] = val
+                continue
+            if s.startswith("netp"):
+                names = s.split("\t")
+                continue
+            if names is None or not (s[0].isdigit() or s[0] == "-"):
+                continue
+            c = s.split("\t")
+            off = len(c) - len(names)
+            if off not in (0, 1):
+                continue
+            for i, nm in enumerate(names):
+                if nm not in _METRICS_ALL_SET:
+                    continue
+                (data_seen_null if c[i + off] == MISSING_TOKEN else data_seen_val).add(nm)
+
+    # Declared backend names the ATTEMPTED source, not a guarantee it produced
+    # data here (e.g. v3.3 declares `llcocc:resctrl[mon_group]` even inside a
+    # vm-guest where resctrl isn't reachable and every row is `--`). The data
+    # column is the authoritative signal for OK vs UNAVAILABLE; the declared
+    # string is only trusted to detect an explicit PROXY fallback.
+    status = {}
+    for m in _METRICS_ALL_SET & (set(declared) | data_seen_null | data_seen_val):
+        if m in data_seen_val:
+            backend = declared.get(m, "").lower()
+            status[m] = "PROXY" if "proxy" in backend else "OK"
+        else:
+            status[m] = "UNAVAILABLE"
+    return status
 
 
 def parse_gt(path):

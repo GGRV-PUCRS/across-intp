@@ -357,7 +357,9 @@ def fig_validation(base: Path, cells, out: Path):
     # Two lines: the single-line form was taller than the axis and its top
     # clipped off the saved figure.
     ax.set_ylabel("estimated memory bandwidth, membw_est\n(MB/s, median of the rep window)")
-    ax.set_title("The estimated memory bandwidth tracks true memory traffic\n"
+    ax.set_title("The estimated memory bandwidth moves consistently with its own\n"
+                 "generating signal (a consistency check, not an independent validation --\n"
+                 "membw_est is derived from the same LLC-miss counter shown on the x-axis)\n"
                  "each point = one rep (host envs, all 7 workloads); ρ = Spearman rank correlation;\n"
                  "log-log because the workloads span three decades of memory intensity", fontsize=10)
     ax.legend(fontsize=9)

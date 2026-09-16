@@ -47,6 +47,30 @@ except Exception:
 BARE = "bare"
 
 
+def _cell_backend_status(base, env, var, stage, wl):
+    """Union of parse_backend_status() over every rep in a cell. The three
+    campaign trees behind this analyzer are one status per (variant, env,
+    metric) with zero exceptions (verified across the full portable.tsv set,
+    2026-09-16), so a disagreement across reps of the SAME cell is treated as
+    a data anomaly worth surfacing rather than silently averaged away."""
+    merged = {}
+    disagreements = []
+    for rep in sorted(glob.glob(f"{base}/{env}/{var}/{stage}/{wl}/rep*")):
+        for fn in ("portable.tsv", "profiler.tsv"):
+            p = os.path.join(rep, fn)
+            if os.path.exists(p):
+                for m, st in M.parse_backend_status(p).items():
+                    if m in merged and merged[m] != st:
+                        disagreements.append((rep, m, merged[m], st))
+                    merged[m] = st
+                break
+    if disagreements:
+        for rep, m, old, new in disagreements:
+            print(f"[WARN] backend-status disagreement in {rep}: {m} was "
+                  f"{old}, saw {new}", file=sys.stderr)
+    return merged
+
+
 def _mw_p(a, b):
     a = [x for x in a if x is not None]
     b = [x for x in b if x is not None]
@@ -87,7 +111,7 @@ W5_PRIMARY = ["schedlat", "psi_mem", "psi_io", "membw_est"]
 W5_GUARD = ["schedthr", "steal"]
 
 
-def w5_report(base, variants, stage_pair="pairwise", stage_solo="solo"):
+def w5_report(base, variants, stage_pair="pairwise", stage_solo="solo", tag_status=False):
     """W5 colocation victim-delta (C29): per (env, variant, victim) report the
     pairwise-minus-solo delta on all 13 metrics, with the VM-portable signals
     (schedlat/psi_*/membw_est) as the PRIMARY contention evidence. Pairs are named
@@ -119,11 +143,13 @@ def w5_report(base, variants, stage_pair="pairwise", stage_solo="solo"):
         L.append(s)
     em(f"# W5 colocation victim-delta (pairwise − solo) — {base}")
     em("")
+    empty_hdr = ("variant", "env", "pair", "metric", "class", "solo_median", "pair_median",
+                 "delta", "cliffs_delta", "mw_p", "mw_q_bh", "signif", "role")
+    if tag_status:
+        empty_hdr = empty_hdr + ("status",)
     if not pairs:
         em(f"**no W5 pairwise data under {base}/<env>/<variant>/{stage_pair}/<victim>__vs__<aggressor>/rep***")
-        return "\n".join(L) + "\n", [("variant", "env", "pair", "metric", "class",
-                                      "solo_median", "pair_median", "delta", "cliffs_delta",
-                                      "mw_p", "mw_q_bh", "signif", "role")]
+        return "\n".join(L) + "\n", [empty_hdr]
     envs_present = M.order_envs(envs_seen)
     em(f"Envs: {', '.join(envs_present)}. Variants: {', '.join(variants)}. "
        f"Pairs: {len(pairs)}. scipy: {'yes' if HAVE_SCIPY else 'NO'}.")
@@ -139,8 +165,7 @@ def w5_report(base, variants, stage_pair="pairwise", stage_solo="solo"):
     def cls_of(m):
         return "directional" if m == "cpu" else M.CLAIM_CLASS.get(m, "descriptive")
 
-    tsv = [("variant", "env", "pair", "metric", "class", "solo_median", "pair_median",
-            "delta", "cliffs_delta", "mw_p", "mw_q_bh", "signif", "role")]
+    tsv = [empty_hdr]
     cols = W5_PRIMARY + ["cpu"]   # the headline columns
     for var in variants:
         for env in envs_present:
@@ -154,6 +179,7 @@ def w5_report(base, variants, stage_pair="pairwise", stage_solo="solo"):
             for p in env_pairs:
                 vwl = p.split("__vs__")[0]
                 prs = pair_cell[(env, var, p)]
+                status = _cell_backend_status(base, env, var, stage_pair, p) if tag_status else {}
                 # BH across the full 13-metric family for this cell
                 raw = {}
                 for m in M.METRICS_ALL:
@@ -183,9 +209,12 @@ def w5_report(base, variants, stage_pair="pairwise", stage_solo="solo"):
                     cd = M.cliffs_delta(raw[m][1], raw[m][2])
                     qv = qmap.get(m)
                     role = "primary" if m in W5_PRIMARY else ("guard" if m in W5_GUARD else cls_of(m))
-                    tsv.append((var, env, p, m, cls_of(m), M._fmt(smd), M._fmt(pmd),
-                                M._fmt(pmd - smd), M._fmt(cd), M._fmt_p(raw[m][0]),
-                                M._fmt_p(qv), M.signif_marker(qv) if qv is not None else "n/a", role))
+                    row_t = (var, env, p, m, cls_of(m), M._fmt(smd), M._fmt(pmd),
+                             M._fmt(pmd - smd), M._fmt(cd), M._fmt_p(raw[m][0]),
+                             M._fmt_p(qv), M.signif_marker(qv) if qv is not None else "n/a", role)
+                    if tag_status:
+                        row_t = row_t + (status.get(m, "OK"),)
+                    tsv.append(row_t)
                 def _sig(mm):
                     dd, mk = dvals.get(mm, (None, None))
                     return dd is not None and mk not in ("n.s.", "n/a")
@@ -217,14 +246,22 @@ def main():
                     help="W5 colocation victim-delta mode: pairwise−solo per metric (C29), "
                          "reads <campaign>/<env>/<var>/pairwise/<victim>__vs__<aggressor>/rep*")
     ap.add_argument("--variants", default=None, help="CSV; default v2.1,v3.3")
+    ap.add_argument("--tag-status", action="store_true",
+                    help="append a status column (OK/PROXY/UNAVAILABLE) per row, read from "
+                         "each portable.tsv's backend-provenance header (intp_metrics."
+                         "parse_backend_status) -- e.g. v2.1 vm-guest llcocc is a real reading "
+                         "via the miss-ratio proxy fallback, not the same 'unavailable' as v3.3's. "
+                         "Default output filename gains a '-tagged' suffix unless --tsv is given.")
     args = ap.parse_args()
     base = args.campaign_dir.rstrip("/")
     variants = args.variants.split(",") if args.variants else list(M.VARIANTS)
-    tsv_path = args.tsv or os.path.join(base, "cross-deployment.tsv")
+    default_name = "cross-deployment-tagged.tsv" if args.tag_status else "cross-deployment.tsv"
+    tsv_path = args.tsv or os.path.join(base, default_name)
 
     if args.w5:
-        tsv_path = args.tsv or os.path.join(base, "w5-victim-delta.tsv")
-        report, tsv_rows = w5_report(base, variants)
+        default_w5_name = "w5-victim-delta-tagged.tsv" if args.tag_status else "w5-victim-delta.tsv"
+        tsv_path = args.tsv or os.path.join(base, default_w5_name)
+        report, tsv_rows = w5_report(base, variants, tag_status=args.tag_status)
         with open(tsv_path, "w") as fh:
             for r in tsv_rows:
                 fh.write("\t".join(str(x) for x in r) + "\n")
@@ -289,11 +326,21 @@ def main():
         em(f"**WARNING: `{BARE}` baseline absent/invalid — paired deltas vs bare cannot be computed.**")
     em("")
 
-    tsv_rows = [("variant", "workload", "metric", "claim_class", "env",
-                 "bare_median", "env_median", "delta", "ratio", "ci_lo", "ci_hi",
-                 "cliffs_delta", "cliffs_mag", "mw_p", "mw_q_bh", "signif")]
+    hdr = ("variant", "workload", "metric", "claim_class", "env",
+           "bare_median", "env_median", "delta", "ratio", "ci_lo", "ci_hi",
+           "cliffs_delta", "cliffs_mag", "mw_p", "mw_q_bh", "signif")
+    if args.tag_status:
+        hdr = hdr + ("status",)
+    tsv_rows = [hdr]
 
     nonbare = [e for e in good if e != BARE]
+
+    status_cache = {}
+    def get_status(env, var, wl, m):
+        key = (env, var, wl)
+        if key not in status_cache:
+            status_cache[key] = _cell_backend_status(base, env, var, args.stage, wl)
+        return status_cache[key].get(m, "OK")
 
     # ---- §1 Overhead (absolute metrics) ----------------------------------------
     abs_metrics = [m for m in metrics_present if M.CLAIM_CLASS.get(m) == "absolute"]
@@ -331,9 +378,12 @@ def main():
                     mark = M.signif_marker(qv) if qv is not None else "n/a"
                     cells.append(f"{ratio:.2f}x{ci} {tag} {mark}")
                     cd = M.cliffs_delta(er, bare_reps)
-                    tsv_rows.append((var, wl, m, "absolute", e, M._fmt(bm), M._fmt(emd),
-                                     M._fmt(emd - bm), f"{ratio:.3f}", M._fmt(lo), M._fmt(hi),
-                                     M._fmt(cd), M.cliffs_mag(cd), M._fmt_p(raw_p[e]), M._fmt_p(qv), mark))
+                    row_t = (var, wl, m, "absolute", e, M._fmt(bm), M._fmt(emd),
+                             M._fmt(emd - bm), f"{ratio:.3f}", M._fmt(lo), M._fmt(hi),
+                             M._fmt(cd), M.cliffs_mag(cd), M._fmt_p(raw_p[e]), M._fmt_p(qv), mark)
+                    if args.tag_status:
+                        row_t = row_t + (get_status(e, var, wl, m),)
+                    tsv_rows.append(row_t)
                 em("| " + " | ".join(cells) + " |")
             em("")
 
@@ -378,9 +428,12 @@ def main():
                         qv = qmap.get(e)
                         mark = M.signif_marker(qv) if qv is not None else "n/a"
                         cells.append(f"{M._fmt(d)}±{M._fmt(iqr)} ({mark},{M._fmt(cd)})")
-                        tsv_rows.append((var, wl, m, cls, e, M._fmt(bm), M._fmt(emd), M._fmt(d),
-                                         "", "", "", M._fmt(cd), M.cliffs_mag(cd),
-                                         M._fmt_p(p), M._fmt_p(qv), mark))
+                        row_t = (var, wl, m, cls, e, M._fmt(bm), M._fmt(emd), M._fmt(d),
+                                 "", "", "", M._fmt(cd), M.cliffs_mag(cd),
+                                 M._fmt_p(p), M._fmt_p(qv), mark)
+                        if args.tag_status:
+                            row_t = row_t + (get_status(e, var, wl, m),)
+                        tsv_rows.append(row_t)
                     em("| " + " | ".join(cells) + " |")
                 em("")
 

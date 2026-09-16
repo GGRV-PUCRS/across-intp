@@ -158,12 +158,49 @@ def fig_hosts(curves, outdir):
     plt.close(fig)
 
 
+def fig_density(points, outdir):
+    """New, exploratory (jsa-repo-fix-brief Phase 4/DENSITY-SWEEP.md) --
+    NOT part of the banked E1-E5/S8-S13 campaign, kept in its own figure
+    rather than folded into F-simexp-hosts, whose x-axis (hosts, at the
+    fixed hardcoded containerPes=12 density) this figure's x-axis
+    (apps/host, via -Diada.containerPes) is not comparable to. `points` =
+    [(apps_per_host, mean, lo, hi, converged_bool)] sorted by apps_per_host.
+    """
+    fig, ax = plt.subplots(figsize=(paper_style.COLUMN_WIDTH, 2.0))
+    xs = [p[0] for p in points]
+    means = [p[1] for p in points]
+    los = [p[2] for p in points]
+    his = [p[3] for p in points]
+    ax.fill_between(xs, los, his, color=COLOR["B"], alpha=0.12, linewidth=0)
+    ax.plot(xs, means, lw=1.4, color=COLOR["B"], marker="o", markersize=3.2,
+            markeredgecolor="white", markeredgewidth=0.5)
+    for x, m, converged in zip(xs, means, [p[4] for p in points]):
+        if not converged:
+            ax.plot(x, m, marker="x", markersize=7, color="#b03a2e", zorder=5)
+    ax.text(0.02, 0.96, "x = SA search timed out mid-interval\n(reported "
+            "value is interval 1 only, not a converged mean)",
+            transform=ax.transAxes, fontsize=paper_style.ANNOT, va="top",
+            color="#b03a2e")
+    ax.set_xlabel("apps/host (via -Diada.containerPes, tier B, vm-guest)")
+    ax.set_ylabel("interference degradation index")
+    ax.set_title("Once density genuinely varies, a consolidation curve\n"
+                 "appears — steep, not smooth, between the last two points", pad=3)
+    ax.set_ylim(0, None)
+
+    p2_figio.save(fig, outdir, "F-simexp-density")
+    print(p2_figio.describe(outdir, "F-simexp-density"))
+    plt.close(fig)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--exp-dir", required=True, type=Path)
     ap.add_argument("--out-set", default="p2-sim-experiments")
     ap.add_argument("--figures-root", type=Path, default=Path("results/figures"))
+    ap.add_argument("--density-tsv", type=Path, default=None,
+                    help="DENSITY-SWEEP.md's combined TSV (containerPes/ratio/rep/idi_avg/...); "
+                         "if given, also renders F-simexp-density (new, exploratory, Phase 4).")
     fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
     p2_figio.set_dataset(args.dataset or fig_names.dataset_tag(args.exp_dir))
@@ -220,6 +257,22 @@ def main() -> int:
     paper_style.apply()
     fig_deltas(entries, outdir)
     fig_hosts(curves, outdir)
+
+    if args.density_tsv is not None:
+        ddf = pd.read_csv(args.density_tsv, sep="\t")
+        ddf["idi_avg"] = pd.to_numeric(ddf["idi_avg"], errors="coerce")
+        points = []
+        for ratio, sub in sorted(ddf.groupby("ratio")):
+            vals = sub["idi_avg"].dropna().to_numpy()
+            mean, lo, hi = p2_ci.rep_ci(vals, seed_offset=700 + int(ratio * 100))
+            # "converged" here means at least one rep in this point actually
+            # finished within its timeout (elapsed < timeout ceiling); a
+            # point where every rep hit the same ceiling is interval-1-only.
+            converged = sub["elapsed"].astype(float).lt(sub["elapsed"].astype(float).max()).any() \
+                if sub["elapsed"].nunique() > 1 else float(sub["elapsed"].iloc[0]) < 300
+            points.append((float(ratio), mean, lo, hi, converged))
+        fig_density(points, outdir)
+
     print(pd.DataFrame([t for t in table if t["excludes_zero"]]).to_string(index=False))
     return 0
 

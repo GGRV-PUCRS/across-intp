@@ -13,6 +13,12 @@ OUT=$AX/results/iada-sim; TSV=$OUT/tier-sim-reps.tsv
 TIERS="${TIERS:-T1 A B}"; REPS="${REPS:-10}"
 # Host-count arrangement for this sweep leg (IADA Table 3: 6/12/24/48).
 PM_COUNT="${PM_COUNT:-48}"
+# Root holding <tier>/{.rda,kmeans.R,...} -- was hardcoded to $AX/results/
+# iada-tier-rda (a path that only resolves through a machine-specific Windows
+# mount on some checkouts); overridable so a sandbox can point it at wherever
+# its tier .rda/R sources actually live.
+IADA_TIER_RDA_ROOT="${IADA_TIER_RDA_ROOT:-$AX/results/iada-tier-rda}"
+JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
 # Keep legs from different host counts in separate output files.
 TSV="${TSV_OVERRIDE:-$TSV}"
 source ~/.iada-env 2>/dev/null
@@ -25,8 +31,9 @@ for tier in $TIERS; do
   for rep in $(seq 1 "$REPS"); do
     VARIANT=v3.3 ENV=vm-guest WORKLOAD_MIX="rep$rep" TIMEOUT=200 PM_COUNT="$PM_COUNT" \
       IADA_TREE_ROOT="$tree" CLOUDSIM_REPO="$CS" OUT_DIR="$OUT/reps/$tier" \
+      JAVA_HOME="$JAVA_HOME" \
       R_HOME="$(R RHOME)" R_LIBS_USER="${R_LIBS_USER:-$(Rscript -e 'cat(dirname(find.package("rJava")))' 2>/dev/null)}" \
-      INTP_R_FOLDER="$AX/results/iada-tier-rda/$tier/" \
+      INTP_R_FOLDER="$IADA_TIER_RDA_ROOT/$tier/" \
       bash "$AX/bench/iada/scripts/run-iada-experiment.sh" >/dev/null 2>&1
     restore
     m="$OUT/reps/$tier/v3.3/vm-guest/rep$rep/metrics.tsv"
