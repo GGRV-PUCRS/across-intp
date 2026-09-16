@@ -172,7 +172,8 @@ def main() -> int:
     ax.set_ylabel("interference degradation index\n— lower = better placement —", fontsize=9)
     # State n on the figure: these are simulator reps, and a percentile CI over
     # so few of them is coarse -- the reader should see what it rests on.
-    nrep = min(len(idi[t]) for t in tiers)
+    ns = sorted({len(idi[t]) for t in tiers})
+    nrep = f"{ns[0]}" if len(ns) == 1 else f"{ns[0]}–{ns[-1]}"
     ax.set_title(f"Scheduling quality in the VM (mean, {p2_ci.CI_TAG}, n={nrep} sim reps)",
                  fontsize=10)
     ax.grid(axis="y", ls=":", alpha=0.3)
