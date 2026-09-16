@@ -14,6 +14,7 @@ statistics conventions via s15_stats, and writes:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 from pathlib import Path
 
@@ -50,12 +51,17 @@ def main() -> int:
     args = ap.parse_args()
     new, banked = args.new, args.banked
     out_rows = []
-    seed = 0
 
-    def nxt():
-        nonlocal seed
-        seed += 1
-        return seed
+    def so(label: str) -> int:
+        """Deterministic bootstrap seed offset, derived from a stable label.
+
+        A running counter would work only for one fixed set of arms: adding an
+        arm shifts every later offset and silently moves published CIs by a few
+        units. Deriving the offset from the arm/comparison name instead means a
+        given interval is reproducible no matter which other arms were present
+        in the run that produced it.
+        """
+        return int(hashlib.sha1(label.encode()).hexdigest()[:6], 16) % 1000000
 
     # ---------------- Phase 1: preflight gate --------------------------------
     print("=" * 78)
@@ -67,7 +73,7 @@ def main() -> int:
     b_bank, n_bank, f_bank = col(gate_bank, "idi_avg", tier="B")
     m_new, sd_new = mean_sd(b_new)
     m_bank, sd_bank = mean_sd(b_bank)
-    d, lo, hi, p = unpaired_diff_ci(b_bank, b_new, seed_offset=nxt())
+    d, lo, hi, p = unpaired_diff_ci(b_bank, b_new, seed_offset=so("gate-B-preflight"))
     passed = lo <= 0 <= hi
     print(f"  banked gate-B-psp-n20 : {fmt(m_bank)} +/- {fmt(sd_bank)}  (n={len(b_bank)}, failed={f_bank})")
     print(f"  rerun  gate-B-psp-n10 : {fmt(m_new)} +/- {fmt(sd_new)}  (n={len(b_new)}, failed={f_new})")
@@ -98,7 +104,7 @@ def main() -> int:
         ref[t] = v_new if v_new.size else v_bank
         mn, sdn = mean_sd(v_new)
         mb, sdb = mean_sd(v_bank)
-        dd, dlo, dhi, dp = unpaired_diff_ci(v_bank, v_new, seed_offset=nxt())
+        dd, dlo, dhi, dp = unpaired_diff_ci(v_bank, v_new, seed_offset=so(f"gate-{t}-rerun"))
         print(f"    {t:<2}: rerun {fmt(mn)} +/- {fmt(sdn)} (n={len(v_new)}, failed={f_t}) | "
               f"banked {fmt(mb)} +/- {fmt(sdb)} | delta {fmt(dd)} [{fmt(dlo)}, {fmt(dhi)}] {sig(dlo, dhi)}")
         out_rows.append(row(arm="gate-T1-A-rerun-n10", tier=t, n=len(v_new),
@@ -144,7 +150,7 @@ def main() -> int:
                 if not len(v):
                     continue
                 m, sd = mean_sd(v)
-                d, lo, hi, p = unpaired_diff_ci(ref[t], v, seed_offset=nxt())
+                d, lo, hi, p = unpaired_diff_ci(ref[t], v, seed_offset=so(f"{name}|{t}"))
                 pct = 100.0 * m / ref_mean[t]
                 print(f"  {name:<32} {t:<4} {len(v):>3} {fmt(m):>9} {fmt(sd):>8} "
                       f"{fmt(d):>9} {'[' + fmt(lo) + ', ' + fmt(hi) + ']':>22} "
@@ -180,7 +186,7 @@ def main() -> int:
                     continue
                 sm, ssd = mean_sd(s)
                 om, osd = mean_sd(o)
-                d, lo, hi, p, dsd = paired_diff_ci(s, o, seed_offset=nxt())
+                d, lo, hi, p, dsd = paired_diff_ci(s, o, seed_offset=so(f"oracle|{refname}|{t}"))
                 exact = bool(np.allclose(s, o))
                 tag = "  EXACT self-check" if exact else f"  {sig(lo, hi)}"
                 print(f"    {t:<10} {len(s):>3} {fmt(sm):>11} {fmt(ssd):>8} "
@@ -205,9 +211,17 @@ def main() -> int:
             for lhs, rhs, label in (("T1", "A", "A - T1"), ("T1", "B", "B - T1"), ("A", "B", "B - A")):
                 if lhs not in pt or rhs not in pt:
                     continue
-                d, lo, hi, p = unpaired_diff_ci(pt[lhs], pt[rhs], seed_offset=nxt())
+                d, lo, hi, p = unpaired_diff_ci(pt[lhs], pt[rhs], seed_offset=so(f"cross|{refname}|{label}"))
                 print(f"    {refname:<10} {label:<16} {fmt(d):>9} "
                       f"{'[' + fmt(lo) + ', ' + fmt(hi) + ']':>22} {p:>9.3g}  {sig(lo, hi)}")
+                # Emitted as summary rows too: these cross-tier deltas are what
+                # the paper quotes, so every number in TEX-PATCH-S15.md has to
+                # resolve to a line of summary-s15.tsv, not just to a raw TSV.
+                out_rows.append(row(arm="oracle-cross-tier", tier=label.replace(" ", ""),
+                                    n=min(len(pt[lhs]), len(pt[rhs])),
+                                    oracle_ref=refname, delta=fmt(d, 2),
+                                    ci_lo=fmt(lo, 2), ci_hi=fmt(hi, 2),
+                                    welch_p=f"{p:.4g}"))
 
     # ---------------- summary TSV --------------------------------------------
     out = new / "summary-s15.tsv"

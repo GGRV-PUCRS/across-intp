@@ -706,9 +706,9 @@ and no JDK 8 — all stood up fresh, exactly as S10 had to:
 
 | arm | n | idi_avg | sd | vs reference | 95% CI | |
 |---|---|---|---|---|---|---|
-| B-psp rerun (this pass) | 10 | **4298.0** | 168.9 | +14.5 vs banked 4283.5 | [−99.5, +130.2] | **PASS** (Welch p=0.82) |
-| T1 rerun | 10 | 6435.7 | 253.2 | −85.2 vs banked 6520.9 | [−270.5, +99.2] | n.s. |
-| A rerun | 10 | 3612.6 | 325.8 | −6.2 vs banked 3618.8 | [−247.4, +235.3] | n.s. |
+| B-psp rerun (this pass) | 10 | **4298.0** | 168.9 | +14.5 vs banked 4283.5 | [−99.1, +131.2] | **PASS** (Welch p=0.82) |
+| T1 rerun | 10 | 6435.7 | 253.2 | −85.2 vs banked 6520.9 | [−269.0, +95.8] | n.s. |
+| A rerun | 10 | 3612.6 | 325.8 | −6.2 vs banked 3618.8 | [−243.5, +233.8] | n.s. |
 
 **All three tiers reproduce**, on a different machine and a different R stack.
 Per brief §2 the B reference for every delta below is the banked `n=20` pooled
@@ -725,9 +725,9 @@ stated purpose of the T1/A arm is to keep the "scales by X to Y%" range inside a
 
 | arm | n | idi_avg | sd | delta | 95% CI | Welch p | % of default |
 |---|---|---|---|---|---|---|---|
-| step `1.90,1.93,1.95` | 10 | 5284.1 | 339.9 | **+995.8** | [+807.0, +1212.7] * | 3.8e-06 | 123.2% |
-| measured `1.10,1.25,1.41` | 10 | 3723.2 | 188.5 | **−565.1** | [−679.4, −438.4] * | 1.04e-06 | 86.8% |
-| convex `1.07,1.55,1.95` (optional) | 10 | 4358.3 | 234.0 | +70.0 | [−64.8, +225.6] n.s. | 0.392 | 101.6% |
+| step `1.90,1.93,1.95` | 10 | 5284.1 | 339.9 | **+995.8** | [+800.7, +1213.3] * | 3.8e-06 | 123.2% |
+| measured `1.10,1.25,1.41` | 10 | 3723.2 | 188.5 | **−565.1** | [−681.3, −440.6] * | 1.04e-06 | 86.8% |
+| convex `1.07,1.55,1.95` (optional) | 10 | 4358.3 | 234.0 | +70.0 | [−63.4, +224.9] n.s. | 0.392 | 101.6% |
 
 Both quoted arms reproduce S8's direction and significance (+1200 / −619) at
 somewhat smaller magnitudes. **Neither CI covers zero**, so §7.4's lead-in
@@ -738,9 +738,9 @@ Convex remains n.s. and is still not quoted in the paper.
 
 | tier | default | paper table | sd | delta | 95% CI | % of default | scaling |
 |---|---|---|---|---|---|---|---|
-| T1 | 6435.7 | 5016.3 | 228.8 | −1419.4 | [−1626.1, −1220.0] * | 77.9% | −22.0% |
-| B | 4288.4 | 3507.1 | 159.1 | −781.3 | [−885.7, −674.4] * | 81.8% | −18.2% |
-| A | 3612.6 | 2499.6 | 141.5 | −1113.0 | [−1329.2, −906.1] * | 69.2% | −30.8% |
+| T1 | 6435.7 | 5016.3 | 228.8 | −1419.4 | [−1621.9, −1218.1] * | 77.9% | −22.0% |
+| B | 4288.4 | 3507.1 | 159.1 | −781.3 | [−885.9, −673.3] * | 81.8% | −18.2% |
+| A | 3612.6 | 2499.6 | 141.5 | −1113.0 | [−1324.9, −911.6] * | 69.2% | −30.8% |
 
 - **Scaling range widens from "16 to 25%" to "18 to 31%"**, driven by tier A
   dropping hardest.
@@ -761,18 +761,18 @@ Paired (oracle − self) per cell, rep-level paired bootstrap:
 
 | reference | T1 placements | A placements | B placements |
 |---|---|---|---|
-| B (S13, existing) | −967.0 [−1044, −894] * | +161.7 [+60, +285] * | 0.0 self-check |
-| T1 (new) | 0.0 self-check | +1706.3 [+1356, +2058] * | +1359.5 [+1194, +1553] * |
-| A (new) | −597.7 [−779, −412] * | 0.0 self-check | +1399.0 [+693, +2274] * |
+| B (S13, existing) | −967.0 [−1046, −894] * | +161.7 [+58, +288] * | 0.0 self-check |
+| T1 (new) | 0.0 self-check | +1706.3 [+1346, +2055] * | +1359.5 [+1190, +1555] * |
+| A (new) | −597.7 [−782, −415] * | 0.0 self-check | +1399.0 [+690, +2268] * |
 
 Cross-tier placement comparisons (unpaired bootstrap of the difference, Welch
 secondary; higher index = worse placement):
 
 | reference | A − T1 | B − T1 | B − A |
 |---|---|---|---|
-| **B** | +135.1 [−143, +423] p=0.39 **n.s.** | −236.7 [−428, −65] * | −371.8 [−635, −137] * |
-| **T1** | **+936.0 [+608, +1234]** p=6.2e-05 * | +89.7 [−169, +366] **n.s.** | −846.3 [−1173, −486] * |
-| **A** | **−226.5 [−437, −22]** Welch p=0.057 † | +937.6 [+278, +1776] * | +1164.1 [+497, +1999] * |
+| **B** | +135.1 [−151, +427] p=0.39 **n.s.** | −236.7 [−423, −66] * | −371.8 [−633, −141] * |
+| **T1** | **+936.0 [+604, +1231]** p=6.2e-05 * | +89.7 [−166, +364] **n.s.** | −846.3 [−1175, −484] * |
+| **A** | **−226.5 [−434, −21]** Welch p=0.057 † | +937.6 [+281, +1750] * | +1164.1 [+510, +1995] * |
 
 † Reported as marginal, not clean: the bootstrap CI excludes zero but the
 secondary Welch test gives p=0.0569, just above 0.05. Recorded as a
@@ -816,9 +816,9 @@ committed default is 100.
 
 | tier | 0 s | 10 s | 50 s |
 |---|---|---|---|
-| T1 | −52.6 [−258.1, +158.3] n.s. | +86.8 [−94.4, +259.9] n.s. | +126.2 [−45.5, +290.5] n.s. |
-| A | −142.8 [−355.3, +65.2] n.s. | +9.4 [−239.2, +258.7] n.s. | −4.1 [−251.3, +247.4] n.s. |
-| B | +9.8 [−88.8, +112.8] n.s. | +123.3 [−26.9, +294.7] n.s. | +52.0 [−62.4, +172.8] n.s. |
+| T1 | −52.6 [−253.5, +159.1] n.s. | +86.8 [−97.3, +259.9] n.s. | +126.2 [−44.5, +289.7] n.s. |
+| A | −142.8 [−358.1, +65.8] n.s. | +9.4 [−234.6, +256.0] n.s. | −4.1 [−260.8, +245.4] n.s. |
+| B | +9.8 [−88.6, +113.0] n.s. | +123.3 [−24.8, +293.5] n.s. | +52.0 [−61.2, +174.0] n.s. |
 
 **All nine cells null**, reproducing the August result on the rebuilt,
 psp-keyed toolchain. `main-jsa.tex`'s startup sentence ("finds no significant
@@ -845,8 +845,8 @@ attempt was discarded and re-run rather than kept.
 
 | superseded | by | where quoted |
 |---|---|---|
-| E4 step **+1200** [+832, +1631] (S8, Aug) | **+995.8** [+807.0, +1212.7] | `main-jsa.tex` §7.4 ramp sentence |
-| E4 measured **−619** [−744, −482] (S8, Aug) | **−565.1** [−679.4, −438.4] | same sentence |
+| E4 step **+1200** [+832, +1631] (S8, Aug) | **+995.8** [+800.7, +1213.3] | `main-jsa.tex` §7.4 ramp sentence |
+| E4 measured **−619** [−744, −482] (S8, Aug) | **−565.1** [−681.3, −440.6] | same sentence |
 | E5 scaling range **16 to 25%** (Aug, mixed builds) | **18 to 31%** | §7.4 table sentence |
 | S8 combined re-key x published table **3458.7 ± 87** | **3507.1 ± 159.1** (single build) | §7.4 table sentence |
 | E1 startup arms (Aug, banked build, pre-re-key) | this pass, all tiers, still null | §7.4 startup sentence |
