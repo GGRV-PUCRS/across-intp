@@ -5,7 +5,8 @@ scheduling outcome in the VM, where the canonical RDT metrics are unavailable.
 Consumes the rep TSV (run-tier-sim-reps.sh → tier-sim-reps.tsv): N reps per tier
 of the IADA SA scheduler. Plots the mean interference degradation index
 (interference + migration cost — IADA's headline metric) per tier, with a 95 %
-rep-level bootstrap CI. Lower = better placement. PNG + PDF.
+rep-level bootstrap CI. Lower = lower interference as estimated by each tier's
+own classifier (not a common yardstick; see S13). PNG + PDF.
 
 Note on vocabulary: the index plotted here is IADA's response-time interference
 DEGRADATION index. It is a different quantity from the profiler-side
@@ -75,9 +76,9 @@ def render_sa(idi, mig, tiers, out: Path, stem: str) -> None:
     ax.set_xticklabels([TIER_DESC[t] for t in tiers], rotation=20,
                        ha="right", rotation_mode="anchor",
                        fontsize=sa_style.BODY)
-    ax.set_ylabel("interference degradation index\n— lower = better placement —")
+    ax.set_ylabel("interference degradation index\n(self-scored estimate)")
     nrep = min(len(idi[t]) for t in tiers)
-    ax.set_title(f"Scheduling quality in the VM (mean, {p2_ci.CI_TAG}, "
+    ax.set_title(f"Estimated interference in the VM (mean, {p2_ci.CI_TAG}, "
                  f"n={nrep} sim reps)", fontsize=sa_style.TITLE)
     ax.grid(axis="y", ls=":", alpha=0.3)
     ax.set_ylim(0, max(hi for _m, _lo, hi in cis) * 1.10)
@@ -87,8 +88,8 @@ def render_sa(idi, mig, tiers, out: Path, stem: str) -> None:
             if t == "T1":
                 continue
             d = 100 * (base - st.mean(idi[t])) / base
-            lab = (f"{d:.0f}% lower IDI\nvs canonical" if d >= 0
-                   else f"{-d:.0f}% higher IDI\nvs canonical")
+            lab = (f"{d:.0f}% lower\nestimated IDI" if d >= 0
+                   else f"{-d:.0f}% higher\nestimated IDI")
             ax.text(x, st.mean(idi[t]) / 2, lab, ha="center", va="center",
                     fontsize=sa_style.BODY, color="white", fontweight="bold")
 
@@ -169,12 +170,12 @@ def main() -> int:
     for x, (m, _lo, hi) in zip(xs, cis):
         ax.text(x, hi + max(means) * 0.02, f"{m:.0f}", ha="center", va="bottom", fontsize=10, fontweight="bold")
     ax.set_xticks(list(xs)); ax.set_xticklabels([TIER_DESC[t] for t in tiers], fontsize=9)
-    ax.set_ylabel("interference degradation index\n— lower = better placement —", fontsize=9)
+    ax.set_ylabel("interference degradation index\n(self-scored estimate)", fontsize=9)
     # State n on the figure: these are simulator reps, and a percentile CI over
     # so few of them is coarse -- the reader should see what it rests on.
     ns = sorted({len(idi[t]) for t in tiers})
     nrep = f"{ns[0]}" if len(ns) == 1 else f"{ns[0]}–{ns[-1]}"
-    ax.set_title(f"Scheduling quality in the VM (mean, {p2_ci.CI_TAG}, n={nrep} sim reps)",
+    ax.set_title(f"Estimated interference in the VM (mean, {p2_ci.CI_TAG}, n={nrep} sim reps)",
                  fontsize=10)
     ax.grid(axis="y", ls=":", alpha=0.3)
     # Headroom for the value labels: they now sit above the CI cap, which reaches
@@ -187,8 +188,8 @@ def main() -> int:
             if t == "T1":
                 continue
             d = 100 * (base - st.mean(idi[t])) / base
-            lab = (f"{d:.0f}% lower IDI\nvs canonical" if d >= 0
-                   else f"{-d:.0f}% higher IDI\nvs canonical")
+            lab = (f"{d:.0f}% lower\nestimated IDI" if d >= 0
+                   else f"{-d:.0f}% higher\nestimated IDI")
             ax.text(x, st.mean(idi[t]) / 2, lab, ha="center", va="center",
                     fontsize=9, color="white", fontweight="bold")
 
@@ -205,7 +206,7 @@ def main() -> int:
     ax2.grid(axis="y", ls=":", alpha=0.3)
 
     fig.suptitle("Closed-loop scheduling outcome per classifier tier, inside a KVM guest\n"
-                 "the canonical RDT set is memory-blind in the VM; the portable metrics restore it",
+                 "each configuration scored by its own classifier",
                  fontsize=12, fontweight="bold")
     fig.tight_layout(rect=(0, 0, 1, 0.99))
     p2_figio.save(fig, args.out, "F13-tier-scheduling-idi", dpi=150)
