@@ -592,3 +592,21 @@ without touching any previously-banked file.
 Raw: `bench/iada/results/sim-experiments-20260916/oracle-t1ab-n10.tsv`.
 Flags: `-Diada.oracleLabels=on -Diada.oracleRFolder=<tier B R folder>
 -Diada.oracleTreeDir=<tier B 15-wide source tree>`.
+
+## S14 — Figure consolidation for S10/S12/S13 (2026-09-16)
+
+`fig:tiers` (Fig 15) regenerated in place via `plot-iada-sim.py`'s existing
+`--tier-b-tsv` swap (no code change needed, the flag already existed for
+exactly this) to show S10's psp-rebanked B arm (4283.5±138.2) instead of the
+superseded schedlat-keyed number.
+
+Two new figures added, `bench/plot/plot-fig-baselines-oracle-jsa.py`:
+`fig_baselines()` (S12's IASA/CIAPA/EVEN comparison, log-scale grouped bars,
+3 tiers) and `fig_oracle()` (S13's self-vs-oracle paired bars with
+bootstrap-significance tags). Both re-present already-banked numbers only —
+no value is recomputed by the plotting script. All three installed at
+`paper-assets/figs/{fig_tiers,fig_baselines,fig_oracle}.pdf`; originals
+backed up to `paper-assets/figs-orig/` where a prior version existed.
+`.tex` wiring (new `\widefig`/`\label` for the two new figures) left to the
+maintainer — see `PAPER-SYNC.md` rows for `sec:methodology:pipeline` and
+`sec:cost`.
