@@ -422,8 +422,11 @@ a large amount of avoidable interference on the table, which is the
 expected qualitative result and the reason this comparison is worth having
 in the paper.
 
-**CIAPA (algorithm="SA", hardcoded two-interval schedule) — crashes, does
-not produce a result:**
+**CIAPA (algorithm="SA", two-interval schedule) — fixed, now produces a
+real, differentiated result (2026-09-16 follow-up, after the maintainer
+asked for it to be carried through rather than left as a documented gap):**
+
+Originally crashed:
 
 ```
 java.lang.IndexOutOfBoundsException: Index: 120, Size: 120
@@ -435,22 +438,53 @@ java.lang.IndexOutOfBoundsException: Index: 120, Size: 120
 	at cloudsim.interference.datacenter.IntContainerDataCenter.InterferenceClassifier(IntContainerDataCenter.java:1298)
 ```
 
-`IntContainerDataCenter.java:1294` hardcodes CIAPA's first analysis window
-to `interval = 600` (seconds/rows) regardless of trace length; this
-campaign's traces are 120 rows (120 s at 1 Hz). `fillInitialSolution`
-requests row 600 from a 120-row `Interference` object, `getIntByLine`
-does an unchecked `ArrayList.get`, and the simulation thread dies mid-event
-with no recovery — the run then hangs to the process's `TIMEOUT` rather
-than exiting promptly (same failure shape, different root cause, as the
-Thread.stop()/JDK crash noted in S10 — an uncaught exception inside
-`updateCloudletProcessing`'s event-processing thread stalls the whole
-discrete-event loop). **Not fixed here** — deciding CIAPA's correct
-behavior against traces shorter than its hardcoded 600 s assumption (clamp
-the interval? scale it? treat as a single-interval case like EVEN?) is a
-design decision belonging to whoever specified CIAPA's two-interval
-scheme, not a bug this pass should silently paper over. Documented so the
-"no result exists" state has a precise, evidenced reason instead of an
-absence.
+Root cause: `IntContainerDataCenter.java` hardcoded CIAPA's first analysis
+window to `interval = 600` (seconds/rows) regardless of trace length; this
+campaign's traces are 120 rows (120 s at 1 Hz, `total=119`). `fillInitialSolution`
+requested row 600 from a 120-row `Interference` object and `getIntByLine`
+did an unchecked `ArrayList.get`, killing the simulation thread mid-event
+(same failure shape, different root cause, as the Thread.stop()/JDK crash
+noted in S10 — an uncaught exception inside the event-processing thread
+stalls the whole discrete-event loop, so the run hangs to `TIMEOUT` instead
+of exiting promptly).
+
+**First fix attempt was itself wrong.** Clamping `end` to `total` for
+interval 1 stopped the crash, but interval 1 only ever calls
+`fillInitialSolution` (an unoptimized initial placement) — the actual SA
+search only runs in interval 2, via `Placement.run(..., "SA")`. Clamping
+interval 1 to consume the *entire* horizon left nothing for interval 2,
+so CIAPA silently degraded to "report the unoptimized initial placement,"
+numerically identical to EVEN's raw `fillInitialSolution` call (both
+32790.74 for tier B) — CIAPA's SA search never actually ran, just
+differently disguised as a non-crash instead of a crash.
+
+**Fixed properly:** interval 1 now takes a single sample when the trace is
+shorter than the designed 600-sample window (mirroring IASA's own smallest
+interval, `{1,20}` — not an invented split ratio), leaving interval 2 with
+essentially the whole horizon to actually search over. Traces ≥ 600 samples
+are unaffected (unchanged branch). Validated: a single test rep now shows
+two genuinely different solutions (interval 1 cost 190.16 from one sample
+of data, interval 2 cost 26012.81 after the real SA search over the rest,
+21 migrations tracked between them) instead of one degenerate solution with
+zero migrations.
+
+**CIAPA baseline, n=10/tier, `-Diada.approach=CIAPA`:**
+
+| tier | n | idi_avg mean | sd | IASA gate (best) | EVEN (worst) |
+|---|---|---|---|---|---|
+| T1 | 10 | **15946.6** | 1079.9 | 6497.2 ± 190.1 | 49796.5 |
+| A  | 10 | **13164.7** | 338.5 | 3592.8 ± 251.6 | 58263.1 |
+| B  | 10 | **13004.4** | 341.9 | 4283.5 ± 138.2 (S10) | 32790.7 |
+
+**A coherent three-way ordering emerges for every tier: IASA < CIAPA <
+EVEN** — IASA's full multi-interval SAO search finds the best placements,
+EVEN's blind round-robin the worst, and CIAPA's single-shot SA search
+(real optimization, but starting from only one sample of classification
+data and searching once) lands in between, on every tier. This is the
+expected qualitative shape for three placement strategies of increasing
+sophistication and is worth reporting as such.
+
+Raw: `bench/iada/results/sim-experiments-20260916/ciapa-baseline-t1ab-n10.tsv`.
 
 **"Segmented" (paper §4.5/2.5, cited as "the per-class k-means degradation
 variant of the classifier lineage [20]"):** `grep -ril "segmented"
@@ -463,82 +497,98 @@ not at a result this repo can produce.
 
 Raw: `bench/iada/results/sim-experiments-20260916/{even-baseline-t1ab-n10,
 gate-T1-A-n10}.tsv`.
-## S13 — Phase 3.2: oracle-scoring design investigated; not implemented this pass (2026-09-16)
+## S13 — Phase 3.2: oracle-scoring implemented and working (2026-09-16, completed after two follow-up fixes)
 
 Driven by `jsa-repo-fix-brief.md` Phase 3.2, the brief's own "most
-open-ended item." Per the brief's explicit fallback ("state clearly what
-was and wasn't done" if the full redesign doesn't land in time) — this
-entry is that statement.
+open-ended item." Originally landed as "investigated, not completed" (this
+entry's first version); the maintainer asked for it to be carried through
+to real numbers rather than left as a caveat, so it was.
 
 **The finding being addressed (unchanged, already well-located):**
 `MLClassifier` trains/predicts per tier with its own feature width; each
-cost lookup (`IntContainerDataCenter.java:1400/1426/1452/1490`,
-`MLCR = MLC.getMLClass(...)`) uses that tier's OWN self-prediction. T1/A/B's
-gate IDI numbers (S1/S10) are each measured on a different yardstick — a
-placement can look better under one tier purely because that tier's
-classifier assigns lower degradation levels, independent of whether the
-underlying placement is actually better.
+cost lookup (`IntContainerDataCenter.java`, `MLCR = MLC.getMLClass(...)`)
+uses that tier's OWN self-prediction. T1/A/B's gate IDI numbers (S1/S10)
+are each measured on a different yardstick — a placement can look better
+under one tier purely because that tier's classifier assigns lower
+degradation levels, independent of whether the underlying placement is
+actually better.
 
-**Option (b) checked, not tractable with the data on hand.** The brief
-prefers labels "derived directly from the colocation victim-delta campaign
-(measured Cliff's δ/significance) rather than any SVM prediction" — this
-removes classifier circularity entirely. Checked against
-`results/p2-15metric-xdeploy-1of3-w5/w5-victim-delta.tsv`: the W5 campaign's
-victim set is `{app01_ml_llc, app07_ordering, app10_search, app11_sort_net,
-app13_query_scan}` (the 5-class W4/W5 spine) — **not** the 7-workload set
-this session's 28-trace tree uses (S10/S12; adds `app05_streaming`,
-`app16_cpu_oversub`, `app17_mem_pressure`, drops `app07_ordering`, which
-isn't in the 15-metric campaign at all). A from-measurement oracle would
-have real Cliff's-δ-derived levels for 5 of 7 cloudlet workloads and
-**invented** ones for the other 2 (including the regime workload,
-`app16_cpu_oversub` — the one class this whole 15-metric/psp story is
-about). Not attempted; inventing 2/7 workloads' oracle labels to complete
-a "measured oracle" would misrepresent what the number actually is.
+**Option (b) (measured W5 labels) checked, not tractable — unchanged from
+the first version of this entry.** The W5 campaign's victim set doesn't
+cover 2 of the 7 workloads this session's 28-trace tree uses (including
+the regime workload, `app16_cpu_oversub`), so a from-measurement oracle
+would need to invent 2/7 workloads' labels. Not attempted.
 
-**Option (a) attempted, found to need more than a flag swap, and rolled
-back before producing numbers.** Built the infrastructure: `MLClassifier`
-gained a `MLClassifier(String rFolder)` constructor (kept; overloads the
-existing env-var-only constructor, default behaviour unchanged) so a second
-classifier instance can point at a different tier's R folder independently.
-The first implementation attempt then routed **every** in-search
-classification call (`MLC.getMLClass` → a shared oracle instance) through
-tier B's classifier for all three tiers. **This is the wrong design and was
-reverted before running anything with it** — routing every in-loop call
-through B's classifier doesn't give "T1/A/B's own searches, scored on a
-common yardstick," it gives "T1/A/B's search all run against B's classifier
-during the search itself," which conflates two different questions: *does
-a narrower classifier make WORSE placement decisions* (what T1/A/B's own
-searches already test) vs. *what does a common classifier think of the
-placement a narrower search found* (what an oracle re-score should answer).
-The reverted version would have answered neither cleanly.
+**Option (a) (a common reference classifier) — three implementation
+attempts, third one correct:**
 
-**What the correct implementation needs (not built):** each tier's SA
-search must stay untouched — T1 must still search blind, that's the
-mechanism under test — and only the FINAL converged `best` `Solution` gets
-re-scored, after the fact, by feeding each of its cloudlets' full 15-metric
-fingerprint (not the tier's own 7-wide slice) to tier B's classifier and
-recomputing `getTotalInterferenceCost()`-equivalent from those oracle
-costs. That requires either (i) loading a second, 15-wide `Interference`
-trace set inside the Java simulator alongside whichever tier's own
-narrower traces drive its search, with a post-search re-scoring pass over
-`best`'s placement map, or (ii) parsing the final placement (host↔cloudlet
-assignment, already printed via `Solution.print()`) out of each tier's
-`cloudsim.log` and re-scoring it in Python/R against the oracle-trace tree
-this session already built (`/tmp/tree-B-vm-guest`, 15-wide, 28 cloudlets,
-kept in `bench/iada/results/sim-experiments-20260916/` — note this exact
-tree is only in `/tmp`, not preserved; regenerate via the recipe in S10 if
-picking this up), replicating `Degradation`'s multiplier tables (they're
-short enough to port directly, `Degradation.java` is 476 lines total) and
-`Solution.getCostFromHost`'s per-host product logic. Route (ii) is
-probably faster to implement correctly since it needs no Java rebuild risk
-to the already-validated S10-S12 numbers.
+1. **Wrong:** route every in-search classification call through a shared
+   oracle instance. Conflates "does a narrower classifier make worse
+   placement decisions" (what each tier's own search already tests) with
+   "what does a common classifier think of a narrow search's result"
+   (what an oracle re-score should answer). Reverted before running.
+2. **Crashed:** post-hoc re-score via a *second* `MLClassifier` instance
+   (`new MLClassifier(oracleFolder)`), run once after each approach's
+   search converges. JRI/R allows only ONE `Rengine` per JVM process — the
+   simulation completed normally (its own `idi_avg` printed correctly),
+   then the process crashed with `"R is already initialized"` the instant
+   the second `Rengine` constructor ran. **Fixed:** `MLClassifier` gained
+   `getProjectFolder()`/`setProjectFolder()`; the oracle pass now reuses
+   the run's *existing* `MLC`/`Rengine`, repointing its R folder to tier
+   B's for the oracle classification calls and restoring the tier's own
+   folder immediately after (`IntContainerDataCenter.oracleRescore`,
+   `Solution.oracleCost`/`getTotalInterferenceCostOracle`, mirroring the
+   self-referential cost path exactly — same zero-floor sentinel, same
+   PE-ratio scaling — so a bug fix to one path is never silently also a
+   change to the other's already-validated numbers).
+3. **Silently wrong (window mismatch), caught by a self-consistency
+   check:** the first working version re-classified every cloudlet with
+   `getMLClass(interf, 0, fullTraceLength)` — the FULL window — and
+   compared that against `idi_avg`, which the search itself computed from
+   *narrow, per-interval* classification windows (IASA's `{1,20,...}`,
+   CIAPA's two-phase split). Running tier B as its own oracle (a built-in
+   sanity check: B re-scored by B's own classifier should equal B's own
+   score exactly) showed a genuine, consistent ~15-20% gap instead of
+   equality — proof the comparison was conflating classification *window*
+   with classifier *width*, not isolating the latter. **Fixed:**
+   `oracleRescore` now also computes a "self, full-window" score (this
+   tier's own classifier, re-run over the *same* full window the oracle
+   pass uses — `Solution.selfCost`/`getTotalInterferenceCostSelfFullWindow`,
+   a second mirror of the same cost-path pattern) so `self_idi` and
+   `oracle_idi` differ by classifier width alone, both computed over an
+   identical window. Re-ran the B self-consistency check:
+   `self_idi == oracle_idi` exactly, every rep (e.g. 3513.42/3513.42,
+   3519.31/3519.31, ... all 10 reps of tier B against itself). Validated.
 
-**Disposition:** not completed this pass. `MLClassifier(String rFolder)`
-stays as useful groundwork; nothing else oracle-related is wired into the
-live cost path — the S10/S12 numbers above are unaffected by this
-investigation (call sites confirmed reverted to `MLC.getMLClass`, rebuild
-confirmed clean). `PAPER-SYNC.md` carries the one-sentence caveat this
-section supports: T1/A/B's IDI numbers are each self-scored, not
-cross-tier-comparable on a common yardstick; that comparison remains
-future work.
+**T1/A/B, self vs. oracle (tier B classifier), n=10/tier, full-window,
+bootstrap 95% CI (N=10000, seed 20260607, house convention):**
 
+| tier | self_idi mean ± sd | oracle_idi mean ± sd | Δ (oracle−self) | 95% CI | reading |
+|---|---|---|---|---|---|
+| T1 | 4810.6 ± 276.0 | 3843.6 ± 275.9 | **−967.0** | [−1196.4, −741.6] * | T1's own (7-feature, VM-blind) classifier reads its own placement as **significantly worse** than tier B's richer classifier does |
+| A  | 3817.0 ± 302.0 | 3978.7 ± 402.2 | +161.7 | [−127.6, +458.9] n.s. | statistically indistinguishable from the common yardstick — the portable proxy (`membw_est` for `mbw`) is enough to close the gap T1 shows |
+| B  | 3606.9 ± 128.4 | 3606.9 ± 128.4 | +0.0 | [−107.7, +106.9] (trivial) | exact self-consistency check, by construction |
+
+**Reading.** T1's self-reported IDI isn't merely "on a different scale"
+from a common yardstick — it's a *significant, one-directional* distortion
+in a specific direction (pessimistic: T1 rates its own placements worse
+than a richer classifier does), consistent with the classifier defaulting
+to higher-severity levels when key RDT signals are unavailable in the VM
+rather than defaulting to a neutral/optimistic read. A, which restores the
+mem-class signal via `membw_est`, is not distinguishable from the common
+yardstick at this sample size — a materially different, and better,
+picture than T1's. This is the first evidence the paper has that the
+self-scoring problem (S13's original finding) is not just a theoretical
+comparability caveat but a measurable, directional bias for the canonical-7
+tier specifically.
+
+**Not rerun:** tier B's own gate/E-series numbers (S10-S12) are unaffected
+by any of this — `oracleRescore` only fires when `-Diada.oracleLabels=on`,
+which none of those runs set; confirmed by inspection (the flag defaults
+off, zero behavior change) and by the fact that this whole investigation
+started, ran, and finished as a separate campaign (`oracle-t1ab-n10.tsv`)
+without touching any previously-banked file.
+
+Raw: `bench/iada/results/sim-experiments-20260916/oracle-t1ab-n10.tsv`.
+Flags: `-Diada.oracleLabels=on -Diada.oracleRFolder=<tier B R folder>
+-Diada.oracleTreeDir=<tier B 15-wide source tree>`.

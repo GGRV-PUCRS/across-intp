@@ -24,7 +24,7 @@ TSV="${TSV_OVERRIDE:-$TSV}"
 source ~/.iada-env 2>/dev/null
 mkdir -p "$OUT"
 restore(){ local RL=$CS/bin/resources/workload/interference; [ -L "$RL" ]&&rm "$RL"; local o; o=$(ls -d ${RL}.orig-* 2>/dev/null|head -1); [ -n "$o" ]&&mv "$o" "$RL"; }
-echo -e "tier\tenv\trep\tidi_avg\tidi_sum\tmigrations\tinterference_avg" > "$TSV"
+echo -e "tier\tenv\trep\tidi_avg\tidi_sum\tmigrations\tinterference_avg\tself_idi\toracle_idi" > "$TSV"
 for tier in $TIERS; do
   tree=/tmp/tree-$tier-vm-guest
   [ -e "$tree/v3.3/vm-guest/source" ] || { echo "[skip] $tier: no tree at $tree"; continue; }
@@ -38,7 +38,7 @@ for tier in $TIERS; do
     restore
     m="$OUT/reps/$tier/v3.3/vm-guest/rep$rep/metrics.tsv"
     if [ -s "$m" ]; then
-      tail -1 "$m" | awk -v t=$tier -v r=$rep 'BEGIN{FS=OFS="\t"}{print t,"vm",r,$13,$14,$11,$8}' >> "$TSV"
+      tail -1 "$m" | awk -v t=$tier -v r=$rep 'BEGIN{FS=OFS="\t"}{print t,"vm",r,$13,$14,$11,$8,$16,$17}' >> "$TSV"
     else echo -e "$tier\tvm\t$rep\tFAIL" >> "$TSV"; fi
     echo "  $tier rep$rep -> idi_avg=$(tail -1 "$m" 2>/dev/null | cut -f13)"
   done

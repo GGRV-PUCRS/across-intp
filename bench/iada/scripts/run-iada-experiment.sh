@@ -47,6 +47,11 @@ JRI_DIR="$R_LIBS_USER/rJava/jri"
 
 VARIANT_TREE="$IADA_TREE_ROOT/$VARIANT/$ENV/source"
 [ -d "$VARIANT_TREE" ] || { echo "FATAL: missing $VARIANT_TREE" >&2; exit 2; }
+# Exported (not just a shell var) so -Diada.oracleLabels=on's Java-side
+# oracleRescore can read this tier's own trace tree via System.getenv --
+# needed for the "self, full-window" comparison point (jsa-repo-fix-brief
+# Phase 3.2).
+export VARIANT_TREE
 
 RUN_DIR="$OUT_DIR/$VARIANT/$ENV/$WORKLOAD_MIX"
 mkdir -p "$RUN_DIR"
