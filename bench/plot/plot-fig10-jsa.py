@@ -77,7 +77,7 @@ def load(tsv: Path):
 
 
 def short(a: str) -> str:
-    return a.replace("app", "").replace("_", " ")
+    return style.wl_label(a, short=True)
 
 
 def _fmt(v: float) -> str:

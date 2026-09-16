@@ -74,6 +74,59 @@ VARIANT_COLOR = {"v2.1": BLUE, "v3.3": VERMILLION}
 VARIANT_MARKER = {"v2.1": "o", "v3.3": "^"}
 VARIANT_LABEL = {"v2.1": "v2.1", "v3.3": "v3.3"}
 
+# --------------------------------------------------------------------------
+# Canonical workload identifiers (single source of truth for figure labels):
+# appNN[b]_<profile>, underscores only, profile is the 2022 application
+# profile name rather than the generator. A bare "appNN"/"appNNb" is
+# completed against this table; a full id is checked against it -- an
+# unregistered or mismatched id raises rather than printing quietly wrong,
+# so a typo can't ship. app16_real_net is the retired pre-final name for
+# app16 (cpu oversubscription); it is mapped here rather than by renaming
+# any archived result file.
+# --------------------------------------------------------------------------
+
+_WORKLOAD_PROFILE = {
+    "app01": "ml_llc", "app02": "ml_llc", "app03": "ml_llc",
+    "app04": "streaming", "app05": "streaming",
+    "app06": "ordering", "app07": "ordering",
+    "app08": "classification", "app09": "classification",
+    "app10": "search",
+    "app11": "sort_net", "app12": "sort_net",
+    "app11b": "tcp_veth", "app12b": "udp_veth",
+    "app13": "query_scan", "app14": "query_join", "app15": "query_merge",
+    "app16": "cpu_oversub",
+    "app17": "mem_pressure",
+    "app18": "redis_kv", "app19": "cs_datacaching",
+    "app20": "cs_websearch", "app21": "cs_imanalytics",
+    "app22": "dsb_socialnet",
+}
+
+_RETIRED_WORKLOAD_ALIAS = {"app16_real_net": "app16_cpu_oversub"}
+
+
+def wl_label(workload_id: str, short: bool = False) -> str:
+    """Canonical workload identifier for a figure label.
+
+    Accepts either the bare id ("app05") or the already-canonical full id
+    ("app05_streaming"). short=True returns just "appNN[b]" for ticks or
+    legends where the full id does not fit legibly -- the figure's caption
+    must then spell out the full ids once, per the label rule.
+    """
+    wid = _RETIRED_WORKLOAD_ALIAS.get(workload_id, workload_id)
+    appnn, _, given_profile = wid.partition("_")
+    profile = _WORKLOAD_PROFILE.get(appnn)
+    if profile is None:
+        raise ValueError(f"wl_label: unregistered workload id {workload_id!r}")
+    canonical = f"{appnn}_{profile}"
+    if given_profile and wid != canonical:
+        raise ValueError(f"wl_label: {workload_id!r} does not match "
+                          f"canonical {canonical!r}")
+    if short:
+        return appnn
+    if plt.rcParams.get("text.usetex"):
+        return canonical.replace("_", r"\_")
+    return canonical
+
 
 def apply() -> None:
     """Install the camera-ready rcParams. Call after any script setup_style()."""

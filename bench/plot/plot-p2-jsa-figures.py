@@ -362,7 +362,7 @@ def fig_w4ratio(df: pd.DataFrame, out: Path):
                     transform=ax.get_yaxis_transform(), ha="left", va="top",
                     fontsize=style.ANNOT - 1.0, color="#2c6e49")
             ax.set_xticks(range(len(wls)))
-            ax.set_xticklabels([w.split("_")[0] for w in wls],
+            ax.set_xticklabels([style.wl_label(w, short=True) for w in wls],
                                 fontsize=style.ANNOT, rotation=30, ha="right")
             ax.set_ylim(0, 3.8)
             ax.set_title(f"{vlabel(var)}\n{m}", fontsize=style.TITLE - 0.5)
@@ -421,7 +421,7 @@ def fig_preempt(df: pd.DataFrame, out: Path):
         # mathtext exponent glyph still clears the floor after x1.3 upscale.
         ax.tick_params(axis="y", labelsize=8.5)
         ax.set_xticks(range(len(wls)))
-        ax.set_xticklabels([w.split("_")[0] for w in wls],
+        ax.set_xticklabels([style.wl_label(w, short=True) for w in wls],
                             fontsize=style.BODY, rotation=30, ha="right")
         ax.set_title(vlabel(var), fontsize=style.TITLE)
         if c == 0:

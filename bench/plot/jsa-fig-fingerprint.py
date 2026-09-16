@@ -48,6 +48,20 @@ CLASS_COLOR = {"cpu": style.BLUE, "mem": style.BLUISH_GREEN,
                "cache": style.REDDISH_PURPLE, "disk": style.VERMILLION,
                "net": style.ORANGE, "regime": "#555555"}
 CMAP = "viridis"
+# Most cells sit in the bottom third of the per-column normalization (a few
+# hot metrics dominate the max), so raw viridis renders most of the grid in
+# its near-black floor -- readable as a heatmap but heavy to scan and low on
+# contrast between two small-but-different values. CMAP_VMIN pulls the low
+# end up to a lighter, still-dark tint (viridis at ~0.32) while M=1 still
+# hits pure yellow, so the ordering and colorblind-safety are unchanged.
+CMAP_FLOOR = 0.32
+CMAP_VMIN = -CMAP_FLOOR / (1.0 - CMAP_FLOOR)
+# The white/black text split has to move with the floor: a cell at a given
+# M is now rendered lighter than before (same viridis position, 0.55, is
+# reached at a lower M once the floor lifts the low end), so recompute the
+# M-space split rather than leave the old fixed 0.55 threshold stranded.
+_TEXT_SPLIT_VIRIDIS = 0.55
+TEXT_M_SPLIT = _TEXT_SPLIT_VIRIDIS + CMAP_VMIN * (1.0 - _TEXT_SPLIT_VIRIDIS)
 
 
 def load(tsv: Path):
@@ -67,7 +81,7 @@ def load(tsv: Path):
 
 
 def short(a: str) -> str:
-    return a.replace("app", "").replace("_", " ")
+    return style.wl_label(a, short=True)
 
 
 def _class_spans(metrics, cls):
@@ -131,7 +145,7 @@ def heatmap_panel(ax, med, key, apps, metrics, cls, norm_max, *,
 
     xedges = _col_edges(metrics)
     yedges = np.arange(len(apps) + 1) - 0.5
-    im = ax.pcolormesh(xedges, yedges, M, cmap=CMAP, vmin=0, vmax=1,
+    im = ax.pcolormesh(xedges, yedges, M, cmap=CMAP, vmin=CMAP_VMIN, vmax=1,
                        shading="flat")
     xcenters = (xedges[:-1] + xedges[1:]) / 2
     colw = np.diff(xedges)
@@ -151,7 +165,7 @@ def heatmap_panel(ax, med, key, apps, metrics, cls, norm_max, *,
                      else style.ANNOT - 0.2)
                 ax.text(xcenters[ci], ri, txt, ha="center", va="center",
                        fontsize=fs,
-                       color="white" if M[ri, ci] > 0.55 else "black",
+                       color="white" if M[ri, ci] > TEXT_M_SPLIT else "black",
                        zorder=3)
     ax.set_xticks(xcenters)
     ax.set_xticklabels(metrics if show_x else [""] * len(metrics),
@@ -204,10 +218,14 @@ def render_grid(med, cls, apps, envs_show, variants, metrics, *,
                 ax.annotate(v, xy=(0.5, 1.20), xycoords="axes fraction",
                            ha="center", va="bottom", fontsize=style.TITLE,
                            fontweight="bold")
-        axes[ri][0].annotate(e, xy=(-0.48, 0.5), xycoords="axes fraction",
+        axes[ri][0].annotate(e, xy=(-0.15, 0.5), xycoords="axes fraction",
                             ha="center", va="center", rotation=90,
                             fontsize=style.TITLE, fontweight="bold")
     cb = fig.colorbar(im, ax=axes, shrink=0.7, pad=0.012, aspect=25)
+    # Data only ever spans [0, 1]; CMAP_VMIN < 0 lifts the color floor but
+    # must not leak into the tick range, or the legend claims negative
+    # "intensity" and picks up extra width from the negative tick labels.
+    cb.set_ticks(np.linspace(0, 1, 6))
     cb.set_label("intensity (÷ max within environment)",
                  fontsize=style.ANNOT)
     cb.ax.tick_params(labelsize=style.ANNOT)

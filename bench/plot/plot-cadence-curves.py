@@ -263,7 +263,7 @@ def _draw_sensitivity(ax, cb_ax, cols, rows, M, cls, variants, workloads,
     ax.set_xticklabels([v for (_w, v) in cols], fontsize=fontsize)
     span = len(variants)
     for i, w in enumerate(workloads):
-        ax.text(i * span + (span - 1) / 2.0, -0.16, w.replace("_", " "),
+        ax.text(i * span + (span - 1) / 2.0, -0.16, jsa_style.wl_label(w),
                 transform=ax.get_xaxis_transform(), ha="center", va="top",
                 fontsize=fontsize)
         if i:
@@ -361,7 +361,7 @@ def _draw_fidelity_panels(fig, axes, fid, dens, cls, med, variants, workloads,
         ax.set_xticklabels(["0.1", "0.25", "0.5", "1", "2", "5"], fontsize=fontsize)
         ax.set_xlabel("sampling interval (s)", fontsize=fontsize)
         ax.set_ylabel("Δref from 0.1s (%)" if wi == 0 else "", fontsize=fontsize)
-        ax.set_title(w.replace("_", " "), fontsize=fontsize)
+        ax.set_title(jsa_style.wl_label(w), fontsize=fontsize)
         ax.grid(True, which="both", ls=":", alpha=0.3)
         ax.tick_params(which="both", labelsize=fontsize)
         # explicit major ticks/labels already carry every value that matters;
