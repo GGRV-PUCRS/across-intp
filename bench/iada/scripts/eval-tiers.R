@@ -151,8 +151,10 @@ for (k in names(head)) cat(sprintf("  %-8s  acc=%.3f  macroF1=%.3f\n", k, head[[
 # changed, not because the transfer-gate methodology needed a fix). Always
 # writes to the SAME name regardless of GROUP, so a group=1 run doesn't
 # silently duplicate this file under a different name.
-TOUT <- file.path(ROOT, "tier-eval-transfer.tsv")
+TOUT <- ifelse(length(args) >= 6, args[6], file.path(ROOT, "tier-eval-transfer.tsv"))
+COUT <- ifelse(length(args) >= 7, args[7], file.path(ROOT, "tier-eval-confusion.tsv"))
 trows <- c("tier\tmetric\tclass\tvalue"); thead <- list()
+crows <- c("tier\ttrue\tpredicted\tcount")
 cat("\n=== host-trained -> VM-tested TRANSFER (no per-domain retrain; GROUP does not apply here) ===\n")
 for (tier in c("T1", "A", "B")) {
   trd <- file.path(ROOT, tier, "train"); ted <- file.path(ROOT, tier, "test-vm")
@@ -167,9 +169,18 @@ for (tier in c("T1", "A", "B")) {
   cat(sprintf("  Tier %s: VM accuracy=%.3f  macro-F1=%.3f\n", tier, acc, f1))
   for (c in lvls) {
     mask <- te$category == c; rec <- if (sum(mask) > 0) mean(pred[mask] == c) else NA
-    trows <- c(trows, sprintf("%s\trecall\t%s\t%.4f", tier, c, rec))
-    cat(sprintf("    recall[%-6s]=%.3f\n", c, rec))
+    tp <- sum(pred == c & te$category == c); fp <- sum(pred == c & te$category != c)
+    prec <- if (tp + fp > 0) tp / (tp + fp) else NA
+    trows <- c(trows, sprintf("%s\trecall\t%s\t%.4f", tier, c, rec),
+                      sprintf("%s\tprecision\t%s\t%.4f", tier, c, prec))
+    cat(sprintf("    recall[%-6s]=%.3f  precision[%-6s]=%.3f\n", c, rec, c, prec))
+  }
+  # Full confusion matrix (true x predicted), every cell, zeros included.
+  for (ctrue in lvls) for (cpred in lvls) {
+    n <- sum(te$category == ctrue & pred == cpred)
+    crows <- c(crows, sprintf("%s\t%s\t%s\t%d", tier, ctrue, cpred, n))
   }
 }
 writeLines(trows, TOUT)
-cat(sprintf("[wrote %s]\n", TOUT))
+writeLines(crows, COUT)
+cat(sprintf("[wrote %s]\n[wrote %s]\n", TOUT, COUT))
