@@ -1216,3 +1216,132 @@ independently-seeded reps, not a mean-driven artifact). NOT fully pinned down: t
 against without new profiling. The already-applied S2 text (approved separately) does not overclaim
 here -- it reports the measured facts (8018->4957 vs 3206->3378, ~32% final gap) without asserting a
 mechanism, so this finding does not require reopening that edit.**
+
+### S1 -- known-class yardstick (Step 5, highest priority) -- CHECKPOINT, NOT APPLIED
+
+**Engineering approach, deliberately not the brief's literal Java-side flag.** The brief's "Code"
+section describes a `-Diada.truthLabels=on` flag with placement-saving inside Java. Investigation
+found the final placement is ALREADY available with no new Java code: `Solution.print()` is called
+once per analysis interval (confirmed: 6 tables per rep, matching 6 intervals), so the LAST
+"Cloudlet Host Hpe Cpe CloudletCost" table in each `cloudsim.log` IS the converged, final-interval
+placement. Reimplemented the truth-labeled cost model and host-cost aggregation in Python instead
+of R/JRI, specifically so it could be unit-tested against known-answer cases before trusting it (the
+oracle-rescore precedent in `IntContainerDataCenter.java` shows how fragile the JRI path is: "only
+one Rengine per JVM" workarounds, etc.) -- this avoids adding a second fragile R-side code path for
+a result the brief itself calls highest priority. No CloudSimInterference changes were needed for
+S1.
+
+**Level rule defined and logged to CONFORMANCE.md Sec 7 BEFORE any placement was scored** (git
+diff timestamp precedes any run in this subsection), per the brief's ordering requirement. Key
+decision: tier B's `train/`+guest-tree are the single canonical source for cut points AND
+per-cloudlet metric values, since T1/A's own feature sets lack `membw_est`/`psp` entirely --
+documented there in full, including the degenerate disk/net "mod" bucket (cut_lo==cut_hi, tertile
+boundaries collapse because both classes' training rows are zero-inflated with a hard jump).
+
+**Unit-tested before running on real data**: `truth_cost()` formula against hand-computed cases
+(Y5 regime-as-cpu relabeling, Y6 regime-only multiplier), `level_for()` boundary conditions,
+`score_placement()`'s product-per-host-summed-across-hosts aggregation (reusing S2's validated
+closed form), and `parse_last_placement()` taking the LAST table not the first (opposite of S2's
+`decompose-idi.py`, verified against a real T1 rep1 log showing cloudlet 3 moved host between the
+first and last table). One real bug was caught by a crash rather than by silent wrong output: an
+early version of the summary-printing code referenced stale loop variables after a refactor,
+crashed with `UnboundLocalError` on the EVEN/CIAPA runs, fixed before trusting any of that run's
+numbers.
+
+**Real-data confirmation of the brief's own accept test.** EVEN's round-robin placement does not
+depend on any classifier, so it produces the IDENTICAL placement under all three tiers -- and
+scored: T1, A, and B all read EXACTLY 8482.1950 (Y5) / 8084.5913 (Y6), sd=0.0000, n=10 each. This
+is real data independently confirming the synthetic unit test's "identical placement -> identical
+score, tier-independent" result, not just a constructed case.
+
+**Runs**: IASA (main) n=20 per tier (T1/A/B), EVEN n=10 per tier, CIAPA n=10 per tier, PM_COUNT=12,
+JDK 8, same toolchain as R1/S3/S4/S2. `full` and `final6th` windows give IDENTICAL scores in every
+case checked -- verified this is real, not a code bug: the per-cloudlet source traces (tier B's
+canonical guest tree) are stable within their own duration (stress-ng-generated, not affected by
+placement), so averaging the whole trace vs. just its last sixth lands in the same tertile bucket
+for every cloudlet in this campaign. Reported as-is; both numbers are written to
+`s1-truthscore.tsv` as the brief asks, but they are not independently informative here.
+
+**Result (IASA, n=20/tier):**
+
+| yardstick | T1 | A | B |
+|---|---|---|---|
+| Y5 (5-class) | 6965.7 (sd 221.1) | 7053.3 (sd 357.2) | 7365.2 (sd 399.0) |
+| Y6 (6-class) | 6494.7 (sd 234.9) | 6566.6 (sd 389.0) | 6947.2 (sd 382.8) |
+
+Pairwise permutation tests (10000 perms, seed 20260607, Holm-corrected across 3 comparisons/
+yardstick), bootstrap 95% CIs (10000 resamples):
+
+| yardstick | pair | diff | 95% CI | p (Holm) | verdict |
+|---|---|---|---|---|---|
+| Y5 | T1-A | -87.6 | [-268.0, 87.9] | 0.363 | not significant |
+| Y5 | T1-B | -399.5 | [-598.3, -204.6] | 0.0012 | significant |
+| Y5 | A-B | -311.9 | [-539.4, -86.3] | 0.0288 | significant |
+| Y6 | T1-A | -71.9 | [-266.5, 117.1] | 0.486 | not significant |
+| Y6 | T1-B | -452.5 | [-647.3, -258.4] | 0.0006 | significant |
+| Y6 | A-B | -380.6 | [-612.7, -150.6] | 0.0070 | significant |
+
+EVEN (n=10/tier, identical across tiers as noted above): 8482.2 (Y5) / 8084.6 (Y6).
+CIAPA (n=10/tier, Y5): T1 6916.2 (sd 270.5), A 6715.4 (sd 126.7), B 6635.4 (sd 110.4).
+
+**Headline finding: the ranking reverses relative to self-scoring.** Under each configuration's
+OWN classifier, full-fingerprint (B) has the lowest (best) self-scored index (~4357, per S3's gate
+means) and canonical-7 (T1) the highest/worst (~6584). Under the classifier-free yardstick, this
+inverts: T1 and A do not differ from each other and both score significantly BETTER (lower =
+less estimated degradation) than B, by about 4.4% to 7.0% depending on yardstick and pair. This
+directly supports contribution 5's existing framing ("re-scoring against each classifier finds no
+ranking that survives a change of reference") with an actual number rather than a placeholder.
+
+**Not yet done / deferred, logged not hidden:**
+- `figs/fig_truthscore.pdf` not generated (same deferral pattern as the other 3 figures this
+  pass). Data for it is on disk (`s1-truthscore.tsv`).
+- CIAPA under Y6 and its own pairwise stats were computed (`s1-truthscore.tsv` has the rows) but
+  not separately reported above; can be pulled if the maintainer wants them in the caption.
+- The "full-trace vs six-interval-equivalent" distinction the brief asks for produced identical
+  numbers in this campaign (explained above); if the maintainer wants a real distinction, the
+  window would need to be redefined (e.g. against the ACTUAL per-interval CPD boundaries the
+  running simulation used, rather than a fixed last-1/6-of-rows heuristic) -- flagged as a
+  design choice, not implemented as a fallback silently.
+
+**Proposed text for the 6 `\tbd{S1}` occurrences below. NOT applied to `main-jsa.tex`. Per rule 7,
+stopping here for maintainer sign-off (abstract, contribution 5, and conclusion all touched).**
+
+1. Abstract (replaces "scored against the known workload classes, the resulting placements differ
+   by X%"):
+   > "scored against the known workload classes, the ranking reverses: full-fingerprint places
+   > about 4 to 7% worse than canonical-7 or proxy-swap, which do not differ from each other"
+
+2. Contribution 5 (replaces "a classifier-free yardstick built from the known workload classes
+   ranks the placements as ..."):
+   > "a classifier-free yardstick built from the known workload classes ranks canonical-7 and
+   > proxy-swap together and full-fingerprint worst, the reverse of the self-scored ranking"
+
+3. Section 7.4 tertile-rule description: unchanged, already accurate as written ("tertiles of
+   each class's dominant measured metric over the host traces").
+
+4. Section 7.4 result (replaces the "Result: canonical-7 X..." placeholder):
+   > "Result: canonical-7 6966 $\pm$ 221, proxy-swap 7053 $\pm$ 357, full-fingerprint 7365 $\pm$
+   > 399 ($n=20$ per configuration, five-class yardstick; six-class yardstick 6495 $\pm$ 235,
+   > 6567 $\pm$ 389, 6947 $\pm$ 383). Canonical-7 and proxy-swap do not differ (permutation
+   > $p_{Holm}=0.363$ five-class, $0.486$ six-class); full-fingerprint scores higher than both
+   > (canonical-7: $p_{Holm}=0.001$ five-class, $0.001$ six-class; proxy-swap: $p_{Holm}=0.029$
+   > five-class, $0.007$ six-class), about 4 to 7% higher depending on configuration and
+   > yardstick. EVEN scores 8482 (five-class) or 8085 (six-class) identically regardless of which
+   > tier produced its placement, since its round-robin assignment does not depend on a
+   > classifier; CIAPA scores 6635 to 6916 (five-class, $n=10$ per configuration), closer to
+   > canonical-7 and proxy-swap than to full-fingerprint."
+
+5. Figure 15's... wait, Figure~\ref{fig:truthscore} caption (replaces "Caption numbers to be
+   filled."):
+   > "Five-class yardstick means: canonical-7 6966 (sd 221), proxy-swap 7053 (sd 357),
+   > full-fingerprint 7365 (sd 399), $n=20$. Six-class yardstick means: canonical-7 6495 (sd 235),
+   > proxy-swap 6567 (sd 389), full-fingerprint 6947 (sd 383). EVEN scores 8482 (five-class) or
+   > 8085 (six-class), identical across configurations; CIAPA scores 6635 to 6916 (five-class,
+   > $n=10$ per configuration)."
+
+6. Conclusion (replaces "Against the known workload classes, the placements ..."):
+   > "Against the known workload classes, the placements from canonical-7 and proxy-swap do not
+   > differ from each other, and both place significantly better than full-fingerprint despite
+   > full-fingerprint scoring best against its own classifier"
+
+**STOPPED HERE per the brief's checkpoint rule.**
