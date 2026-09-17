@@ -366,6 +366,77 @@ to represent the paper classifier?
 
 ---
 
+## 7. S16 known-class yardstick: degradation level rule (defined 2026-09-17, before any placement was scored)
+
+S1 (jsa-repo-fix-brief) re-scores each configuration's final placement against
+the workload's TRUE resource class (fixed by construction, not classifier
+output) and a degradation level set by tertile cut points instead of
+k-means, "to remove the circularity of Section 7.3." This rule is defined
+here, from training data only, before looking at any placement or score, per
+the brief's own ordering requirement.
+
+**Canonical source, single ruler for all three tiers.** Tier B's `train/`
+split (`iada-trainsets/B/train/`) is the only host-trained source that
+carries all six dominant metrics the rule needs — T1's and A's own 7-column
+feature sets do not include `membw_est` or `psp` at all (A carries
+`membw_est` only in the `mbw` slot, not as a named column; T1 has neither).
+Using tier B's train split for cut points, and (in the scoring step) tier
+B's guest tree for every cloudlet's raw dominant-metric value regardless of
+which tier's placement is being scored — legitimate because all three
+tiers' trees hold the identical 28 (workload, pattern) traces in the
+identical sorted order, confirmed byte-identical in the S10 DECISIONS entry
+— makes the yardstick one fixed ruler, independent of which tier produced
+the run. This is what the brief's own accept test requires (identical
+placements score identically across tiers, checked in
+`bench/iada/scripts/s1-truthscore.py` before trusting it on real data).
+
+**Dominant metric per class:** cpu→`cpu`, mem→`membw_est`, disk→`blk`,
+net→max(`netp`,`nets`), cache→`llcmr`, regime→`psp`. Per the brief.
+
+**Cut points.** For each class, its own training rows (e.g. `cpu100.csv` for
+the cpu class) give the tertile cut points of that class's dominant metric —
+two cut points dividing the class's own distribution into three equal-count
+groups (low / mod / hig). Standardization for comparing across host and
+guest domains uses the POOLED mean and population SD of the dominant metric
+over ALL six classes' training rows together (not per-class), so cut points
+and guest raw values land on the same standardized scale:
+
+| class | dominant | host mean | host sd | cut (z) low/hig |
+|---|---|---|---|---|
+| cpu | cpu | 22.92 | 11.29 | +0.804 / +0.981 |
+| mem | membw_est | 2034.30 | 3084.15 | -0.159 / +1.470 |
+| disk | blk | 15.12 | 35.80 | +2.371 / +2.371 |
+| net | max(netp,nets) | 14.29 | 34.99 | +2.449 / +2.449 |
+| cache | llcmr | 34.89 | 35.36 | -0.845 / -0.817 |
+| regime | psp | 4187.93 | 6682.44 | +0.175 / +0.177 |
+
+Full table with raw (non-standardized) cut points:
+`bench/iada/results/sim-experiments-20260917-s16/s1-level-rule.tsv`. Computed
+by `bench/iada/scripts/s1-level-rule.py --trainset-root iada-trainsets/B/train`.
+
+**Known limitation, reported not hidden.** disk and net have cut_lo == cut_hi
+(both classes' training rows are heavily zero-inflated with a hard jump to
+non-zero, so the lower and upper tertile boundaries land on the same raw
+value). This means the "mod" bucket is degenerate for these two classes —
+every disk/net cloudlet will score either low or hig, never mod, under this
+rule. Not adjusted or smoothed; reported as a property of the training
+distribution, not corrected for, since inventing a synthetic mod boundary
+would not be defensible from the data.
+
+**Scoring rule (per cloudlet, per placement).** True class's dominant metric
+is read from tier B's canonical guest trace for that cloudlet, standardized
+with the pooled host mean/sd above, and compared against that class's
+z-scored cut points: below cut_lo → `low`, between cut_lo and cut_hi (never,
+for disk/net) → `mod`, at or above cut_hi → `hig`. Every OTHER class stays
+`abs` (cost multiplier 1), matching `MLCResult.getCloudletCost()`'s
+structure exactly, just with the classifier's predicted class+level replaced
+by the true class + tertile level. Y5 relabels `regime` cloudlets as `cpu`
+(five classes only, for all three tiers). Y6 prices the regime class using
+its own tertile level and the existing `REGIME_ON` multiplier path (six
+classes, only meaningful where the search itself is regime-aware — tier B).
+
+---
+
 ## Appendix A — BibTeX (owner-supplied)
 
 ```bibtex
