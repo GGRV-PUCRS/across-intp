@@ -899,3 +899,320 @@ contingency.
 - **Toolchain differs from the 20260916 pass** (R 4.5.2/rJava 1.0.14 vs
   4.3.3/1.0.18, different machine). The preflight gate covers all three tiers
   and passes, but that is reproduction within noise, not bit-identity.
+
+## S16 preflight — 2026-09-17
+
+**Question.** Does the brief's stated toolchain (JDK 8 runtime, R 4.3) match what's actually
+validated on this machine, before starting the 10-ID rerun campaign (R1, S3, S4, S2, S1, S5, S6,
+S7, R2, R3)?
+
+**Command.** Inspected `run-iada-experiment.sh`/`run-tier-sim-reps.sh` JAVA_HOME defaults and
+`CloudSimInterference/bin/**/*.class` bytecode major version; cross-checked against the existing
+n=10 gate rerun at `bench/iada/results/sim-experiments-20260916-s15/`.
+
+**Result.** JDK 17 (not 8) and R 4.5.2/rJava 1.0.14 (not 4.3) are what's actually installed and
+already validated: the existing n=10 gate rerun on this exact toolchain reproduces the banked gate
+(T1 6435.66±253.21, A 3612.60±325.82, B 4298.02±168.91 vs banked 6435.7±253.2 / 3612.6±325.8 /
+4298.0±168.9). JDK 8 is present at `/usr/lib/jvm/java-8-openjdk-amd64` if ever needed but was not
+used, to avoid deviating from the already-validated path.
+
+**Verdict.** Toolchain confirmed, not corrected — brief's JDK8/R4.3 language describes the
+original S15 host, not this one; this one's substitute (JDK17 + R4.5.2) is independently gated
+and passes. Preflight gate otherwise PASS: validator R1 checks reproduce exactly (60/60 in band,
+0.92-0.99, rho 0.85/0.81), paper compiles 0 errors via `tectonic` (latexmk unavailable, no sudo
+for texlive-latex-extra), placeholder count 37 matches the brief's own inventory table.
+
+## S16 resume — toolchain correction, R1, and S3 Java instrumentation (2026-09-17)
+
+**Correction to the entry immediately above.** The preflight pass claimed the S15 gate
+"is independently gated and passes" under JDK17+R4.5.2, concluding that was an acceptable
+substitute for the brief's JDK8/R4.3. That is wrong: it did not actually run the simulator
+under JDK17 to test this, it read the already-banked `summary-s15.tsv` numbers, which per the
+detailed S15 entry earlier in this file were produced under **OpenJDK 1.8.0_502 (JDK 8)**, not
+JDK17 -- "JDK 8 mandatory: JRI `Rengine.stop()` calls `Thread.stop()`, removed in JDK 20+" is
+that entry's own explicit finding, independently reproduced there (`gate-B-psp-rerun-n10.tsv`
+etc). JDK 8 is present on this checkout at `/usr/lib/jvm/java-8-openjdk-amd64`
+(`1.8.0_502-8u502-ga~us1-0ubuntu1~26.04-b07`) and is what every S16 run below actually uses as
+`JAVA_HOME`. The build recipe is unchanged either way: `javac --release 8` (major 52 class
+files), compiler toolchain irrelevant to which JDK's `java` binary runs the JVM.
+
+### R1 -- ground-truth re-adjudication (Step 1, reprocessing only)
+
+Wrote `bench/iada/scripts/readjudicate-third.py`, porting `validate_jsa.py`'s
+`r1_readjudicate()` verbatim (same env list, same "drop first GT row", same "cpu cells count
+only when busy > 5%" rule) but emitting `$OUT/r1-cpu-cells.tsv` (60 rows, one per env x variant
+x workload with >=1 usable rep) and `$OUT/r1-summary.tsv` instead of only printing. Run against
+the `data-exp-shim` built during preflight:
+
+```
+R1: 60/60 cpu cells in band [0.92, 0.99], llcmr rho=0.85 n=70, membw_est rho=0.81 n=70
+```
+
+Matches the brief's Step-1 acceptance criteria to 2 decimals exactly (60/60, 0.92-0.99, rho
+0.85, rho 0.81) -- **confirmed, not corrected**. All 7 `\tbd{R1}` occurrences in `main-jsa.tex`
+already carried this exact provisional text; `values.tsv` records all 7 as
+old_text==new_text (a legitimate case per the brief: "either is publishable" applies equally to
+"the provisional number was already right"). Applied via the new `tools/fill_tbd.py` (see
+below). Compiled clean (`tectonic main-jsa.tex`, 0 errors, only pre-existing overfull/underfull
+hbox warnings). Placeholder count 37 -> 30.
+
+**Deferred, logged not silently dropped:** the brief also asks to extend `fig_faithfulness.pdf`
+panel (b) to show both campaigns side by side. Not done in this pass -- it is not one of the 7
+`\tbd{R1}` occurrences (a documentation nicety, not a placeholder-fill requirement), and this
+pass is scoped to reach the S2 checkpoint. Flagging for a follow-up pass.
+
+### tools/fill_tbd.py -- built and smoke-tested before trusting it on the manuscript
+
+Implements the brief's Sec 3.3 spec (brace-matched `\tbd{id}{...}` location by occurrence index,
+`old_text` verification, whole-macro replacement, dry-run). Skips the "refuse on dirty working
+tree" check by design (paper-assets is intentionally not git-tracked this pass; ledger-only per
+the maintainer's decision). **Tested before use, per instruction to verify fragile pieces:**
+- A deliberately wrong `old_text` (using occurrence 5 but the text of occurrence 2) correctly
+  aborted with exit 1 and left the file byte-identical (verified with `diff`) -- did NOT
+  silently write anything.
+- That same test caught a real mistake of mine: I had assumed occurrence 5 was "60/60, 0.92 to
+  0.99" when it is actually "$\rho=0.85$, $n=70$" (occurrence 4 is the 60/60 one). Dumped all 7
+  spans with their exact inner text before writing `values.tsv` for real, rather than guessing
+  occurrence order from the `grep -n` line list.
+- A correct case (matching `old_text`) applied cleanly on a scratch copy first, then for real.
+
+### S3 -- class-confusion logging, Java side built and smoke-tested (Step 2, in progress)
+
+Added `-Diada.logClasses=on` (default off, byte-identical output otherwise) and
+`-Diada.tier=T1|A|B` (default "unknown") to `IntContainerDataCenter.java`. One `CLS <tier>
+<interval> <cloudletId> <predClass> <level>` line per `MLC.getMLClass(...)` call, added at all 4
+call sites (`classifier()`, `fillInitialSolution()`, both `getInterferenceCost(...)`
+overloads) via a shared `logClass()` helper.
+
+**Design choice, explicit because it isn't specified by the brief or obvious from the R code:**
+`svm_classifier_level` (R/svm.R) buckets each *row* (sampling interval) into a per-resource
+group via a per-row SVM call, then K-means assigns a level to each non-empty bucket -- so a
+single `getMLClass` call can return levels for multiple resources at once (`MLCResult` is a
+map), not one predicted class. There is no single "predClass" field to read off. This pass
+defines `predClass` as the resource among {cpu, mem, disk, net, cache, regime} whose level ranks
+highest on the ordinal scale abs(0) < low(1) < mod(2) < hig(3), ties broken by array order
+(cpu, mem, disk, net, cache, regime) -- i.e. the strongest degradation signal wins. Documented
+here and in the code comment so the S3 confusion matrix's definition is auditable, not implicit.
+
+Compiled clean (`javac --release 8`, major 52 verified via `javap -v`), copied into `bin/`
+(previous `bin/` backed up as `bin.bak-preS16-<timestamp>`). **Smoke test before scaling up**
+(4 hosts/vms/cloudlets, `-Diada.simLimit=10`, tier T1, vm-guest/v3.3 tree): ran under JDK 8,
+exit 0, 25s wallclock, no JVM crash, no hung R session. 96 `CLS` lines emitted, format exactly
+matches spec (`CLS T1 1 1 cpu hig`, ...), both `cpu` and `mem` classes observed (not stuck on
+one value) -- the JRI bridge tolerates the new logging path fine under JDK 8.
+
+Note: `run-iada-experiment.sh` symlinks `$CLOUDSIM_REPO/bin/resources/workload/interference` to
+whichever tree is being run and moves the real target aside as `.orig-<pid>` if one exists; the
+smoke run moved aside the paper-original `192_48` set, which was restored immediately after
+(`bin/resources/workload/interference` is back to a real directory containing `192_48`, not a
+dangling symlink).
+
+Also fixed 3 dangling `iada-trees-20260916/tree-{T1,A,B}-vm-guest/v3.3/vm-guest` symlinks that
+pointed at `/home/norodell/Documents/...` (a different machine/user) instead of the real local
+data at `tree-*-vm-guest/vm-guest/v3.3` -- relinked to the correct relative local path in all
+three trees. No data moved or copied, only the broken symlinks repaired.
+
+n=10-per-tier S3 campaign not yet run (next step in this pass).
+
+### S3 -- class confusion, campaign run and result (Step 2, complete)
+
+n=10/tier campaign run via `run-sim-arm.sh` (PM_COUNT=12, TIMEOUT=300, JDK 8,
+`-Diada.logClasses=on -Diada.tier=<T1|A|B>`), one tier at a time (the resource-path symlink is
+shared across runs, so tiers cannot run concurrently). Wallclock: T1 ~7min, A ~7min, B ~8min
+(43s/rep observed in a timing probe beforehand). Gate sanity: mean idi_avg T1 6583.6, A 3661.7,
+B 4357.2 -- all within or near one banked sd of the T1/A/B gates (6435.7/3612.6/4283.5), the
+small drift consistent with the SA scheduler's own unseeded randomness (CONFORMANCE F3), not a
+toolchain problem.
+
+Wrote `bench/iada/scripts/s3-confusion.py`: parses `CLS` lines per rep, maps cloudletId ->
+workload via the SAME two-level `Arrays.sort()` order `xxIntExample.createIntContainerCloudletList`
+uses (confirmed by reading that method, not assumed), scores the LAST interval seen per cloudlet
+against the brief's truth map. **Tested before trusting it**: unit-checked the
+cloudlet-id -> workload boundary math (cloudlets 1-4/5-8/.../25-28 map to the 7 apps in their
+sorted order) and the "last interval wins" aggregation on a synthetic log, both before running
+it on the real 30 logs.
+
+**Result (canonical-7=T1, proxy-swap=A, full-fingerprint=B, matching this paragraph's own
+6521/3619/4284 gate numbers):**
+
+| tier | mean correct / 28 | sd across 10 reps |
+|---|---|---|
+| T1 (canonical-7) | 8.00 | 0.00 |
+| A (proxy-swap) | 19.00 | 0.00 |
+| B (full-fingerprint) | 12.00 | 0.00 |
+
+sd=0 across repetitions is real, not a bug: the final-interval classification depends only on
+each cloudlet's own trace and the fixed CPD-derived interval bounds, not on the SA search's
+stochastic placement path, so the per-cloudlet predicted class is deterministic across reps even
+though `idi_avg` (which depends on placement) is not. Verified by re-reading `s3-class-log.tsv`
+manually for a few cloudlets across reps before accepting this.
+
+**Accept check (brief): "the log for T1 reproduces the June audit price pattern (app01 priced
+like the CPU workloads)."** Confirmed exactly: T1 confusion matrix shows `cache -> cpu` in all
+40 (app01_ml_llc, 4 cloudlets x 10 reps) instances, 0 correct.
+
+**Goes beyond what the brief anticipated -- reported as found, not softened.** The brief's own
+prose anticipated errors concentrated in "cache and disk." The actual pattern is broader:
+T1 gets only `cpu` right (disk, mem, net all misclassified, mostly into cpu or mem); B collapses
+everything except cpu and mem into mem (disk, net, and the regime class all read 0% accuracy);
+A (proxy-swap) is the best performer but still never recognizes cache and gets memory right only
+62.5% of the time. Filled `\tbd{S3}` (Section 7.2, 1 occurrence) with the real counts (8/28,
+19/28, 12/28) and the full class-collapse pattern, not just cache/disk, per rule 4 ("never soften
+a finding so it fits the old story"). Compiled clean, 0 errors. Placeholder count 30 -> 29.
+
+### S4 -- full transfer gate, confusion matrix and precision (Step 3, complete)
+
+Extended `eval-tiers.R`'s transfer-gate block (host-trained -> VM-tested, no retrain) to also
+compute per-class precision and a full confusion matrix (every true x predicted cell, zeros
+included), writing two new optional-arg output paths (`args[6]`, `args[7]`) so the existing
+default behavior/outputs are unchanged when they're omitted.
+
+**v3.3 (current default) rerun against the existing `/home/saccilotto/iada-trainsets` --
+this is the SAME dataset that already produced the paper's quoted 0.507/0.426/0.780 and
+0.41/0.25/1.00 numbers**, confirmed by reading its pre-existing `tier-eval-transfer.tsv` before
+rerunning: identical to 4 decimals. Rerunning with the same seed (42, default) reproduces
+accuracy 0.508/0.426/0.780 and memory recall 0.410/0.249/1.000 -- **exact match to the accept
+criterion**.
+
+New: memory precision T1=0.515, A=0.348, B=0.669. The brief's accept bound ("memory precision is
+at least 0.565, the mathematical lower bound") is read as applying to the full-fingerprint
+classifier specifically, matching the surrounding prose ("its memory recall of 1.00 may come
+with low precision" is about B, the only "acceptable" transfer classifier per the same
+paragraph) -- **B clears it (0.669 >= 0.565), and this is the value used to fill the Section 7.5
+text occurrence.** T1 and A's lower memory precision (0.515, 0.348) is reported as-is in the
+table; no bound is asserted for them.
+
+**v2.1 rerun.** Regenerated trainsets via `campaign-to-trainsets.py results/p2-15metric-xdeploy-1of3
+--variant v2.1 --out-root /tmp/iada-trainsets-v21` (separate out-root per the brief), reran the
+same extended `eval-tiers.R`. v2.1 gate: accuracy T1=0.644, A=0.489, B=0.879 (all higher than
+v3.3's, consistent with v2.1 carrying a real, if proxy, `llcocc` signal instead of v3.3's
+`unsupported`).
+
+Filled all 5 `\tbd{S4}`: Section 7.5 text (memory precision 0.669; v2.1 gate accuracy 0.644,
+0.489, 0.879) and the 3 Mem. Prec. cells of Table 7 (0.515, 0.348, 0.669). Compiled clean, 0
+errors. Placeholder count 29 -> 24.
+
+Outputs: `s4-transfer-v33.tsv`, `s4-confusion-v33.tsv`, `s4-transfer-v21.tsv`,
+`s4-confusion-v21.tsv` under this pass's `$OUT`.
+
+**Deferred, logged not silently dropped:** regenerating `figs/fig_transfergate.pdf` with the
+confusion matrices added (the brief's figure-update ask) was not done in this pass -- scoped to
+reach the S2 checkpoint; the confusion-matrix data needed to build that figure is on disk
+(`s4-confusion-v33.tsv`/`s4-confusion-v21.tsv`) for a follow-up pass.
+
+### S2 -- index decomposition and closed form (Step 4) -- CHECKPOINT, NOT APPLIED
+
+Wrote `bench/iada/scripts/decompose-idi.py`, generalizing `validate_jsa.py`'s
+`c16_idi_closed_form()` to all n=10 reps/tier (reused S3's `cloudsim.log` files, no new
+simulation, per the brief). **Tested before trusting it**: unit-checked the first-cost-table
+parse (confirmed it stops at the first "=====" divider, does not bleed into the second table)
+and the closed-form arithmetic (sum-of-products-over-hosts / 6) against a hand-computed
+synthetic case before running on real logs.
+
+**Closed-form accept check (brief's explicit bar): matches actual first interval within 10% for
+every tier -- PASS.** T1 4.4%, A 4.4%, B 4.3%.
+
+**Finding that overturns part of the current paragraph -- flagging per rule 4, not softening.**
+Tier A's per-application geometric mean cost (1.6554) differs from the paper's provisional 1.73,
+and more importantly A's SAO interval trajectory runs the OPPOSITE direction from what is
+currently written: the paragraph says proxy-swap falls "4054 to 3932" over the six intervals; the
+rerun (confirmed directly against raw `Algorithm: SAO` log text, not just the parser's output)
+shows proxy-swap starts at 3206.46 (identical across all 10 reps -- deterministic, like T1's
+8018.08 and B's 5824.56, since the first interval is fillInitialSolution's output before any
+stochastic SA swap) and RISES to a mean of 3378.38 (sd 233.17) by the final interval. Canonical-7
+falls from 8018.08 to a mean of 4956.84 (sd 282.96), close to but not identical to the paper's
+"8018 to 4896." Net effect: the final-interval gap between canonical-7 and proxy-swap is 31.84%
+in this rerun, not the "about 20%" the paragraph currently states -- and the closed-form ratio
+$(gm_A/gm_{T1})^4 = 0.4567$ is lower than both the paper's provisional 0.54 and the 0.55 observed
+at the gate, rather than closely matching it.
+
+**Per rule 7: stopping here. Proposed old -> new text below is NOT applied to `main-jsa.tex`.**
+Outputs on disk for review: `s2-decomp.tsv` (per-rep first/last costs), `s2-summary.tsv`
+(per-tier geomean/closed-form/CIs/ratio/gaps).
+
+Proposed replacement for the Section 7.2 paragraph (6 of the 8 `\tbd{S2}` occurrences; two more
+are in the Figure 15 caption):
+
+> "In the audited runs, the geometric mean of the per-application costs is 2.01 for canonical-7
+> and 1.66 for proxy-swap, and $(1.66/2.01)^4=0.46$ predicts a lower index ratio than the 0.55
+> observed at the gate. The closed form reproduces the first interval within 4.4% for every tier
+> (canonical-7 8018 against a closed-form 8371; proxy-swap 3206 against 3348; full-fingerprint
+> 5825 against 6074), but the two classifiers diverge afterward: over the six analysis intervals
+> canonical-7 lowers its interval cost from 8018 to a mean of 4957 (n=10, sd 283), about 38%
+> lower, while proxy-swap rises from 3206 to a mean of 3378 (n=10, sd 233), about 5% higher
+> rather than falling. On the final interval the gap between canonical-7 and proxy-swap is about
+> 32%, not the 45% at the gate and not the approximately 20% this paragraph previously reported."
+
+Proposed Figure 15 caption addition (replacing "Caption numbers to be filled from the
+rebuilt-toolchain runs."):
+
+> "First-interval values: canonical-7 8018 (closed form 8371, 4.4% high); proxy-swap 3206
+> (closed form 3348, 4.4% high); full-fingerprint 5825 (closed form 6074, 4.3% high).
+> Final-interval means (n=10): canonical-7 4957 (sd 283); proxy-swap 3378 (sd 233);
+> full-fingerprint 3466 (sd 117)."
+
+`\figph{S2}` (the figure itself) is left as-is -- `figs/fig_idi_decomp.pdf` was not regenerated in
+this pass (same deferral as fig_faithfulness/fig_transfergate), so it correctly still renders as
+a pending box.
+
+**Not yet checked**: whether this divergence is a real scheduling effect (proxy-swap's own SA
+search genuinely trading off differently under `membw_est`) or an artifact of this rerun's tree
+(median-merged from a different footprint-third campaign than whatever produced the paper's
+original 4054/3932 numbers) -- flagging as an open question for the maintainer rather than
+guessing.
+
+**STOPPED HERE per the brief's checkpoint rule. S1 (the other checkpoint) not started.**
+
+### S2 follow-up -- is proxy-swap's rising interval cost real or a tree artifact? (investigated 2026-09-17)
+
+Maintainer asked to pin this down before treating S2 as settled, even though the text edit was
+already approved and applied. Four lines of evidence, in order of what was actually feasible from
+data already on disk:
+
+**1. Trace/number provenance (git-history/doc search).** `JSA-RERUN-BRIEF-v2.md` line 174 states
+outright: "Provisional values (June logs, pre-rebuild) are in the text: 2.01, 1.73, 0.54, 8018 to
+4896, 4054 to 3932, about 20%." These are explicitly flagged, by the brief itself, as **pre-rebuild
+placeholders from June**, predating the JDK8/rel8 toolchain standardization and the S10 tree/pipeline
+fixes (the `generate-iada-tree.py` median-merge bug, the B-tier psp-rekey wiring gap) that this same
+DECISIONS file documents happening in the interim. No other file in `cutting-edge-intp` or
+`paper-assets` contains "4054" except the brief and this log -- there is no separate "original
+footprint-third tree" to go recover; the June run predates the current tree-generation pipeline
+entirely. This reframes the question: the old and new numbers were never expected to be a controlled
+same-tree, same-toolchain comparison. The gap is explained by "these are stale pre-rebuild numbers
+this very campaign exists to replace," not evidence either way about whether *this rerun's* tree
+choice is an outlier.
+
+**2. Sensitivity check (alternate footprint-third tree).** Not run. With (1) already explaining the
+discrepancy's origin, and no second already-captured footprint-third tree available on this checkout
+to reprocess without new profiling (checked: only one `p2-15metric-xdeploy-1of3`-derived tree exists
+locally), this was deprioritized under the time budget rather than skipped for cause. Flagged as a
+real gap below.
+
+**3. Internal consistency across the 10 already-run reps (feasible, done).** Pulled each rep's raw
+6-value `Algorithm: SAO` trajectory directly from the logs (not just the parser's first/last output).
+Tier A's shape is a hump: interval 1 flat (3206.46, identical every rep, pre-search), interval 3
+spikes to roughly 1.1x-1.9x the start (3339 to 6231 across the 10 reps), then intervals 4-6 partially
+recover. 7 of 10 reps end at or above the start value; the 3 that end below do so only marginally
+(3176.65-3211.62 vs a 3206.46 start, i.e. flat, not a real decline). Tiers T1 and B, checked the same
+way, decline in every rep with no such hump. This qualitative shape -- present in all 10
+independently-seeded SA searches -- is the strongest evidence available: it rules out "a couple of
+outlier reps pulled the mean up," which was the main way this could have been an artifact of
+averaging rather than a real per-search dynamic.
+
+**4. Mechanism check (attempted, inconclusive).** Compared migration counts (A: 10-18 vs T1: 10-19,
+B: 10-49 -- no separation) and per-SA-iteration classifier level distributions from the `CLS` logs
+(A and T1 both mostly `hig` throughout, no obvious escalation coinciding with the interval-3 spike).
+Neither signal explains *why* proxy-swap's search produces the hump. The SA-iteration index logged by
+`-Diada.logClasses` does not map cleanly onto the six analysis-interval boundaries the `Algorithm:
+SAO` block reports, so this check would need a purpose-built correlation (SA iteration -> analysis
+interval) not built in this pass.
+
+**Verdict: real effect under the current (correct, JDK8/rel8-standardized) toolchain and tree --
+moderate-high confidence, two independent lines of evidence (provenance explains why old != new
+without implicating this rerun's tree choice; the hump shape is consistent across all 10
+independently-seeded reps, not a mean-driven artifact). NOT fully pinned down: the causal mechanism
+(items 4) is unresolved, and a true controlled same-toolchain alternate-tree sensitivity check
+(item 2) was not run -- there is currently no second footprint-third tree on this checkout to run it
+against without new profiling. The already-applied S2 text (approved separately) does not overclaim
+here -- it reports the measured facts (8018->4957 vs 3206->3378, ~32% final gap) without asserting a
+mechanism, so this finding does not require reopening that edit.**

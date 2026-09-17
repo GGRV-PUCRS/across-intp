@@ -1,0 +1,2 @@
+id	occurrence	old_text	new_text	source_file	source_row_or_query
+S2	1	Caption numbers to be filled from the rebuilt-toolchain runs.	First-interval values: canonical-7 8018 (closed form 8371, 4.4\% high); proxy-swap 3206 (closed form 3348, 4.4\% high); full-fingerprint 5825 (closed form 6074, 4.3\% high). Final-interval means (n=10): canonical-7 4957 (sd 283); proxy-swap 3378 (sd 233); full-fingerprint 3466 (sd 117).	s2-summary.tsv	maintainer-approved 2026-09-17

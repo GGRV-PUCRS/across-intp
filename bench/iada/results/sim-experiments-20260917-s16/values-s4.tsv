@@ -1,0 +1,6 @@
+id	occurrence	old_text	new_text	source_file	source_row_or_query
+S4	1	memory precision X; confusion matrices added to Figure~\ref{fig:transfergate}	memory precision 0.669; confusion matrices added to Figure~\ref{fig:transfergate}	s4-transfer-v33.tsv	tier=B,metric=precision,class=mem
+S4	2	the v2.1 gate, with its proxy \code{llcocc}, gives accuracy X, Y, and Z	the v2.1 gate, with its proxy \code{llcocc}, gives accuracy 0.644, 0.489, and 0.879	s4-transfer-v21.tsv	tier=T1:0.644,tier=A:0.489,tier=B:0.879
+S4	3	--	0.515	s4-transfer-v33.tsv	tier=T1,metric=precision,class=mem
+S4	4	--	0.348	s4-transfer-v33.tsv	tier=A,metric=precision,class=mem
+S4	5	--	0.669	s4-transfer-v33.tsv	tier=B,metric=precision,class=mem
