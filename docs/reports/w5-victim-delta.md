@@ -1,4 +1,4 @@
-# W5 colocation victim-delta (pairwise − solo) — results/p2-15metric-xdeploy-1of3-w5 (1/3 footprint + hard CPU pinning; bare/container/vm-guest unified at the same baseline + correct 281600 MB/s ceiling; supersedes w5-vmguest.md)
+# W5 colocation victim-delta (pairwise − solo) — final/02-w5-colocation (1/3 footprint + hard CPU pinning; bare/container/vm-guest unified at the same baseline + correct 281600 MB/s ceiling; supersedes w5-vmguest.md)
 
 Envs: bare, container, vm-guest. Variants: v2.1, v3.3. Pairs: 5. scipy: yes.
 
@@ -64,5 +64,35 @@ Envs: bare, container, vm-guest. Variants: v2.1, v3.3. Pairs: 5. scipy: yes.
 | app11_sort_net — vs app05_membw | 0.000 (n.s.,0.083) | 0.000 (n/a,0.000) | 0.000 (n/a,0.000) | 5664 (***,1.0) | 0.000 (n/a,0.000) | **membw_est** ↑ |
 | app13_query_scan — vs app05_membw | 0.000 (n/a,0.000) | 0.000 (n/a,0.000) | 8.5 (**,0.785) | 70.0 (n.s.,0.097) | 1.0 (n.s.,0.458) | **psi_io** ↑ |
 
+## Direction summary — significant cells (BH-FDR q<0.05), all metrics
 
-_Machine-readable rows: results/p2-15metric-xdeploy-1of3-w5/w5-victim-delta.tsv (420 victim-delta cells)._
+Counts of significant victim-delta cells by direction. `host` pools bare+containers; `guest` is vm-guest. Use these counts for any 'rises/falls in N of M significant cells' claim — never hand-count from the TSV.
+
+| metric | variant | host sig | host ↓ | host ↑ | guest sig | guest ↓ | guest ↑ |
+|---|---|---|---|---|---|---|---|
+| blk | v2.1 | 2 | 0 | 2 | 1 | 0 | 1 |
+| blk | v3.3 | 0 | 0 | 0 | 1 | 0 | 1 |
+| mbw | v2.1 | 7 | 2 | 4 | 0 | 0 | 0 |
+| mbw | v3.3 | 8 | 8 | 0 | 0 | 0 | 0 |
+| llcmr | v2.1 | 9 | 0 | 9 | 5 | 1 | 4 |
+| llcmr | v3.3 | 10 | 0 | 10 | 5 | 1 | 4 |
+| llcocc | v2.1 | 8 | 8 | 0 | 4 | 0 | 4 |
+| llcocc | v3.3 | 9 | 8 | 1 | 0 | 0 | 0 |
+| cpu | v2.1 | 3 | 2 | 1 | 3 | 2 | 1 |
+| cpu | v3.3 | 6 | 4 | 2 | 1 | 1 | 0 |
+| schedlat | v2.1 | 4 | 0 | 4 | 3 | 0 | 2 |
+| schedlat | v3.3 | 4 | 0 | 4 | 2 | 0 | 2 |
+| psi_mem | v2.1 | 2 | 2 | 0 | 0 | 0 | 0 |
+| psi_mem | v3.3 | 2 | 2 | 0 | 0 | 0 | 0 |
+| membw_est | v2.1 | 9 | 1 | 8 | 4 | 1 | 3 |
+| membw_est | v3.3 | 9 | 0 | 9 | 4 | 1 | 3 |
+| psi_io | v2.1 | 2 | 2 | 0 | 1 | 0 | 1 |
+| psi_io | v3.3 | 2 | 2 | 0 | 1 | 0 | 1 |
+| schedthr | v3.3 | 1 | 1 | 0 | 0 | 0 | 0 |
+| steal | v3.3 | 0 | 0 | 0 | 1 | 0 | 1 |
+| psp | v2.1 | 10 | 8 | 2 | 4 | 2 | 2 |
+| psp | v3.3 | 9 | 8 | 1 | 3 | 2 | 1 |
+| idle_preempt | v3.3 | 6 | 6 | 0 | 1 | 1 | 0 |
+
+
+_Machine-readable rows: final/02-w5-colocation/w5-victim-delta.tsv (420 victim-delta cells)._

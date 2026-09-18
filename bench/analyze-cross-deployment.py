@@ -167,6 +167,11 @@ def w5_report(base, variants, stage_pair="pairwise", stage_solo="solo", tag_stat
 
     tsv = [empty_hdr]
     cols = W5_PRIMARY + ["cpu"]   # the headline columns
+    # Significant-cell direction counts per (metric, variant, scope); scope is
+    # "host" (bare+containers) or "guest" (vm-guest). Fills the gap that forced
+    # hand-counting from the TSV -- the source of a misstated "8 of 8" direction
+    # claim in the paper (2026-09 audit).
+    dir_counts = defaultdict(lambda: [0, 0, 0])   # (metric, variant, scope) -> [sig, neg, pos]
     for var in variants:
         for env in envs_present:
             env_pairs = [p for p in sorted(pairs) if pair_cell[(env, var, p)]]
@@ -208,10 +213,19 @@ def w5_report(base, variants, stage_pair="pairwise", stage_solo="solo", tag_stat
                         continue
                     cd = M.cliffs_delta(raw[m][1], raw[m][2])
                     qv = qmap.get(m)
+                    mark = M.signif_marker(qv) if qv is not None else "n/a"
+                    if mark not in ("n.s.", "n/a"):
+                        scope = "guest" if env == "vm-guest" else "host"
+                        dc = dir_counts[(m, var, scope)]
+                        dc[0] += 1
+                        if pmd - smd < 0:
+                            dc[1] += 1
+                        elif pmd - smd > 0:
+                            dc[2] += 1
                     role = "primary" if m in W5_PRIMARY else ("guard" if m in W5_GUARD else cls_of(m))
                     row_t = (var, env, p, m, cls_of(m), M._fmt(smd), M._fmt(pmd),
                              M._fmt(pmd - smd), M._fmt(cd), M._fmt_p(raw[m][0]),
-                             M._fmt_p(qv), M.signif_marker(qv) if qv is not None else "n/a", role)
+                             M._fmt_p(qv), mark, role)
                     if tag_status:
                         row_t = row_t + (status.get(m, "OK"),)
                     tsv.append(row_t)
@@ -233,6 +247,27 @@ def w5_report(base, variants, stage_pair="pairwise", stage_solo="solo", tag_stat
                 row.append(" / ".join(parts) if parts else "—")
                 em("| " + " | ".join(row) + " |")
             em("")
+
+    # ---- direction summary over ALL 13 metrics (incl. the ones the headline
+    # tables don't print: llcocc, psp, mbw, ...) ------------------------------
+    if dir_counts:
+        em("## Direction summary — significant cells (BH-FDR q<0.05), all metrics")
+        em("")
+        em("Counts of significant victim-delta cells by direction. `host` pools "
+           "bare+containers; `guest` is vm-guest. Use these counts for any "
+           "'rises/falls in N of M significant cells' claim — never hand-count "
+           "from the TSV.")
+        em("")
+        em("| metric | variant | host sig | host ↓ | host ↑ | guest sig | guest ↓ | guest ↑ |")
+        em("|---|---|---|---|---|---|---|---|")
+        for m in M.METRICS_ALL:
+            for var in variants:
+                h = dir_counts.get((m, var, "host"), [0, 0, 0])
+                g = dir_counts.get((m, var, "guest"), [0, 0, 0])
+                if h[0] == 0 and g[0] == 0:
+                    continue
+                em(f"| {m} | {var} | {h[0]} | {h[1]} | {h[2]} | {g[0]} | {g[1]} | {g[2]} |")
+        em("")
     return "\n".join(L) + "\n", tsv
 
 
@@ -274,11 +309,18 @@ def main():
             sys.stderr.write(f"[wrote {tsv_path}]\n")
         return
 
+    # Discover the workloads on disk; the WORKLOAD constant silently narrows
+    # coverage when the campaign's set drifts from it (app16/app17 were missing
+    # from every p2 report until the 2026-09 audit).
+    workloads = M.discover_workloads(base, M.ENVS, variants, args.stage)
+    wl_extra = [w for w in workloads if w not in M.WORKLOAD]
+    wl_absent = [w for w in M.WORKLOAD if w not in workloads]
+
     # cell[(env,var,wl)] -> [rep_summary, ...]
     cell = defaultdict(list)
     for env in M.ENVS:
         for var in variants:
-            for wl in M.WORKLOAD:
+            for wl in workloads:
                 for rep in sorted(glob.glob(f"{base}/{env}/{var}/{args.stage}/{wl}/rep*")):
                     cell[(env, var, wl)].append(M.rep_summary(rep))
 
@@ -294,7 +336,7 @@ def main():
         return
 
     envs_present = M.order_envs({e for (e, v, w) in cell if cell[(e, v, w)]})
-    wls_present = [w for w in M.WORKLOAD if any(cell[(e, v, w)] for e in envs_present for v in variants)]
+    wls_present = [w for w in workloads if any(cell[(e, v, w)] for e in envs_present for v in variants)]
     invalid = M.env_validity(envs_present, variants, M.CPU_WL, vals)
     good = [e for e in envs_present if e not in invalid]
     # which of the 13 metrics actually have any data (so a canonical-only campaign
@@ -311,6 +353,12 @@ def main():
     em(f"Deployment axis: {' -> '.join(envs_present)}. Variants: {', '.join(variants)}. "
        f"Stage: {args.stage}. Metrics with data: {len(metrics_present)}/13. "
        f"scipy: {'yes' if HAVE_SCIPY else 'NO (MW p skipped; bootstrap CI still computed)'}.")
+    cov = f"Workloads analyzed: {len(wls_present)} (discovered on disk)."
+    if wl_extra:
+        cov += f" Not in intp_metrics.WORKLOAD: {', '.join(wl_extra)}."
+    if wl_absent:
+        cov += f" Listed but absent here: {', '.join(wl_absent)}."
+    em(cov)
     em("")
     em("Statistic is claim-class-gated (intp_metrics.CLAIM_CLASS): **absolute** = ratio vs bare "
        f"+ bootstrap CI, W4 band {M.RATIO_LO}-{M.RATIO_HI}; **directional** = delta + effect size, "

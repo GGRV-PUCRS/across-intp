@@ -17,9 +17,32 @@ segment (`plot-intp-bench.py`, `extract-fragility.py`,
 `plot-cross-environment.py` when a campaign spans >= 2 envs), and
 `bench/merge-and-render-p2.sh` pulls and re-renders the canonical P2
 cross-deployment campaign (the analyzers plus `plot-p2-15metric.py`).
-Every other script — the P2 cadence / W5 / IADA figures, the seminar
-figure, and the utilities — is run standalone. This guide covers the
-**standalone** invocation flow.
+A third driver, **`bench/render-jsa-paper-figures.sh`** (repo `bench/`, one
+level up), is the canonical way to reproduce the 17 JSA paper figure PDFs
+from the consolidated archive:
+
+```
+bench/render-jsa-paper-figures.sh [DATA_ROOT] [OUT_DIR]
+# defaults: /home/saccilotto/IntP-JSA-consolidated-data  /home/saccilotto/paper/figs
+```
+
+It treats the archive as read-only (derived TSVs — `cross-deployment
+-tagged.tsv`, `w5-victim-delta-tagged.tsv`, `aggregate-means.tsv`,
+`fingerprints-tagged.tsv` — are regenerated inside `cp -rs` symlink farms
+under `/tmp`), invokes the JSA renderers below (`plot-fig2-3-4-6-8-jsa.py`,
+`plot-fig-arch.py`, `plot-cadence-curves.py --jsa-merged`,
+`analyze-cadence-overhead.py --jsa-style`, `plot-fig-pipeline.py`,
+`plot-fig6-v2-jsa.py`, `plot-fig9-a3-jsa.py`, `plot-fig11-fig12-jsa.py`,
+`plot-tierb-fingerprint.py`), renames the `Figure_N.pdf` outputs to the
+paper's `fig_*.pdf` names, and splits the combined F12 fingerprint into the
+per-variant `fig_fingerprint_v21/v33.pdf` halves via
+[`crop-fig14-fingerprint.py`](crop-fig14-fingerprint.py) (PyMuPDF cropboxes
+matching the banked PDFs; the paper's `fig_fingerprint.pdf` is the uncropped
+F12 render). It validates each regenerated TSV against the old-name
+reference tree under `~/results/` (reference is never pipeline input) and
+prints a per-figure checklist. Every other script — the P2 cadence / W5 /
+IADA figures, the seminar figure, and the utilities — is run standalone.
+This guide covers the **standalone** invocation flow.
 
 ## How the figures are named
 

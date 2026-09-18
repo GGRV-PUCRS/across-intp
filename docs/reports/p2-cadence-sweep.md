@@ -1,4 +1,4 @@
-# Cadence sweep: fidelity & sample density vs sampling interval — results/p2-cadence-sweep (1/3 footprint; F8 fidelity only — F9 overhead-vs-cadence deferred)
+# Cadence sweep: fidelity & sample density vs sampling interval (all environments pooled) — final/03-cadence-sweep (1/3 footprint; F8 fidelity only — F9 overhead-vs-cadence deferred)
 
 Cadences (interval s): 0.1, 0.25, 0.5, 1, 2, 5. Reference (finest) = 0.1s. Variants×workloads: 4. Metrics present: 15.
 

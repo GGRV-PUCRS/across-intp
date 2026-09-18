@@ -65,6 +65,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("sweep_dir")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--by-env", action="store_true",
+                    help="break fidelity/density tables down per environment "
+                         "(the default pools every env, which hides sign-flipping "
+                         "per-env effects -- e.g. the in-guest psp RISE on the "
+                         "streaming workload that the pooled table shows falling)")
     ap.add_argument("--tsv", default=None,
                     help="machine-readable rows for the plot layer "
                          "(default <sweep_dir>/cadence-fidelity.tsv)")
@@ -75,9 +80,10 @@ def main():
     iv_by_tag = {t: iv for iv, t, _ in man}
     ref_tag = tags[0]  # finest interval = reference
 
-    # samples[(variant,wl,metric)][tag] -> flat list of sample values
+    # samples[key+(metric,)][tag] -> flat list of sample values
     samples = defaultdict(lambda: defaultdict(list))
-    # density[(variant,wl)][tag] -> per-rep row counts
+    # density[key][tag] -> per-rep row counts
+    # key = (variant, wl); under --by-env, (env, variant, wl)
     density = defaultdict(lambda: defaultdict(list))
     present_metrics = set()
 
@@ -87,25 +93,36 @@ def main():
         # absolute path, which is wrong once the sweep is pulled to another host.
         cdir = os.path.join(args.sweep_dir, f"cadence-{tag}")
         for cap in find_captures(cdir):
-            _, variant, _, wl, _ = cap_meta(cap, cdir)
+            env, variant, _, wl, _ = cap_meta(cap, cdir)
             if variant is None:
                 continue
+            key = (env, variant, wl) if args.by_env else (variant, wl)
             rows = parse_capture(cap)
-            density[(variant, wl)][tag].append(len(rows))
+            density[key][tag].append(len(rows))
             for m in METRICS_ALL:
                 vals = [r[m] for r in rows if r.get(m) is not None]
                 if vals:
                     present_metrics.add(m)
-                    samples[(variant, wl, m)][tag].extend(vals)
+                    samples[key + (m,)][tag].extend(vals)
 
     metrics = [m for m in METRICS_ALL if m in present_metrics]
-    keys = sorted({(v, w) for (v, w, _) in samples})
+    keys = sorted({k[:-1] for k in samples})
+    label = lambda k: " — ".join(k)  # noqa: E731
 
     # machine-readable rows for the plot layer (plot-cadence-curves.py).
-    tsv_rows = ["variant\tworkload\tmetric\tclass\tinterval_s\tcadence_tag\tmedian\tdref"]
+    # Under --by-env the TSV gains a leading env column and a distinct default
+    # name so the plot layer's pooled input is never silently swapped.
+    if args.by_env:
+        tsv_rows = ["env\tvariant\tworkload\tmetric\tclass\tinterval_s\tcadence_tag\tmedian\tdref"]
+    else:
+        tsv_rows = ["variant\tworkload\tmetric\tclass\tinterval_s\tcadence_tag\tmedian\tdref"]
+
+    def tsv_key(k):
+        return "\t".join(k)
 
     lines = []
-    lines.append(f"# Cadence sweep: fidelity & sample density vs sampling interval — {args.sweep_dir}\n")
+    scope_note = " (per environment)" if args.by_env else " (all environments pooled)"
+    lines.append(f"# Cadence sweep: fidelity & sample density vs sampling interval{scope_note} — {args.sweep_dir}\n")
     lines.append(f"Cadences (interval s): {', '.join(f'{iv_by_tag[t]:g}' for t in tags)}. "
                  f"Reference (finest) = {iv_by_tag[ref_tag]:g}s. "
                  f"Variants×workloads: {len(keys)}. Metrics present: {len(metrics)}.\n")
@@ -115,29 +132,29 @@ def main():
 
     # --- sample density table ---
     lines.append("## Sample density (median rows/rep)\n")
-    hdr = "| variant — workload | " + " | ".join(f"{iv_by_tag[t]:g}s" for t in tags) + " |"
+    hdr = "| " + label(("variant", "workload") if not args.by_env else ("env", "variant", "workload")) + " | " + " | ".join(f"{iv_by_tag[t]:g}s" for t in tags) + " |"
     sep = "|---" * (len(tags) + 1) + "|"
     lines.append(hdr)
     lines.append(sep)
-    for (v, w) in keys:
+    for k in keys:
         cells = []
         for t in tags:
-            rc = density[(v, w)].get(t, [])
+            rc = density[k].get(t, [])
             cells.append(str(int(_median(rc))) if rc else "—")
             if rc:
-                tsv_rows.append(f"{v}\t{w}\t_density_rows_\tmeta\t{iv_by_tag[t]:g}\t{t}\t{_median(rc):.6g}\t")
-        lines.append(f"| {v} — {w} | " + " | ".join(cells) + " |")
+                tsv_rows.append(f"{tsv_key(k)}\t_density_rows_\tmeta\t{iv_by_tag[t]:g}\t{t}\t{_median(rc):.6g}\t")
+        lines.append(f"| {label(k)} | " + " | ".join(cells) + " |")
     lines.append("")
 
-    # --- per (variant, workload) fidelity table ---
-    for (v, w) in keys:
-        lines.append(f"## {v} — {w}  *(median per cadence; Δref vs {iv_by_tag[ref_tag]:g}s)*\n")
+    # --- per key fidelity table ---
+    for k in keys:
+        lines.append(f"## {label(k)}  *(median per cadence; Δref vs {iv_by_tag[ref_tag]:g}s)*\n")
         hdr = "| metric (class) | " + " | ".join(f"{iv_by_tag[t]:g}s" for t in tags) + " | max|Δref| |"
         sep = "|---" * (len(tags) + 2) + "|"
         lines.append(hdr)
         lines.append(sep)
         for m in metrics:
-            per_tag = samples.get((v, w, m), {})
+            per_tag = samples.get(k + (m,), {})
             meds = {t: (_median(per_tag[t]) if per_tag.get(t) else None) for t in tags}
             ref = meds.get(ref_tag)
             cls = {"absolute": "abs", "directional": "dir"}.get(CLAIM_CLASS.get(m, "descriptive"), "desc")
@@ -155,13 +172,18 @@ def main():
                     max_dev = max(max_dev, abs(dev))
                     cell += f" ({dev:+.0%})"
                 cells.append(cell)
-                tsv_rows.append(f"{v}\t{w}\t{m}\t{cls}\t{iv_by_tag[t]:g}\t{t}\t{mv:.6g}\t"
+                tsv_rows.append(f"{tsv_key(k)}\t{m}\t{cls}\t{iv_by_tag[t]:g}\t{t}\t{mv:.6g}\t"
                                 + ("" if dev is None else f"{dev:.6g}"))
             mxd = f"{max_dev:.0%}" if ref not in (None, 0) else "—"
             lines.append(f"| {m} ({cls}) | " + " | ".join(cells) + f" | {mxd} |")
         lines.append("")
 
-    tsv_path = args.tsv or os.path.join(args.sweep_dir, "cadence-fidelity.tsv")
+    if args.tsv:
+        tsv_path = args.tsv
+    elif args.by_env:
+        tsv_path = os.path.join(args.sweep_dir, "cadence-fidelity-by-env.tsv")
+    else:
+        tsv_path = os.path.join(args.sweep_dir, "cadence-fidelity.tsv")
     with open(tsv_path, "w") as fh:
         fh.write("\n".join(tsv_rows) + "\n")
     print(f"[wrote {tsv_path} ({len(tsv_rows) - 1} rows)]")

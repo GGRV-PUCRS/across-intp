@@ -14,6 +14,7 @@ Dependency discipline: STDLIB ONLY (statistics/os). numpy/scipy live in the
 callers that need them (plot-cross-environment.py, the Spearman/MW paths), so any
 analyzer can import this module without acquiring a hard numpy dependency.
 """
+import glob
 import os
 import re
 import statistics
@@ -207,6 +208,27 @@ def order_envs(envs):
     """Sort envs along DEPLOY_ORDER; unknown envs sort after, alphabetically."""
     rank = {e: i for i, e in enumerate(DEPLOY_ORDER)}
     return sorted(envs, key=lambda e: (rank.get(e, len(DEPLOY_ORDER)), e))
+
+
+def discover_workloads(base, envs, variants, stage="solo"):
+    """Workloads actually present on disk under <base>/<env>/<var>/<stage>/<wl>/,
+    ordered canonically (WORKLOAD order first, extras alphabetical after).
+
+    The WORKLOAD constant is a historical snapshot; campaigns have since gained
+    workloads it never lists (app16_cpu_oversub, app17_mem_pressure) and dropped
+    ones it does (app07_ordering, app11b_tcp_veth on the 15-metric campaign).
+    Iterating the constant silently narrows every report to the intersection --
+    the p2 reports covered 5 of 7 campaign workloads this way (2026-09 audit).
+    Discover instead, and let the caller print the coverage line."""
+    found = set()
+    for env in envs:
+        for var in variants:
+            for d in glob.glob(os.path.join(base, env, var, stage, "*")):
+                if os.path.isdir(d):
+                    found.add(os.path.basename(d))
+    canon = [w for w in WORKLOAD if w in found]
+    extra = sorted(w for w in found if w not in WORKLOAD)
+    return canon + extra
 
 
 # --------------------------------------------------------------- parsing

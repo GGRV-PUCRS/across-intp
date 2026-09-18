@@ -80,11 +80,20 @@ _fmt           = M._fmt
 
 # --------------------------------------------------------------- main
 def main():
+    global WORKLOAD
     ap = argparse.ArgumentParser()
     ap.add_argument("campaign_dir")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
     base = args.campaign_dir.rstrip("/")
+
+    # Discover the workloads on disk; the WORKLOAD constant silently narrows
+    # coverage when the campaign's set drifts from it (app16/app17 missing from
+    # the p2 reports, 2026-09 audit).
+    discovered = M.discover_workloads(base, ENVS, VARIANTS, "solo")
+    wl_extra = [w for w in discovered if w not in M.WORKLOAD]
+    wl_absent = [w for w in M.WORKLOAD if w not in discovered]
+    WORKLOAD = discovered
 
     cell = defaultdict(list)   # (env,var,wl) -> [rep_summary,...]
     for env in ENVS:
@@ -112,6 +121,12 @@ def main():
     w(f"Cells with data: {sum(1 for v in cell.values() if v)} | "
       f"reps/cell: min {min(reps)} max {max(reps)} | "
       f"scipy: {'yes' if HAVE_SCIPY else 'NO (Spearman skipped)'}")
+    cov = f"Workloads analyzed: {len(WORKLOAD)} (discovered on disk)."
+    if wl_extra:
+        cov += f" Not in intp_metrics.WORKLOAD: {', '.join(wl_extra)}."
+    if wl_absent:
+        cov += f" Listed but absent here: {', '.join(wl_absent)}."
+    w(cov)
     w()
 
     # env-validity (per-variant, like analyze-faithfulness): host actually loaded?
@@ -167,31 +182,39 @@ def main():
             ("schedlat",  "gt_llcmr",    "directional: contention slows the victim, its run-queue backs up — expect +"),
             ("psi_mem",   "gt_llc_miss", "FALSIFICATION: psi_mem is capacity-driven — expect WEAK vs bandwidth"),
         ]
-        w("| variant | portable | vs GT | n | ρ | p | verdict |")
-        w("|---|---|---|---|---|---|---|")
+        w("| variant | portable | vs GT | scope | n | ρ | p | verdict |")
+        w("|---|---|---|---|---|---|---|---|")
+        # Two scopes per pair: HOST-ONLY (the claimable one -- the GT is always
+        # captured host-side, so guest cells correlate in-guest metrics against
+        # the host's counters and are indicative only) and ALL valid envs (the
+        # historical table). Reporting both keeps the headline rho honest about
+        # what it mixes.
+        scopes = [("host-only", [e for e in good if e != "vm-guest"]),
+                  ("all-envs", list(good))]
         for var in VARIANTS:
             for pm, gk, _note in pairs:
-                xs, ys = [], []
-                for env in good:
-                    for wl in WORKLOAD:
-                        pmm = _median(vals(env, var, wl, pm))
-                        gkm = _median(vals(env, var, wl, gk))
-                        ref = _median(vals(env, var, wl, "gt_llc_ref"))
-                        if pmm is None or gkm is None:
-                            continue
-                        if ref is None or ref < LLCREF_MIN:
-                            continue
-                        xs.append(pmm); ys.append(gkm)
-                if len(xs) >= 3 and len(set(xs)) > 1 and len(set(ys)) > 1:
-                    rho, p = spearmanr(xs, ys)
-                    if pm == "psi_mem":
-                        verdict = "blind (capacity-only)" if (rho is None or rho < RHO_OK or p >= 0.05) \
-                                  else "tracks bandwidth (unexpected)"
+                for scope_name, scope_envs in scopes:
+                    xs, ys = [], []
+                    for env in scope_envs:
+                        for wl in WORKLOAD:
+                            pmm = _median(vals(env, var, wl, pm))
+                            gkm = _median(vals(env, var, wl, gk))
+                            ref = _median(vals(env, var, wl, "gt_llc_ref"))
+                            if pmm is None or gkm is None:
+                                continue
+                            if ref is None or ref < LLCREF_MIN:
+                                continue
+                            xs.append(pmm); ys.append(gkm)
+                    if len(xs) >= 3 and len(set(xs)) > 1 and len(set(ys)) > 1:
+                        rho, p = spearmanr(xs, ys)
+                        if pm == "psi_mem":
+                            verdict = "blind (capacity-only)" if (rho is None or rho < RHO_OK or p >= 0.05) \
+                                      else "tracks bandwidth (unexpected)"
+                        else:
+                            verdict = "faithful" if (rho is not None and rho >= RHO_OK and p < 0.05) else "weak"
+                        w(f"| {var} | {pm} | {gk} | {scope_name} | {len(xs)} | {_fmt(rho)} | {p:.3f} | {verdict} |")
                     else:
-                        verdict = "faithful" if (rho is not None and rho >= RHO_OK and p < 0.05) else "weak"
-                    w(f"| {var} | {pm} | {gk} | {len(xs)} | {_fmt(rho)} | {p:.3f} | {verdict} |")
-                else:
-                    w(f"| {var} | {pm} | {gk} | {len(xs)} | - | - | n<3 / no spread |")
+                        w(f"| {var} | {pm} | {gk} | {scope_name} | {len(xs)} | - | - | n<3 / no spread |")
         w()
         for pm, gk, note in pairs:
             w(f"- **{pm} vs {gk}** — {note}")
