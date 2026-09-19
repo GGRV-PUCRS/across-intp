@@ -124,6 +124,25 @@ else
         --out "$WORK" --s3-work-root "$S3WORK"
 fi
 
+echo "== [8c/9] fig_oracle + fig_oracle_matrix (S16/S6 n=20 oracle matrix)"
+# Sim-side oracle figures. S6 re-scored the S1-saved final placements (n=20 per
+# configuration) under all three reference classifiers, so the three columns
+# share placements (bench/iada/DECISIONS-sim-experiments.md S6 entry). The
+# renderer consumes the long-schema s6-oracle-scores.tsv; without it the n=10
+# batch TSVs are used instead (flag omitted -> old behaviour).
+if [[ -s "$SIM16/s6-oracle-scores.tsv" ]]; then
+    mkdir -p "$WORK/figoracle"
+    python3 bench/plot/plot-fig-baselines-oracle-jsa.py \
+        --data-root "$REPO/bench/iada/results/sim-experiments-20260916" \
+        --s15-root "$REPO/bench/iada/results/sim-experiments-20260916-s15" \
+        --s6-scores "$SIM16/s6-oracle-scores.tsv" \
+        --out "$WORK/figoracle"
+    cp "$WORK/figoracle/fig_oracle.pdf" "$WORK/fig_oracle.pdf"
+    cp "$WORK/figoracle/fig_oracle_matrix.pdf" "$WORK/fig_oracle_matrix.pdf"
+else
+    warn "fig_oracle/fig_oracle_matrix: $SIM16/s6-oracle-scores.tsv missing; keeping previous renders"
+fi
+
 echo "== [9/9] fig_victim + fig_vmproxy (W5) and Fig-14 fingerprints"
 python3 bench/analyze-cross-deployment.py "$FARM2" --w5 --tag-status \
     --out "$WORK/w5-report.md" >/dev/null
@@ -164,6 +183,7 @@ FIGS=(
     fig_anomaly figA_anomaly_v33 fig_victim fig_vmproxy
     fig_fingerprint fig_fingerprint_v21 fig_fingerprint_v33
     fig_truthscore fig_idi_decomp
+    fig_oracle fig_oracle_matrix
 )
 fail=0
 for f in "${FIGS[@]}"; do

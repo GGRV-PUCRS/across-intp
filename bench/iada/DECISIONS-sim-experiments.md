@@ -1588,3 +1588,99 @@ trajectory 3206, 3737, 4625, 3225, 3658, 3378).
 Open caveat, same as S2's own entry: /tmp/s3-work is volatile -- if it is
 wiped, re-render from a fresh S3 gate run's logs to restore the full
 6-interval trajectories (the endpoints-only fallback stays correct).
+
+## S16 S6 -- oracle re-scoring matrix at n=20, shared placements (Step 7, complete; 2026-09-19)
+
+**Question.** Does any placement ordering survive a change of reference classifier at
+n=20, and can the three reference columns be made to share placements so the
+batching caveat of the n=10 pass (three separate simulator batches, each with its
+own placements) disappears?
+
+**Design: the brief's PREFERRED option, offline.** Reused the S1 campaign's saved
+final placements (`s1-placements/IASA/`, n=20 per tier, 60 files) and re-scored
+each placement under all three reference classifiers (T1, A, B). No new simulator
+run was needed, because (a) the placement is already on disk from S1, and (b) the
+reference classification is placement-independent: `oracleRescore` classifies
+cloudlet k's trace from the REFERENCE's own tree (`oracleTreeDir`) with the
+reference's model, so one cost per (reference, cloudlet) prices every placement
+tier. Two new scripts:
+
+- `bench/iada/scripts/s6-refclass.R` -- literal R replication of
+  `MLClassifier.getMLClass(interf, 0, len)` (the exact call oracleRescore makes):
+  same sourcing order, same zero-placeholder first row in `teste`, same
+  `svm_classifier_level(teste, 1, nrow(teste))`, degradation fork table, floor 1,
+  regime term only for the 6-class B model. **Validated against the simulator's
+  own output before use**: replicates the S3 campaign's `CLS` log lines exactly
+  (predClass + level match for all 28 cloudlets x 3 tiers x 3 reps at the
+  final-interval window, and x 2 reps at a middle window; 420/420). Writes
+  `s6-refcosts.tsv` (one cost per ref x cloudlet; classification inputs from the
+  canonical trees in `paper-assets/deliverables/data/inputs-iada-trees-20260916`,
+  read-only).
+- `bench/iada/scripts/s6-oracle-matrix.py` -- literal port of
+  `Solution.getTotalInterferenceCostOracle`: per-cloudlet cost x hostPe/clPe
+  (48/12, verified constant in all 60 S1 gate logs), product per host over
+  co-residents, single-occupancy hosts floored to 0, total scaled by
+  (end-start)/ttime = 18/119 (final IASA interval, start=101 end=119 ttime=119,
+  traced from the interval loop; identical for every IASA rep, cancels in all
+  paired diffs).
+
+**Statistics (fixed seed 20260607, 10000 perms/resamples).** Self vs reference per
+cell: sign-flip permutation test on paired differences + paired percentile
+bootstrap CI (`s6-selfref.tsv`). Cross-tier under each reference: label-shuffle
+permutation test + unpaired bootstrap CI, Holm correction across all 9
+comparisons; every significance label follows the Holm p (`s6-cross-tier.tsv`).
+
+**Result (means, n=20; placement tier x reference):**
+
+| reference | T1 placements | A placements | B placements |
+|---|---|---|---|
+| T1 (canonical-7) | **4814** +- 293 (self) | 5540 +- 556 | 5095 +- 541 |
+| A (proxy-swap) | 4692 +- 776 | **3959** +- 595 (self) | 5514 +- 1574 |
+| B (full-fingerprint) | 3880 +- 286 | 4022 +- 267 | **3620** +- 237 (self) |
+
+Diagonal cells are exactly Delta=0 for all 60 reps (self-consistency, as at n=10).
+Paired self vs reference: T1 under B -934 [-1010, -864] perm p=0.0001 (19% lower);
+A under B +64 [-165, +236] p=0.64 (**n.s. at n=20; was +162 [58, 283] significant
+at n=10 -- overturned, see below**); T1 under A -121 n.s.; A under T1 +1581 *;
+B under T1 +1475 *; B under A +1894 *. Cross-tier (delta = arm - base, Holm p):
+ref T1: A-T1 +726 * (0.001), B-T1 +281 n.s. (0.111), B-A -445 n.s. (0.066);
+ref A: A-T1 -734 * (0.013), B-T1 +821 n.s. (0.111), B-A +1555 * (0.001);
+ref B: A-T1 +142 n.s. (0.116), B-T1 -260 * (0.009), B-A -403 * (0.001).
+
+**Verdict: Case 4 stands and sharpens. No reference-free ordering exists at n=20.**
+Every reference still ranks its own configuration first in point estimate, and the
+canonical-7 versus proxy-swap comparison changes sign with the reference --
+significantly so in BOTH directions now (A is 726 worse under the canonical-7
+reference, p_Holm=0.001; 734 better under the proxy-swap reference, p_Holm=0.013),
+whereas at n=10 the flip was significant only under the canonical-7 reference and
+marginal under proxy-swap. Two prose corrections vs the n=10 text, per rule 4:
+(1) proxy-swap's self score is NO LONGER distinguishable from the full-fingerprint
+reference (+64, CI includes zero) -- "slightly optimistic, 4% higher" is withdrawn;
+(2) under the full-fingerprint reference, B's advantage over both other tiers is
+now Holm-significant. The batching sentence ("separate batches of ten
+repetitions") was deleted from Section 7.3 and the Figure 19 caption; the text
+states that all three references score the same twenty placements.
+
+**Acceptance.** Diagonal Delta=0 exactly: PASS (all 60 reps). n=20 means within
+n=10 CIs: 11 of 12 cells PASS (`s6-acceptance.tsv`). The exception is T1
+placements under the A reference: n=20 mean 4692 vs n=10 CI [3953, 4230]
+(mean 4083). Explanation, not a pipeline error: the per-rep values are heavy-tailed
+(3595 to 6130 at n=20, visibly two clusters; the n=10 batch drew entirely from the
+lower cluster, max 4576). The A-referenced price of a T1 search placement depends
+on whether A's classifier prices the co-resident group expensively, and the
+product-per-host cost amplifies a single expensive pairing; a 10-rep bootstrap CI
+of such a skewed mean is too narrow to gate on. The classifier replication itself
+is exact (420/420 CLS matches), and the other 11 cells -- including both
+self columns and the B-reference column -- reproduce the independent n=10 runs.
+
+**Outputs.** `$OUT/s6-refcosts.tsv`, `s6-oracle-matrix.tsv`, `s6-oracle-scores.tsv`
+(long form, S15 oracle schema, figure input), `s6-selfref.tsv`, `s6-cross-tier.tsv`,
+`s6-acceptance.tsv`, `values-s6.tsv`. Figures regenerated at n=20
+(`fig_oracle.pdf`, `fig_oracle_matrix.pdf` installed in `paper-assets/figs/`,
+n=10 versions kept in `figs-orig/*.n10`); `bench/plot/plot-fig-baselines-oracle-jsa.py`
+gained `--s6-scores` (default behaviour unchanged), and
+`bench/render-jsa-paper-figures.sh` step [8c/9] renders both from `$OUT`
+(`JSASIM16` overridable). Paper: both `\tbd{S6}` occurrences filled plus the full
+Section 7.3 numeric rewrite and both figure captions (4 rows in values-s6.tsv);
+tectonic compile 0 errors; placeholder count 6 (S1 x2, S2 x1, S7 x3; S6 = 0).
+No CloudSimInterference changes (no new simulator code was needed).

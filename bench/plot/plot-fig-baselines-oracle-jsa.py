@@ -116,15 +116,33 @@ def fig_baselines(data_root: Path, out: Path) -> None:
     print(f"wrote {out / 'fig_baselines.pdf'}")
 
 
-def fig_oracle(data_root: Path, out: Path) -> None:
-    self_v = defaultdict(list)
-    oracle_v = defaultdict(list)
-    rows = [r for r in csv.DictReader((data_root / "oracle-t1ab-n10.tsv").open(), delimiter="\t")
-            if r.get("self_idi") not in (None, "", "FAIL")]
-    # self and oracle score the same placement per rep, so keep rep order aligned for pairing
-    for r in sorted(rows, key=lambda r: (r["tier"], int(r["rep"]))):
-        self_v[r["tier"]].append(float(r["self_idi"]))
-        oracle_v[r["tier"]].append(float(r["oracle_idi"]))
+def _read_oracle_long(tsv: Path) -> dict[str, dict[str, list[float]]]:
+    """self/oracle vectors per (ref, tier) from a long-schema oracle TSV
+    (tier/env/rep/self_idi/oracle_idi/oracle_ref), e.g. S6's
+    s6-oracle-scores.tsv (n=20, shared placements across references)."""
+    self_v: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    oracle_v: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+    rows = [r for r in csv.DictReader(tsv.open(), delimiter="\t")
+            if r.get("oracle_idi") not in (None, "", "FAIL")]
+    for r in sorted(rows, key=lambda r: (r["oracle_ref"], r["tier"], int(r["rep"]))):
+        self_v[r["oracle_ref"]][r["tier"]].append(float(r["self_idi"]))
+        oracle_v[r["oracle_ref"]][r["tier"]].append(float(r["oracle_idi"]))
+    return self_v, oracle_v
+
+
+def fig_oracle(data_root: Path, out: Path, s6_scores: Path | None = None) -> None:
+    if s6_scores is not None:
+        sv, ov = _read_oracle_long(s6_scores)
+        self_v, oracle_v = sv["B"], ov["B"]  # fig_oracle is the B-reference column
+    else:
+        self_v = defaultdict(list)
+        oracle_v = defaultdict(list)
+        rows = [r for r in csv.DictReader((data_root / "oracle-t1ab-n10.tsv").open(), delimiter="\t")
+                if r.get("self_idi") not in (None, "", "FAIL")]
+        # self and oracle score the same placement per rep, so keep rep order aligned for pairing
+        for r in sorted(rows, key=lambda r: (r["tier"], int(r["rep"]))):
+            self_v[r["tier"]].append(float(r["self_idi"]))
+            oracle_v[r["tier"]].append(float(r["oracle_idi"]))
 
     width = style.TEXT_WIDTH * 0.62
     height = 2.4
@@ -177,12 +195,13 @@ def fig_oracle(data_root: Path, out: Path) -> None:
 REF_COLOR = {"T1": style.SKY_BLUE, "A": style.REDDISH_PURPLE, "B": style.ORANGE}
 
 
-def fig_oracle_matrix(data_root: Path, s15_root: Path, out: Path) -> None:
+def fig_oracle_matrix(data_root: Path, s15_root: Path, out: Path,
+                      s6_scores: Path | None = None) -> None:
     """fig:oracle_matrix -- the full placement-tier x reference-classifier matrix.
 
     fig_oracle() shows one column of this matrix (reference = tier B), which
     favours B by construction: B's search optimized against the very classifier
-    that then scores it. S15 completes the other two columns, so the reader can
+    that then scores it. S15 completed the other two columns, so the reader can
     see whether any placement ordering survives a change of reference.
 
     Grouped bars: one group per PLACEMENT tier, one bar per REFERENCE
@@ -193,21 +212,29 @@ def fig_oracle_matrix(data_root: Path, s15_root: Path, out: Path) -> None:
 
     No value is recomputed here beyond the CIs, which use the same rep-level
     bootstrap convention as every other figure in the set.
-    """
-    sources = {
-        "B": data_root / "oracle-t1ab-n10.tsv",
-        "T1": s15_root / "oracle-refT1-t1ab-n10.tsv",
-        "A": s15_root / "oracle-refA-t1ab-n10.tsv",
-    }
-    refs = [r for r in TIER_ORDER if sources[r].exists()]
-    if not refs:
-        print("fig_oracle_matrix: no oracle TSVs found, skipped")
-        return
 
-    self_v, oracle_v = {}, {}
-    for r in refs:
-        self_v[r] = _read_idi(sources[r], col="self_idi")
-        oracle_v[r] = _read_idi(sources[r], col="oracle_idi")
+    s6_scores (optional): S16's s6-oracle-scores.tsv (n=20, one long row per
+    rep x reference, all three columns sharing the same saved placements). When
+    given it takes precedence over the three separate n=10 batch TSVs.
+    """
+    if s6_scores is not None:
+        self_v, oracle_v = _read_oracle_long(s6_scores)
+        refs = [r for r in TIER_ORDER if r in oracle_v]
+    else:
+        sources = {
+            "B": data_root / "oracle-t1ab-n10.tsv",
+            "T1": s15_root / "oracle-refT1-t1ab-n10.tsv",
+            "A": s15_root / "oracle-refA-t1ab-n10.tsv",
+        }
+        refs = [r for r in TIER_ORDER if sources[r].exists()]
+        if not refs:
+            print("fig_oracle_matrix: no oracle TSVs found, skipped")
+            return
+
+        self_v, oracle_v = {}, {}
+        for r in refs:
+            self_v[r] = _read_idi(sources[r], col="self_idi")
+            oracle_v[r] = _read_idi(sources[r], col="oracle_idi")
 
     width = style.TEXT_WIDTH
     height = 2.6
@@ -395,6 +422,10 @@ def main() -> int:
     ap.add_argument("--s15-root", type=Path, default=None,
                     help="S15 rerun results dir; enables fig_oracle_matrix. "
                          "fig_oracle.pdf is left unchanged either way.")
+    ap.add_argument("--s6-scores", type=Path, default=None,
+                    help="S16/S6 s6-oracle-scores.tsv (n=20, shared placements). "
+                         "When set, fig_oracle.pdf and fig_oracle_matrix.pdf use "
+                         "it instead of the n=10 batch TSVs.")
     ap.add_argument("--density-tsv", type=Path, default=None,
                     help="S16/S5 s5-density.tsv; when set, figA_density.pdf "
                          "uses it and draws interference-only + total lines.")
@@ -402,9 +433,12 @@ def main() -> int:
     style.apply()
     args.out.mkdir(parents=True, exist_ok=True)
     fig_baselines(args.data_root, args.out)
-    fig_oracle(args.data_root, args.out)
+    fig_oracle(args.data_root, args.out, s6_scores=args.s6_scores)
     fig_density(args.data_root, args.out, density_tsv=args.density_tsv)
-    if args.s15_root is not None:
+    if args.s6_scores is not None:
+        fig_oracle_matrix(args.data_root, args.s15_root, args.out,
+                          s6_scores=args.s6_scores)
+    elif args.s15_root is not None:
         fig_oracle_matrix(args.data_root, args.s15_root, args.out)
     return 0
 
