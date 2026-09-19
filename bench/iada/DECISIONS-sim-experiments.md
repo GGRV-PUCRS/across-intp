@@ -1684,3 +1684,76 @@ gained `--s6-scores` (default behaviour unchanged), and
 Section 7.3 numeric rewrite and both figure captions (4 rows in values-s6.tsv);
 tectonic compile 0 errors; placeholder count 6 (S1 x2, S2 x1, S7 x3; S6 = 0).
 No CloudSimInterference changes (no new simulator code was needed).
+
+## S16 S7 -- regime level audit, same-build re-key, and multiplier sweep (Step 8, complete; 2026-09-19)
+
+**Question.** What are the regime level counts 71/409/0; is the highest regime
+multiplier (1.95) ever applied; how large is the psp re-key effect on a single
+build; and how sensitive is tier B's index to the regime multiplier magnitude?
+
+**Audit (task 1).** Reran `bench/iada/scripts/analyze-regime-levels.R` unchanged
+against the psp-keyed R folder the simulator reads (`/home/saccilotto/iada-tier-rda/B`)
+and the current canonical 28-trace tree (reached via a symlink shim; nothing
+modified). The three counts are **per-level sample counts**: trace rows the tier B
+SVM classifies as regime (480 of 3360) assigned by the regime k-means to
+low/mod/hig when the centroids are ordered on `psp` (col 14). Every centroid has
+schedlat = 100 (saturated), confirming the S8 tie-break diagnosis; psp orders them
+consistently (5184.7 < 5293.8 < 5365.6). On the current tree the counts replay as
+**31/449/0**, not the banked 71/409/0 (same 480 regime rows, so the SVM agrees on
+which rows are regime; the low/mod split differs because the August tree and the
+current canonical tree differ; hig = 0 in both). In-simulation cross-check on this
+build (S3 class log, tier B final interval): all 40 oversubscription cloudlet
+classifications are `mod`, none `hig`. **Verdict: the 1.95 multiplier is never
+applied; the regime class is always priced at low or mod (on the current tree,
+almost always mod).** Output: `s7-levels.md`.
+
+**Same-build re-key (task 2).** Tier B with schedlat-keyed levels (S8 patch reverted
+in a scratch copy of the tier R folder at `/tmp/s7-rda-schedlat/B`; the real
+`/home/saccilotto/iada-tier-rda/B` untouched), n=10, same rebuilt toolchain and
+tree as S3, via `run-sim-arm.sh`. Compared against S3's psp-keyed tier B
+(`s3-gate-B.tsv`, same build):
+
+| arm | n | idi_avg mean | sd | 95% CI |
+|---|---|---|---|---|
+| schedlat-keyed (this pass) | 10 | **5255.5** | 180.5 | [5157.3, 5368.1] |
+| psp-keyed (S3, same build) | 10 | **4357.2** | 168.3 | [4266.5, 4463.4] |
+
+On one build the re-key alone moves the full-fingerprint index by about −898
+(about −17%). Output: `s7-rekey-samebuild.tsv`.
+
+**Multiplier sweep (task 3).** Tier B, psp-keyed, n=10 per arm, early exit OFF
+(comparable to S3/S5), regime vector uniformly rescaled to top values 1.0 (flat:
+1.00/1.00/1.00), 1.5 (0.9231/1.1923/1.50, shape preserved), 1.95 (current default
+1.20/1.55/1.95), 2.5 (1.5385/1.9872/2.50). IDI from the run TSVs; placements scored
+with the S1 known-class yardstick (Y6, `s1-truthscore.py`, same level rule as S1):
+
+| top | ramp | idi_avg (95% CI) | Y6 mean (sd) |
+|---|---|---|---|
+| 1.0 (flat) | 1.00/1.00/1.00 | **3264.3** [3213.8, 3316.6] | 7104.5 (544.6) |
+| 1.5 | 0.9231/1.1923/1.50 | **3587.7** [3540.2, 3643.4] | 6692.2 (359.7) |
+| 1.95 (current) | 1.20/1.55/1.95 | **4307.4** [4224.7, 4392.6] | 6780.8 (293.6) |
+| 2.5 | 1.5385/1.9872/2.50 | **5795.5** [5527.8, 6078.4] | 6635.0 (360.1) |
+
+The self-scored index rises monotonically with the top multiplier (flat to 2.5
+spans 3264 to 5796, about 1.8x), so the committed hand-set ramp is not a
+knife-edge: no choice inside the swept range changes the ordering story, and the
+current 1.95 sits inside the swept range. The Y6 yardstick barely moves
+(6635 to 7105, overlapping CIs): placement quality as read by the
+classifier-free yardstick is insensitive to the regime multiplier, while the
+self-scored index is not. Outputs: `s7-multipliers.tsv` (per-rep),
+`s7-multipliers-summary.tsv`.
+
+**Acceptance (psp-keyed arm vs S15 gate B 4298.0 ± 168.9).** The top-1.95 arm on
+this build: 4307.4 ± 145.4, CI [4224.7, 4392.6] — inside the banked gate interval
+[4129.1, 4466.9]. **PASS.**
+
+**Fills.** All 3 `\tbd{S7}` plus one occurrence-0 correction (the banked level
+split 71/409/0 is replaced by 31/449/0 measured on the current canonical tree;
+the load-bearing hig = 0 is confirmed) written to `values-s7.tsv`;
+`fill_tbd.py --dry-run` verifies all 4 rows against `main-jsa.tex` (not edited
+here; coordinator applies).
+
+**Verdict.** Audit hypothesis confirmed (top multiplier never applied) with a
+correction to the low/mod split; re-key effect measured on one build at about
+−898 IDI; the index is monotone in the regime multiplier over 1.0 to 2.5 while
+the known-class yardstick is flat across the sweep.
