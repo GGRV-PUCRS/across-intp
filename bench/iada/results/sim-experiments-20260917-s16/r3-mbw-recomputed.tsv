@@ -1,0 +1,11 @@
+env	variant	victim	n_solo_reps	n_pair_reps	solo_median_logged	pair_median	delta_logged	cliffs_logged	solo_median_rescaled	delta_rescaled	cliffs_rescaled	v21_delta	v21_cliffs	solo_provenance
+bare	v3.3	app01_ml_llc	12	12	25.00	7.00	-18.00	-1.000	3.79	+3.21	+1.000	+1.00	+0.812	bytecopy-of-preaudit-xdeploy
+bare	v3.3	app07_ordering	12	12	11.00	8.00	-3.00	-0.917	1.67	+6.33	+1.000	-2.00	-0.833	later-collection-not-in-preaudit-snapshot
+bare	v3.3	app10_search	12	12	0.00	0.00	+0.00	+0.000	0.00	+0.00	+0.000	+0.00	+0.000	bytecopy-of-preaudit-xdeploy
+bare	v3.3	app11_sort_net	12	12	46.50	10.00	-36.50	-1.000	7.04	+2.96	+1.000	+3.00	+1.000	bytecopy-of-preaudit-xdeploy
+bare	v3.3	app13_query_scan	12	12	13.50	2.00	-11.50	-1.000	2.04	-0.04	+0.083	+0.00	-0.167	bytecopy-of-preaudit-xdeploy
+container	v3.3	app01_ml_llc	12	12	34.50	7.00	-27.50	-1.000	5.23	+1.77	+0.750	+0.00	+0.660	bytecopy-of-preaudit-xdeploy
+container	v3.3	app07_ordering	12	12	11.00	8.00	-3.00	-1.000	1.67	+6.33	+1.000	-2.00	-0.847	later-collection-not-in-preaudit-snapshot
+container	v3.3	app10_search	12	12	0.00	0.00	+0.00	+0.000	0.00	+0.00	+0.000	+0.00	+0.000	bytecopy-of-preaudit-xdeploy
+container	v3.3	app11_sort_net	12	12	48.50	10.00	-38.50	-1.000	7.35	+2.65	+1.000	+4.00	+1.000	bytecopy-of-preaudit-xdeploy
+container	v3.3	app13_query_scan	12	12	12.00	2.00	-10.00	-1.000	1.82	+0.18	+0.667	+1.00	+0.833	bytecopy-of-preaudit-xdeploy

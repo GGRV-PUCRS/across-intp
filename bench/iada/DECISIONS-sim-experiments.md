@@ -1443,3 +1443,50 @@ ceiling-scale mismatch between the copied pre-audit solo arm and the post-audit
 pairwise arm, not a mon_group enrollment bug. mbw victim deltas remain
 descriptive-only (the app07 provenance ambiguity shows the column still mixes
 provenances), which the sentence already states.
+
+### R3 -- audit of the v3.3 victim mbw disagreement (Step 10, code+data audit, complete; 2026-09-19)
+
+**Question.** Section 6.1: under W5 colocation the variants disagree on the victim's
+`mbw` -- v2.1 reads it rising by 1 to 4 points (app01_ml_llc, app11_sort_net) while
+v3.3 reads it falling by 18 to 38.5 (Cliff's delta = -1.0). Is this a resctrl
+mon_group enrollment bug in v3.3, an inconsistent ceiling normalization between the
+solo and pairwise arms, or a real signal?
+
+**Files/commands examined.** v3.3 read path:
+variants/v3.3-ebpf-core-cgroup/src/intp_agg.c:60 (fixed mon_group name), 355-402
+(recursive victim-cgroup seeding), 977-996 (enrollment), 1188-1202 (per-interval
+rescan); variants/v3.3-ebpf-core-cgroup/resctrl/resctrl.c:287-328 (delta +
+normalization by caps->mem_bw_max_bps). Harness: bench/run-intp-bench.sh:4188-4238
+(pairwise profiles the VICTIM ONLY; the aggressor runs unprofiled in its own
+cgroup/cpuset, so no aggressor ever enters the victim's mon_group; one profiler
+instance per run makes the fixed group name harmless), 3604-3636 + 3781-3782
+(v3.3 gets --mem-bw-max-bps from capabilities.env), 3521-3584 (v2.1 gets no
+override and self-detects the audited 281600 MB/s ceiling,
+variants/v2.1-c-abi-cgroup/src/detect.c:433-465). Data:
+results/02-w5-colocation vs results/p2-15metric-xdeploy-1of3.
+
+**Findings.** (1) Raw mbm_total_bytes deltas are NOT logged (--no-diag-cols
+suppresses mbw_raw_mbps; groundtruth resctrl_mbw_bps is "--" by design), so
+recomputation works from the logged percent column. (2) All 168 comparable w5
+v3.3 SOLO cells are byte-identical (cmp) to the pre-audit 2026-06-10 xdeploy
+cells, whose 42656 MB/s fallback ceiling is documented (DECISIONS-container.md
+C34) and confirmed in-situ by 113 "ceiling=42656 MB/s" warnings in the copied
+cells' own portable.v3.3.log files; the PAIRWISE cells were collected 2026-06-13
+after the ceiling audit with INTP_MEM_BW_MBPS=281600 in the campaign
+capabilities.env, so the victim delta mixed two scales. (3) Rescaling the solo
+arm by 42656/281600 = 0.1514 (script r3-recompute.py reproduces the published
+as-logged values exactly first) turns the disputed cells into +3.21/+2.96 (bare)
+and +1.77/+2.65 (container), Cliff's delta +0.75..+1.0, consistent with v2.1's
++1/+3 and 0/+4 and with the ceiling-independent per-cgroup signals (llcmr
+triples, membw_est rises). (4) app07_ordering solo cells are a later collection
+absent from the pre-audit snapshot, so their scale is ambiguous; either reading
+removes the v3.3-only fall there too.
+
+**Output.** $OUT/r3-mbw-audit.md, $OUT/r3-mbw-recomputed.tsv, $OUT/r3-recompute.py,
+ledger row in $OUT/values-r3.tsv (not applied to main-jsa.tex by this agent).
+
+**Verdict: explained, and corrected in analysis.** The sign flip is a
+ceiling-scale mismatch between the copied pre-audit solo arm and the post-audit
+pairwise arm, not a mon_group enrollment bug. mbw victim deltas remain
+descriptive-only (the app07 provenance ambiguity shows the column still mixes
+provenances), which the sentence already states.
