@@ -1,0 +1,7 @@
+tier	geomean_cost	closed_form_first	actual_first_mean	actual_first_sd	actual_first_ci_lo	actual_first_ci_hi	closed_form_err_pct	actual_last_mean	actual_last_sd	actual_last_ci_lo	actual_last_ci_hi	n
+T1	2.0100	8350.0000	8000.0000	0.0000	8000.0000	8000.0000	4.38	5000.0000	100.0000	4887.3486	5112.6514	3
+A	1.6600	3350.0000	3200.0000	0.0000	3200.0000	3200.0000	4.69	3300.0000	100.0000	3187.3486	3412.6514	3
+B	1.9300	6050.0000	5800.0000	0.0000	5800.0000	5800.0000	4.31	3450.0000	50.0000	3394.1743	3505.8257	3
+
+predicted_T1_to_A_ratio_(gmA/gmT1)^4	0.4567
+final_interval_gap_T1_minus_A	1700.0000	34.00%

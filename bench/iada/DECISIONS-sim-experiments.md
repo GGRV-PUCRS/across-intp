@@ -1540,3 +1540,51 @@ alone 34 and 68)" (was: 64/118/4264, 50%/40%, 34/67); the Figure A.4 caption
 gains the early-exit description and drops the stale "crosses = timed out"
 sentence (no rep times out any more). The caption's n=5 -> n=10. tectonic
 compile: 0 errors; `\tbd{S5}` count 0.
+
+### S1/S2 figures -- fig_truthscore + fig_idi_decomp rendered (2026-09-19)
+
+**Question.** The two `\figph` placeholders still rendering as pending boxes --
+`\figph{S1}` (`figs/fig_truthscore.pdf`) and `\figph{S2}`
+(`figs/fig_idi_decomp.pdf`) -- need real figures from the S16/S1+S2 TSVs,
+in house style, wired into the one-shot render.
+
+**Command.**
+`python3 bench/plot/plot-fig-truthscore-jsa.py --data-root bench/iada/results/sim-experiments-20260917-s16 --out DIR`
+and
+`python3 bench/plot/plot-fig-idi-decomp-jsa.py --data-root bench/iada/results/sim-experiments-20260917-s16 --out DIR --s3-work-root /tmp/s3-work`
+(both also exercised end-to-end via `bench/render-jsa-paper-figures.sh`, new
+step [8b/9]; `pytest bench/plot/tests/` 50 passed including the new
+`test_plot_s16_figures.py`).
+
+**Output.** `paper-assets/figs/fig_truthscore.pdf` and
+`paper-assets/figs/fig_idi_decomp.pdf` (also in the render script's OUT).
+fig_truthscore: two panels (Y5/Y6), IASA bars n=20 per tier with rep-level
+95% bootstrap CIs (Y5 6966/7053/7365, Y6 6495/6567/6947), CIAPA hatched bars
+n=10 (Y5 6916/6715/6635, Y6 6397/6230/6120) on the same yardstick, EVEN as a
+dashed tier-independent reference line (8482 Y5 / 8085 Y6). fig_idi_decomp:
+left panel the six per-interval SAO costs per tier (interval 1 marked as the
+pre-search placement) with the closed-form prediction overlaid at interval 1
+(8371/3348/6074 vs actual 8018/3206/5825, 4.4/4.4/4.3% high); right panel the
+final-interval index with 95% bootstrap CIs (4957/3378/3466, tags -38%/+5%/-40%
+vs interval 1). All plotted means cross-checked against the summary TSVs at
+render time (VALIDATION OK lines); pymupdf text checks in the render script.
+
+**Data provenance.** fig_truthscore from `s1-truthscore.tsv` (per-rep) +
+`s1-truthscore-summary.tsv` (EVEN + cross-check). fig_idi_decomp endpoints and
+closed form from `s2-decomp.tsv` + `s2-summary.tsv`; intervals 2-5 re-parsed
+from the S3 gate campaign's `cloudsim.log` "Algorithm: SAO" blocks
+(`/tmp/s3-work/s3-gate-{T1,A,B}/...`, the same n=10/tier runs S2 used --
+parsed endpoints match s2-decomp.tsv exactly for all three tiers before
+plotting). Intervals 2-5 exist only in those logs, not in any TSV; when the
+log tree is absent the renderer degrades to endpoints 1 and 6 with a warning,
+so the render stays one-shot runnable from the TSVs alone.
+
+**Result.** Both pending-box placeholders now render as real figures; the
+`\figph{S1}`/`\figph{S2}` call sites in main-jsa.tex resolve. The S2
+follow-up's interval-3 hump for proxy-swap is visible in the figure (mean
+trajectory 3206, 3737, 4625, 3225, 3658, 3378).
+
+**Verdict.** figures shipped; no text edits (coordinator owns main-jsa.tex).
+Open caveat, same as S2's own entry: /tmp/s3-work is volatile -- if it is
+wiped, re-render from a fresh S3 gate run's logs to restore the full
+6-interval trajectories (the endpoints-only fallback stays correct).

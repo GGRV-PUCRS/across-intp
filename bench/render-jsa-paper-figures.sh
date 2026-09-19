@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# render-jsa-paper-figures.sh -- one-shot reproduction of all 17 JSA paper
+# render-jsa-paper-figures.sh -- one-shot reproduction of all 19 JSA paper
 # figure PDFs from the consolidated data archive.
 #
 # Usage:
@@ -13,7 +13,7 @@
 # the campaign directory (tagged TSVs, aggregate-means.tsv) run against
 # symlink farms under /tmp (cp -rs makes real dirs over symlinked files, so
 # derived files land in the farm, not the archive). All other scratch output
-# goes to a staging dir and only the 17 final PDFs are copied into OUT_DIR.
+# goes to a staging dir and only the 19 final PDFs are copied into OUT_DIR.
 #
 # Reference-only validation: regenerated derived TSVs are diffed against the
 # old-name reference tree under ~/results (never used as pipeline input).
@@ -105,6 +105,25 @@ python3 bench/plot/plot-fig9-a3-jsa.py "$FARM1" --out "$WORK/fig9"
 cp "$WORK/fig9/Figure_9.pdf"  "$WORK/fig_anomaly.pdf"
 cp "$WORK/fig9/Figure_A3.pdf" "$WORK/figA_anomaly_v33.pdf"
 
+echo "== [8b/9] fig_truthscore + fig_idi_decomp (S16 sim TSVs, \\figph{S1}/\\figph{S2})"
+# Sim-side figures: sources of record are the S16 rerun TSVs (see
+# bench/iada/DECISIONS-sim-experiments.md S1/S2 entries). Intervals 2-5 of
+# fig_idi_decomp re-parse the S3 gate campaign's cloudsim.log "Algorithm: SAO"
+# blocks from JSAS3WORK (default /tmp/s3-work); when that tree is gone the
+# renderer degrades to the s2-decomp.tsv endpoints and warns, so this step
+# stays runnable on a fresh checkout of the TSVs alone.
+SIM16="${JSASIM16:-$REPO/bench/iada/results/sim-experiments-20260917-s16}"
+S3WORK="${JSAS3WORK:-/tmp/s3-work}"
+python3 bench/plot/plot-fig-truthscore-jsa.py --data-root "$SIM16" --out "$WORK"
+if [[ -d "$S3WORK" ]]; then
+    python3 bench/plot/plot-fig-idi-decomp-jsa.py --data-root "$SIM16" \
+        --out "$WORK" --s3-work-root "$S3WORK"
+else
+    warn "fig_idi_decomp: $S3WORK not found; rendering intervals 1 and 6 only"
+    python3 bench/plot/plot-fig-idi-decomp-jsa.py --data-root "$SIM16" \
+        --out "$WORK" --s3-work-root "$S3WORK"
+fi
+
 echo "== [9/9] fig_victim + fig_vmproxy (W5) and Fig-14 fingerprints"
 python3 bench/analyze-cross-deployment.py "$FARM2" --w5 --tag-status \
     --out "$WORK/w5-report.md" >/dev/null
@@ -144,6 +163,7 @@ FIGS=(
     fig_arch fig_cadence fig_overhead fig_pipeline fig_faithfulness
     fig_anomaly figA_anomaly_v33 fig_victim fig_vmproxy
     fig_fingerprint fig_fingerprint_v21 fig_fingerprint_v33
+    fig_truthscore fig_idi_decomp
 )
 fail=0
 for f in "${FIGS[@]}"; do
@@ -175,6 +195,12 @@ out = sys.argv[1]
 t = pymupdf.open(f"{out}/fig_membwproxy.pdf")[0].get_text()
 ok = all(s in t for s in ("0.81", "413", "412"))
 print(f"  fig_membwproxy rho=0.81 n=413/412: {'OK' if ok else 'MISSING -- CHECK'}")
+t = pymupdf.open(f"{out}/fig_truthscore.pdf")[0].get_text()
+ok = all(s in t for s in ("6966", "7365", "6495", "6947", "EVEN 8482", "EVEN 8085"))
+print(f"  fig_truthscore Y5/Y6 IASA means + EVEN lines: {'OK' if ok else 'MISSING -- CHECK'}")
+t = pymupdf.open(f"{out}/fig_idi_decomp.pdf")[0].get_text()
+ok = all(s in t for s in ("8371", "3348", "6074", "4957", "3378", "3466"))
+print(f"  fig_idi_decomp closed-form + final-interval values: {'OK' if ok else 'MISSING -- CHECK'}")
 for name, want in (("fig_fingerprint_v21", "v2.1"), ("fig_fingerprint_v33", "v3.3")):
     d = pymupdf.open(f"{out}/{name}.pdf")
     p = d[0]
@@ -192,4 +218,4 @@ if [[ ${#WARN[@]} -gt 0 ]]; then
 else
     echo "== all derived-TSV validations passed"
 fi
-[[ $fail -eq 0 ]] && echo "ALL 17 FIGURES RENDERED" || { echo "FAILURES PRESENT" >&2; exit 1; }
+[[ $fail -eq 0 ]] && echo "ALL 19 FIGURES RENDERED" || { echo "FAILURES PRESENT" >&2; exit 1; }
