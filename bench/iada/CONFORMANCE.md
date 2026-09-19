@@ -437,6 +437,38 @@ classes, only meaningful where the search itself is regime-aware — tier B).
 
 ---
 
+## 8. S16/S5 early exit at zero interference cost (bug-fix candidate, 2026-09-18)
+
+`Placement.java`'s annealing loop never terminates early when the best
+solution already has zero interference cost. At densities where every
+cloudlet sits alone on its host (containerPes 48 and 32, 1 and 1.5
+applications per host), every repetition of the S15 density sweep ran to
+the full 400 s timeout with `idi_avg=0` and 0 migrations — pure wallclock
+waste, and worse: `randomSwap()`'s own retry loop never finds a valid swap
+partner when all cloudlets are alone, so a post-swap check would never even
+be reached.
+
+**Change (S16/S5).** `-Diada.earlyExitZero=on` (default **off**, so banked
+S15 and earlier results remain reproducible) breaks the annealing loop as
+soon as the current or best solution's total interference cost reaches 0,
+checked BEFORE the first swap attempt as well as after each accepted swap
+(`Solution.getCostFromHost`'s `hostCost == 1 ? 0 : hostCost` zero-floor
+means cost 0 is provably optimal: nothing left to reduce). Smoke test at
+containerPes=48: before, exit 124 at the 400 s timeout with 0 intervals
+finished; after, exit 0 in 56 s, all 6 intervals, `idi_avg=0`
+(`smoke-s5/v3.3/vm-guest/smoke-before` vs `smoke-fixed` under
+`bench/iada/results/sim-experiments-20260917-s16/`). At densities 2.0 and
+above the flag never fires (cost is always positive there), which the
+acceptance check in `s5-acceptance.tsv` corroborates: the interference
+component reproduces the S15 n=5 banked values to within 1% at every
+density the bank covers.
+
+Logged as a bug-fix CANDIDATE rather than made the default, because some
+already-banked results (S15) were produced without it and exact
+reproduction requires it to stay off unless asked for.
+
+---
+
 ## Appendix A — BibTeX (owner-supplied)
 
 ```bibtex

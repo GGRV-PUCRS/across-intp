@@ -1444,49 +1444,99 @@ pairwise arm, not a mon_group enrollment bug. mbw victim deltas remain
 descriptive-only (the app07 provenance ambiguity shows the column still mixes
 provenances), which the sentence already states.
 
-### R3 -- audit of the v3.3 victim mbw disagreement (Step 10, code+data audit, complete; 2026-09-19)
+## S16 S5 -- density sweep with early exit (Step 6, complete; 2026-09-19)
 
-**Question.** Section 6.1: under W5 colocation the variants disagree on the victim's
-`mbw` -- v2.1 reads it rising by 1 to 4 points (app01_ml_llc, app11_sort_net) while
-v3.3 reads it falling by 18 to 38.5 (Cliff's delta = -1.0). Is this a resctrl
-mon_group enrollment bug in v3.3, an inconsistent ceiling normalization between the
-solo and pairwise arms, or a real signal?
+**Question.** Does the annealing loop terminate once the objective reaches zero
+(early exit), what does the index-vs-density curve look like over the full
+7-point sweep at n=10, do the tier conclusions depend on sitting at the 4.0
+applications-per-host operating point, and does the S2 closed form explain the
+curve's shape?
 
-**Files/commands examined.** v3.3 read path:
-variants/v3.3-ebpf-core-cgroup/src/intp_agg.c:60 (fixed mon_group name), 355-402
-(recursive victim-cgroup seeding), 977-996 (enrollment), 1188-1202 (per-interval
-rescan); variants/v3.3-ebpf-core-cgroup/resctrl/resctrl.c:287-328 (delta +
-normalization by caps->mem_bw_max_bps). Harness: bench/run-intp-bench.sh:4188-4238
-(pairwise profiles the VICTIM ONLY; the aggressor runs unprofiled in its own
-cgroup/cpuset, so no aggressor ever enters the victim's mon_group; one profiler
-instance per run makes the fixed group name harmless), 3604-3636 + 3781-3782
-(v3.3 gets --mem-bw-max-bps from capabilities.env), 3521-3584 (v2.1 gets no
-override and self-detects the audited 281600 MB/s ceiling,
-variants/v2.1-c-abi-cgroup/src/detect.c:433-465). Data:
-results/02-w5-colocation vs results/p2-15metric-xdeploy-1of3.
+**Code change (CloudSimInterference, committed there).** `Placement.java` gains
+`-Diada.earlyExitZero=on` (default off): break the annealing loop when the
+current/best solution's total interference cost is 0, checked BEFORE the first
+`randomSwap()` call as well as after each accepted swap. The pre-swap check is
+load-bearing, not defensive: at 1 application per host every cloudlet is alone
+on its host, so `swapping()`'s retry loop never finds a valid partner and a
+post-swap-only check is never reached (found by hanging smoke runs, not by
+static reading). Recorded in `CONFORMANCE.md` Sec 8 as a bug-fix candidate,
+default off so banked S15 results stay reproducible.
 
-**Findings.** (1) Raw mbm_total_bytes deltas are NOT logged (--no-diag-cols
-suppresses mbw_raw_mbps; groundtruth resctrl_mbw_bps is "--" by design), so
-recomputation works from the logged percent column. (2) All 168 comparable w5
-v3.3 SOLO cells are byte-identical (cmp) to the pre-audit 2026-06-10 xdeploy
-cells, whose 42656 MB/s fallback ceiling is documented (DECISIONS-container.md
-C34) and confirmed in-situ by 113 "ceiling=42656 MB/s" warnings in the copied
-cells' own portable.v3.3.log files; the PAIRWISE cells were collected 2026-06-13
-after the ceiling audit with INTP_MEM_BW_MBPS=281600 in the campaign
-capabilities.env, so the victim delta mixed two scales. (3) Rescaling the solo
-arm by 42656/281600 = 0.1514 (script r3-recompute.py reproduces the published
-as-logged values exactly first) turns the disputed cells into +3.21/+2.96 (bare)
-and +1.77/+2.65 (container), Cliff's delta +0.75..+1.0, consistent with v2.1's
-+1/+3 and 0/+4 and with the ceiling-independent per-cgroup signals (llcmr
-triples, membw_est rises). (4) app07_ordering solo cells are a later collection
-absent from the pre-audit snapshot, so their scale is ambiguous; either reading
-removes the v3.3-only fall there too.
+**Smoke test (spec: runs finish well under 400 s with idi 0).**
+`smoke-s5/v3.3/vm-guest/` under $OUT: `smoke-before` (no flag) exit 124 at the
+400 s timeout, 0 intervals finished, idi 0; `smoke-fixed` (flag on,
+containerPes=48) exit 0 in 56 s, 6 intervals, idi_avg 0, migrations 0;
+`smoke-cp32-fixed` (containerPes=32) exit 0 in 39 s. PASS.
 
-**Output.** $OUT/r3-mbw-audit.md, $OUT/r3-mbw-recomputed.tsv, $OUT/r3-recompute.py,
-ledger row in $OUT/values-r3.tsv (not applied to main-jsa.tex by this agent).
+**Sweep (run 2026-09-18, tier B, n=10 per point, early exit on, PM_COUNT=28,
+IADA_HOSTS=28, JDK 8, same toolchain as S1/S2/S3/S4).** containerPes in
+{48,32,24,20,17,14,12} = 1, 1.5, 2, 2.4, 2.82, 3.43, 4 applications per host
+(48/14=3.43 reported, not 3.3 -- 14.5 PEs is not an integer). All 70 reps
+exit 0, mean elapsed 56 to 57 s (no timeouts anywhere). Output:
+`s5-density.tsv` (per-rep; exit/elapsed columns filled from the per-rep
+`cloudsim.exit`/`cloudsim.elapsed` files, which live in transient
+`/tmp/s5-work/` -- the TSV is the durable artifact) and `s5-summary.tsv`
+(per-density mean + 95% bootstrap CI, `p2_ci.rep_ci` convention).
 
-**Verdict: explained, and corrected in analysis.** The sign flip is a
-ceiling-scale mismatch between the copied pre-audit solo arm and the post-audit
-pairwise arm, not a mon_group enrollment bug. mbw victim deltas remain
-descriptive-only (the app07 provenance ambiguity shows the column still mixes
-provenances), which the sentence already states.
+| apps/host | total index (CI) | interference only (CI) | migration share |
+|---|---|---|---|
+| 1.0  | 0 | 0 | -- |
+| 1.5  | 0 | 0 | -- |
+| 2.0  | 73.4 [61.8, 86.8] | 33.6 [33.4, 33.8] | 54% |
+| 2.4  | 84.3 [73.1, 99.8] | 48.8 [48.3, 49.3] | 42% |
+| 2.82 | 99.1 [91.7, 108.7] | 67.6 [67.0, 68.2] | 32% |
+| 3.43 | 470.0 [456.8, 484.8] | 418.5 [413.4, 424.3] | 11% |
+| 4.0  | 4442.4 [4277.8, 4630.3] | 4415.8 [4244.1, 4604.7] | 0.6% |
+
+**Tier check at the midpoint (containerPes=17, 2.82 apps/host).** T1, A, B at
+n=10 each via `run-sim-arm.sh` (`-Diada.containerPes=17
+-Diada.earlyExitZero=on`, same toolchain; idi TSV `s5-tiers-at-2.82-idi.tsv`,
+logs in transient `/tmp/s5-tier-work/`), every final placement scored with the
+S1 Y5 yardstick (`s1-truthscore.py`, same level rule and canonical trace
+source as S1). Output: `s5-tiers-at-2.82.tsv`, per-rep scores and placements
+under `s5-tier-check/`. Result (Y5, n=10): T1 219.4 (sd 3.0), A 220.5 (sd
+1.7), B 220.4 (sd 3.5); no pairwise difference survives Holm correction
+(smallest Holm p = 1.0 for Y5; Y6 identical pattern). The S1 yardstick gap at
+4.0 apps/host (full-fingerprint worst by about 4 to 7%) does NOT appear at
+2.82: the tier conclusions depend on the operating point. This is the answer
+the brief's item 4 asked for.
+
+**Functional-form check.** `bench/iada/scripts/s5-fit.py`: regress
+log(interference_avg) on log of the S2 closed form `(28/d)*(g*d)^d/6` with
+d=48/containerPes and g = tier B geomean cloudlet cost 1.9261 (from
+`s2-summary.tsv`). Densities 1.0/1.5 excluded (interference 0, cannot log).
+Per-rep fit (n=50): slope 1.03 (95% CI 0.96 to 1.10), R^2 0.945;
+per-density-mean fit (n=5): slope 1.03, R^2 0.945. Output `s5-fit.tsv`. The
+multiplicative form's exponent is consistent with the data.
+
+**Acceptance (spec: reproduce S15 banked values at 2.0, 2.82, 4.0 within their
+CIs).** Mixed, reported honestly in `s5-acceptance.tsv`. The S15 banked sweep
+(`sim-experiments-20260916/density-sweep/`) has n=5 per point, not n=10.
+Strict criterion (S16 mean inside S15 95% bootstrap CI): PASS 3 of 6 --
+interference-only at 2.0 (33.6 vs 33.6) and both components at 4.0 (4442
+inside [4167, 4450]; 4416 inside [4109, 4423]); FAIL 3 of 6 -- total index at
+2.0 (73.4 vs CI [59.1, 68.7]) and at 2.82 (99.1 vs [100.2, 130.9]), and
+interference at 2.82 by 0.03 (67.59 vs CI upper 67.56). The failures are
+entirely the migration term: interference-only agrees to within 1% at every
+banked density, while mean migration counts differ (2.0: 23.9 vs 18.2; 2.82:
+18.9 vs 30.4) and a 10000-permutation test on the difference of means finds
+nothing significant (p = 0.41 at 2.0, 0.066 at 2.82, 0.27 at 4.0). Early exit
+cannot be the cause: it fires only at cost 0, and no rep at these densities
+ever reaches cost 0 -- the difference is run-to-run SA noise between the n=5
+and n=10 batches. Verdict: interference component reproduces; total index
+agrees within noise but not within the tight n=5 CIs at 2.0/2.82.
+
+**Figure.** `figA_density.pdf` regenerated (two lines: total index and
+interference only, n=10, 95% bootstrap band) via the new `--density-tsv`
+option of `bench/plot/plot-fig-baselines-oracle-jsa.py` (default behavior
+unchanged), copied to `paper-assets/figs/figA_density.pdf`.
+
+**Placeholders.** Both `\tbd{S5}` filled via `values-s5.tsv` + fill_tbd.py
+(dry-run verified). Per ground rule 4, the surrounding prose was also moved to
+the n=10 rerun's numbers (they supersede the banked n=5 values the sentences
+quoted): Section 7.6 now reads "rises from 73 at two applications per host to
+99 at 2.82 and 4442 at 4.0" and "54% at 2.0 and 32% at 2.82 (interference
+alone 34 and 68)" (was: 64/118/4264, 50%/40%, 34/67); the Figure A.4 caption
+gains the early-exit description and drops the stale "crosses = timed out"
+sentence (no rep times out any more). The caption's n=5 -> n=10. tectonic
+compile: 0 errors; `\tbd{S5}` count 0.

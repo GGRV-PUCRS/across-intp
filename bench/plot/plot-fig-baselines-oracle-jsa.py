@@ -294,7 +294,13 @@ def fig_oracle_matrix(data_root: Path, s15_root: Path, out: Path) -> None:
 DENSITY_TIMEOUT_S = 400  # per-rep timeout of the density sweep (DENSITY-SWEEP.md)
 
 
-def fig_density(data_root: Path, out: Path) -> None:
+def fig_density(data_root: Path, out: Path, density_tsv: Path | None = None) -> None:
+    if density_tsv is not None:
+        # S16/S5 two-line version: interference-only and total index, n=10
+        # per density, early-exit sweep (s5-density.tsv). No timeouts in this
+        # campaign, so the "timed out" marker logic does not apply.
+        fig_density_s5(density_tsv, out)
+        return
     by_ratio = defaultdict(list)
     for r in csv.DictReader((data_root / "density-sweep" / "density-sweep-combined.tsv").open(),
                             delimiter="\t"):
@@ -332,6 +338,55 @@ def fig_density(data_root: Path, out: Path) -> None:
     print(f"wrote {out / 'figA_density.pdf'}")
 
 
+def fig_density_s5(density_tsv: Path, out: Path) -> None:
+    """S16/S5 (jsa-repo-fix-brief Step 6): density sweep with early exit.
+
+    Two lines over the 7 densities (48/containerPes applications per host),
+    n=10 reps each, 95% bootstrap band per line (same p2_ci.rep_ci convention
+    as the rest of the paper): the interference-only component and the total
+    index (interference + migration). Source: s5-density.tsv.
+    """
+    by_ratio_i = defaultdict(list)
+    by_ratio_t = defaultdict(list)
+    for r in csv.DictReader(density_tsv.open(), delimiter="\t"):
+        d = float(r["apps_per_host"])
+        by_ratio_i[d].append(float(r["interference_avg"]))
+        by_ratio_t[d].append(float(r["idi_avg"]))
+
+    xs = sorted(by_ratio_t)
+    series = []
+    for i, (by_ratio, color, label, marker) in enumerate([
+            (by_ratio_t, "#27ae60", "total index", "o"),
+            (by_ratio_i, style.BLUE, "interference only", "s")]):
+        ms, los, his = [], [], []
+        for j, d in enumerate(xs):
+            m, lo, hi = p2_ci.rep_ci(by_ratio[d], seed_offset=700 + 10 * i + j)
+            ms.append(m); los.append(lo); his.append(hi)
+        series.append((ms, los, his, color, label, marker))
+
+    width, height = style.TEXT_WIDTH * 0.62, 2.2
+    fig, ax = plt.subplots(figsize=(width, height), layout="constrained")
+    for ms, los, his, color, label, marker in series:
+        ax.fill_between(xs, los, his, color=color, alpha=0.15, linewidth=0)
+        ax.plot(xs, ms, color=color, lw=1.2, marker=marker, markersize=3.5,
+                markeredgecolor="white", markeredgewidth=0.5, label=label)
+    top = max(hi for _m, _l, his, _c, _lb, _mk in series for hi in his)
+    for x, m in zip(xs, series[0][0]):
+        ax.text(x, m + top * 0.04, f"{m:.0f}", ha="center", va="bottom",
+                fontsize=style.ANNOT)
+    ax.set_ylim(0, top * 1.18)
+    ax.set_xticks(xs)
+    ax.set_xticklabels([f"{x:g}" for x in xs])
+    ax.set_xlabel("applications per host")
+    ax.set_ylabel("interference degradation index")
+    ax.grid(axis="y", ls=":", alpha=0.3)
+    style.compact_legend(ax, *ax.get_legend_handles_labels(), ncol=2)
+
+    style.save(fig, out / "figA_density.pdf", style.FigSpec(width, height, "fig:a4"))
+    plt.close(fig)
+    print(f"wrote {out / 'figA_density.pdf'}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-root", type=Path,
@@ -340,12 +395,15 @@ def main() -> int:
     ap.add_argument("--s15-root", type=Path, default=None,
                     help="S15 rerun results dir; enables fig_oracle_matrix. "
                          "fig_oracle.pdf is left unchanged either way.")
+    ap.add_argument("--density-tsv", type=Path, default=None,
+                    help="S16/S5 s5-density.tsv; when set, figA_density.pdf "
+                         "uses it and draws interference-only + total lines.")
     args = ap.parse_args()
     style.apply()
     args.out.mkdir(parents=True, exist_ok=True)
     fig_baselines(args.data_root, args.out)
     fig_oracle(args.data_root, args.out)
-    fig_density(args.data_root, args.out)
+    fig_density(args.data_root, args.out, density_tsv=args.density_tsv)
     if args.s15_root is not None:
         fig_oracle_matrix(args.data_root, args.s15_root, args.out)
     return 0
