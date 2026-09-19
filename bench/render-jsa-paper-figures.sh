@@ -68,12 +68,15 @@ cp "$WORK/figset1/Figure_14.pdf" "$WORK/fig_preempt.pdf"
 echo "== [3/9] fig_arch (no data)"
 python3 bench/plot/plot-fig-arch.py --out "$WORK/fig_arch.pdf"
 
-echo "== [4/9] fig_cadence (merged two-panel)"
+echo "== [4/9] fig_cadence (merged three-row: pooled + per-env + sensitivity)"
 # --out must be passed explicitly: its default mkdir trips over the repo's
-# dangling 'results' symlink.
+# dangling 'results' symlink. --by-env-tsv adds the R2 per-environment
+# deviation row (banked by-env TSV reproduced exactly by
+# analyze-cadence.py --by-env; see s16 R2 in DECISIONS-sim-experiments.md).
 python3 bench/plot/plot-cadence-curves.py \
     "$DATA/final/03-cadence-sweep/cadence-fidelity.tsv" \
-    --out "$WORK/cadence-scratch" --jsa-merged "$WORK/fig_cadence.pdf"
+    --out "$WORK/cadence-scratch" --jsa-merged "$WORK/fig_cadence.pdf" \
+    --by-env-tsv "$DATA/final/03-cadence-sweep/cadence-fidelity-by-env.tsv"
 
 echo "== [5/9] fig_overhead (F9 JSA style; all side outputs redirected)"
 python3 bench/analyze-cadence-overhead.py "$DATA/final/06-cadence-overhead-F9" \

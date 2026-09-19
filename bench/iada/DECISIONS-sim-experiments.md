@@ -1345,3 +1345,101 @@ stopping here for maintainer sign-off (abstract, contribution 5, and conclusion 
    > full-fingerprint scoring best against its own classifier"
 
 **STOPPED HERE per the brief's checkpoint rule.**
+
+
+## S16 R2 -- cadence fidelity per environment (Step 9, reprocessing only, 2026-09-19)
+
+**Question.** Does the pooled cadence-fidelity table hide per-environment effects, and do the
+Section 4.6 / Figure 5 numbers survive a per-environment breakdown?
+
+**Command.** `python3 bench/analyze-cadence.py <archive>/final/03-cadence-sweep --by-env --tsv
+$OUT/r2-cadence-by-env.tsv --out $OUT/r2-cadence-by-env.md` (d7b6ad4's `--by-env` mode already
+implements exactly this; nothing new written analyzer-side), plus a pooled rerun with `--tsv
+/tmp/r2-pooled-check.tsv` for the acceptance diff. Archive read-only: both outputs redirected
+outside it. Figure: `plot-cadence-curves.py` gained `--by-env-tsv`; `--jsa-merged` with it
+renders a third panel row (per-environment deviations) between the pooled fidelity row and the
+sensitivity heatmap; `render-jsa-paper-figures.sh` step 4 now passes the banked by-env TSV.
+
+**Output.** `$OUT/r2-cadence-by-env.tsv` (1080 rows), `$OUT/r2-cadence-by-env.md`,
+`paper-assets/figs/fig_cadence.pdf` (regenerated, 7.17 x 8.40 in, three rows), ledger
+`$OUT/values-r2.tsv` (7 rows; main-jsa.tex NOT edited by this pass, applied centrally).
+
+**Acceptance (pooled reproduction).** The regenerated pooled TSV is byte-identical to the
+banked `final/03-cadence-sweep/cadence-fidelity.tsv` (`diff` empty, 372 rows). The regenerated
+by-env TSV is also byte-identical to the banked `cadence-fidelity-by-env.tsv` from d7b6ad4.
+PASS, exact.
+
+**Per-env headline deviations.** The divergence is confined to four (metric, variant) series,
+all involving the KVM guest; everything else reads the same per environment as pooled:
+- app05 `psp`: host environments fall 86 to 87% at 5 s, but the in-guest reading (10 events/s
+  reference) RISES, max +40% (v2.1, at 2 s) and +45% (v3.3, at 5 s). Sign flip.
+- app05 v3.3 `cpu`: host environments stay within 4% of the 0.1 s reference at every cadence,
+  but in-guest it climbs 6 -> 24 -> 48 -> 43 -> 56 -> 69 across 0.1 to 5 s (+1050% at 5 s).
+  v2.1 in-guest `cpu` reads a flat 75 at every cadence (confirmed).
+- app16 v2.1 `llcocc` (the proxy): +12.5 to +12.7% on the host environments, -31% in the guest
+  from 1 s onward. Sign flip. (v3.3 reports no guest `llcocc`.)
+
+**Prose corrections recorded in the ledger (values-r2.tsv).** Three Section 4.6 / Figure 5
+numbers were wrong or imprecise against the per-env table: "rises by 40 to 50%" -> "40 to 45%"
+(actual maxima +40/+45); v3.3 in-guest cpu "from 5.5% ... to 68%" -> "from 6% ... to 69%" (the
+5.5/68 pair matches no statistic this table computes; the pooled-samples medians are 6 and 69);
+oversubscription `psp` "stays within 2%" -> "stays within about 2%" (pooled v3.3 max |dref| is
+2.23%, marginally over the stated bound; v2.1 stays under 1%). All other numbers in the
+paragraph and caption reproduce exactly: psp streaming loss 86 to 87% at 5 s (pooled 5 s dref
+-0.871 v2.1, -0.862 v3.3); llcmr/membw_est drift 24 to 29% (pooled maxima 23.5 to 28.5%);
+llcocc rise 10 to 16% (pooled maxima 10.5 to 16.2%); psp references about 140 and about 5400
+events/s; v3.3 pooled cpu +16% at 2 s (exactly 0.16); density 1190 to 1199 rows/rep at 0.1 s
+down to 23 at 5 s. The caption also gains a "Middle:" sentence describing the new panel, and
+the "Top:" sentence now says the pooling explicitly (the brief requires pooled panels to be
+labeled as pooled).
+
+**Verdict.** R2 confirmed with corrections: pooled acceptance exact, the two known guest
+effects reproduce (with corrected magnitudes), and one new guest effect is quantified in the
+caption (v2.1 in-guest `llcocc` -31% on app16, already noted in the rerun brief).
+
+### R3 -- audit of the v3.3 victim mbw disagreement (Step 10, code+data audit, complete; 2026-09-19)
+
+**Question.** Section 6.1: under W5 colocation the variants disagree on the victim's
+`mbw` -- v2.1 reads it rising by 1 to 4 points (app01_ml_llc, app11_sort_net) while
+v3.3 reads it falling by 18 to 38.5 (Cliff's delta = -1.0). Is this a resctrl
+mon_group enrollment bug in v3.3, an inconsistent ceiling normalization between the
+solo and pairwise arms, or a real signal?
+
+**Files/commands examined.** v3.3 read path:
+variants/v3.3-ebpf-core-cgroup/src/intp_agg.c:60 (fixed mon_group name), 355-402
+(recursive victim-cgroup seeding), 977-996 (enrollment), 1188-1202 (per-interval
+rescan); variants/v3.3-ebpf-core-cgroup/resctrl/resctrl.c:287-328 (delta +
+normalization by caps->mem_bw_max_bps). Harness: bench/run-intp-bench.sh:4188-4238
+(pairwise profiles the VICTIM ONLY; the aggressor runs unprofiled in its own
+cgroup/cpuset, so no aggressor ever enters the victim's mon_group; one profiler
+instance per run makes the fixed group name harmless), 3604-3636 + 3781-3782
+(v3.3 gets --mem-bw-max-bps from capabilities.env), 3521-3584 (v2.1 gets no
+override and self-detects the audited 281600 MB/s ceiling,
+variants/v2.1-c-abi-cgroup/src/detect.c:433-465). Data:
+results/02-w5-colocation vs results/p2-15metric-xdeploy-1of3.
+
+**Findings.** (1) Raw mbm_total_bytes deltas are NOT logged (--no-diag-cols
+suppresses mbw_raw_mbps; groundtruth resctrl_mbw_bps is "--" by design), so
+recomputation works from the logged percent column. (2) All 168 comparable w5
+v3.3 SOLO cells are byte-identical (cmp) to the pre-audit 2026-06-10 xdeploy
+cells, whose 42656 MB/s fallback ceiling is documented (DECISIONS-container.md
+C34) and confirmed in-situ by 113 "ceiling=42656 MB/s" warnings in the copied
+cells' own portable.v3.3.log files; the PAIRWISE cells were collected 2026-06-13
+after the ceiling audit with INTP_MEM_BW_MBPS=281600 in the campaign
+capabilities.env, so the victim delta mixed two scales. (3) Rescaling the solo
+arm by 42656/281600 = 0.1514 (script r3-recompute.py reproduces the published
+as-logged values exactly first) turns the disputed cells into +3.21/+2.96 (bare)
+and +1.77/+2.65 (container), Cliff's delta +0.75..+1.0, consistent with v2.1's
++1/+3 and 0/+4 and with the ceiling-independent per-cgroup signals (llcmr
+triples, membw_est rises). (4) app07_ordering solo cells are a later collection
+absent from the pre-audit snapshot, so their scale is ambiguous; either reading
+removes the v3.3-only fall there too.
+
+**Output.** $OUT/r3-mbw-audit.md, $OUT/r3-mbw-recomputed.tsv, $OUT/r3-recompute.py,
+ledger row in $OUT/values-r3.tsv (not applied to main-jsa.tex by this agent).
+
+**Verdict: explained, and corrected in analysis.** The sign flip is a
+ceiling-scale mismatch between the copied pre-audit solo arm and the post-audit
+pairwise arm, not a mon_group enrollment bug. mbw victim deltas remain
+descriptive-only (the app07 provenance ambiguity shows the column still mixes
+provenances), which the sentence already states.
