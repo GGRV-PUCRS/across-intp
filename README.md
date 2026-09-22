@@ -104,6 +104,17 @@ the release assets, not in that directory.
 In [docs/READER-MAP.md](docs/READER-MAP.md) every row is tagged **repo:** or
 **artifact:** precisely so this stays unambiguous.
 
+### Releases
+
+| Release | What it is |
+| --- | --- |
+| [`v0.1.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.1.0) | The SBAC-PAD 2026 artifact, with the data assets above. The `release/v0.1.0` branch holds the same tree for browsing without downloading. |
+| [`v0.2.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.0) | The JSA artifact: the container-based interference work (v2.1 and v3.3 per-cgroup profilers, the cross-deployment suite, the IADA simulator campaigns). Campaign results and the frozen campaign archive are attached as release assets. See `docs/DECISIONS-container.md` and DECISIONS.md D15. |
+
+The production profiler built from V2.1 and V3.3 is `intp`, packaged for
+Ubuntu in [`ppa:norohim/intp`](https://launchpad.net/~norohim/+archive/ubuntu/intp);
+its `SYNC.md` names the commit of this repository it is synced with.
+
 ## Variant Comparison
 
 | Feature                  | V0 classic | V0.1 k68 | V0.2 helper | V1 native | V1.1 helper | V2 stable-abi | V2.1 cgroup | V3.1 bpftrace | V3 ebpf-core | V3.2 eBPF-CORE | V3.3 ebpf-core-cgroup |

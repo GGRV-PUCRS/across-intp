@@ -31,8 +31,8 @@ keywords:
   - bpftrace
   - performance monitoring
   - cloud computing
-version: "0.1.0"
-date-released: "2026-08-15"
+version: "0.2.0"
+date-released: "2026-09-22"
 preferred-citation:
   type: conference-paper
   title: "Cross-Application Interference Profiling in Consolidated Cloud Servers: Improving Portability, Overhead and Fidelity in IntP"

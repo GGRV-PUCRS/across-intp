@@ -376,3 +376,43 @@ to a draft section numbering that no longer exists.
 The release keeps version `v0.1.0`, the tag is re-cut at this pass's head, and
 the assets are clobbered in place. The camera-ready PDF is untouched: no placed
 figure was re-rendered, so the 11-page layout stands.
+
+## D15 — v0.2.0: container-based interference published; pinned re-sync with ggrv-intp/intp (2026-09-22)
+
+The container-based interference work (PR #1, `feat/container-based-interference`,
+C25 to C37 in `docs/DECISIONS-container.md`, the S15/S16 simulator campaigns)
+is released publicly as **`v0.2.0`** of `ggrv-intp/across-intp`. This
+repository (`cutting-edge-intp`) stays the private working copy; its `main`
+is pushed to a branch of across-intp and merged there through a pull request,
+so every commit hash cited in this log resolves in the public repository.
+
+1. **`v0.1.0` stays the SBAC-PAD 2026 artifact.** Its tag, release assets and
+   the D13/D14 re-cut policy are unchanged. A `release/v0.1.0` branch on
+   across-intp points at the same commit, for readers who want the artifact
+   tree without downloading the release tarballs.
+2. **`v0.2.0` is the JSA artifact.** The tag is cut from source; the campaign
+   results and the frozen campaign archive (indexed by its manifest) are
+   attached to the release as assets afterwards, as the JSA data-availability
+   statement describes. Outputs committed under `bench/iada/results/` travel
+   with the tree, and the SBAC-PAD data stays attached to `v0.1.0`.
+3. **Re-sync with the production line.** D10's port-and-freeze contract is
+   replaced on the intp side by a pinned re-sync (intp ADR-0012, intp
+   `SYNC.md`). The pin is the commit that introduces this entry, reachable from
+   across-intp `main` and tagged `v0.2.0` there. What moved: nothing new in
+   code — D11 and D12 were already back-ported — plus two production fixes
+   found during the audit that do not change the variants here:
+   - intp's pure-C target resolution read `cgroup.procs` of the target cgroup
+     only. Under the cgroup v2 no-internal-processes rule a nested container
+     cgroup (Incus `.lxc`, systemd `init.scope`) lists no PIDs at the top, and
+     the per-task `llcmr` backend then fell back to system-wide counting. intp
+     now reads the subtree recursively, as v3.3 does (`read_cgroup_pids_rec`).
+     v2.1 keeps its non-recursive read (C25); campaign results are unaffected
+     because the harness targets leaf cgroups.
+   - intp records where the `mbw` ceiling came from and flags the DDR4
+     fallback that produced the 42 656 MB/s campaign ceiling (C34). The
+     derivation itself (IMC channels x configured MT/s x 8 B) is the same as
+     v2.1 `src/detect.c` and was correct on the testbed (281 600 MB/s).
+4. **Portable metrics stay fenced in production.** intp keeps
+   `system.portable.*` behind `--experimental` until the JSA verdicts are
+   final: PSI was falsified as a bandwidth signal and `membw_est` carries the
+   C31 net-path caveat.
