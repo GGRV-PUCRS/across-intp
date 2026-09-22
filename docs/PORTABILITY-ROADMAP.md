@@ -5,14 +5,15 @@ architectures, and deployment environments.
 
 ## 1. Variant Summary
 
-| Aspect | V2 hybrid-procfs | V3.1 bpftrace | V3 eBPF/CO-RE | V3.2 eBPF in-kernel agg |
-|--------|:-----------------:|:-----------:|:-------------:|:----------------:|
-| Language | C11 | bpftrace DSL + Python 3 | C11 + eBPF C | C11 + eBPF C |
-| Framework | None (procfs/sysfs/perf_event) | bpftrace runtime | libbpf + CO-RE | libbpf + CO-RE |
-| Build tool | gcc + make | None (interpreted) | clang + gcc + bpftool + make | clang + gcc + bpftool + make |
-| Binary portability | Recompile per target | Runs anywhere with bpftrace | CO-RE: compile once, run on 5.8+ | CO-RE: compile once, run on 5.8+ |
-| Startup time | < 100 ms | 1-3 s | ~ 500 ms | ~ 500 ms |
-| Root required | Partial (perf + resctrl) | Yes (BPF + tracing) | Yes (BPF + tracing) | Yes (BPF + tracing) |
+| Aspect | V2 hybrid-procfs | V2.1 c-abi-cgroup | V3.1 bpftrace | V3 eBPF/CO-RE | V3.2 eBPF in-kernel agg |
+|--------|:-----------------:|:------------------:|:-----------:|:-------------:|:----------------:|
+| Language | C11 | C11 | bpftrace DSL + Python 3 | C11 + eBPF C | C11 + eBPF C |
+| Framework | None (procfs/sysfs/perf_event) | None (+ cgroup v2 + perf cgroup mode) | bpftrace runtime | libbpf + CO-RE | libbpf + CO-RE |
+| Build tool | gcc + make | gcc + make | None (interpreted) | clang + gcc + bpftool + make | clang + gcc + bpftool + make |
+| Binary portability | Recompile per target | Recompile per target | Runs anywhere with bpftrace | CO-RE: compile once, run on 5.8+ | CO-RE: compile once, run on 5.8+ |
+| Startup time | < 100 ms | < 100 ms | 1-3 s | ~ 500 ms | ~ 500 ms |
+| Root required | Partial (perf + resctrl) | Partial (perf + resctrl + cgroup) | Yes (BPF + tracing) | Yes (BPF + tracing) | Yes (BPF + tracing) |
+| Attribution scope | system-wide / per-PID | + per-cgroup (6/7 metrics; nets system-wide) | system-wide / per-PID | system-wide / per-PID | system-wide / per-PID |
 
 ---
 
@@ -191,6 +192,28 @@ docker run --rm -it --privileged --pid=host \
   /app/intp-c-abi --interval 1 --duration 30
 ```
 
+**Per-cgroup (per-container) attribution — v2.1.** The example above runs the
+profiler *inside* a container with `--pid=host` for a system-wide view. v2.1
+instead lets the profiler stay on the **host** and attribute a single container
+by its cgroup — "a container is a cgroup":
+
+```bash
+# host-side profiler scoped to one container's cgroup (LXC/LXD shown):
+sudo ./intp-c-abi --cgroup /sys/fs/cgroup/lxc.payload.<name> --interval 1
+# Docker:  --cgroup /sys/fs/cgroup/system.slice/docker-<id>.scope
+```
+
+6/7 metrics then attribute per-cgroup (continuous, child-inclusive); `nets`
+stays system-wide (host-global softirq). The bench harness automates this as
+the `container-lxc` env and the `containerun24.sh` campaign launcher (LXC/LXD);
+see the repo root and `variants/v2.1-c-abi-cgroup/DESIGN.md`. This is the
+Paper 2 container + IADA path. Its eBPF-native per-cgroup sibling,
+v3.3-ebpf-core-cgroup (eBPF/CO-RE with in-kernel aggregation), is now an active
+profiler variant alongside v2.1-c-abi-cgroup; the two share the canonical
+7-metric contract and are the profilers used across the cross-deployment
+suite (§5.5). The older v0.x–v3.2 variants remain as comparison and
+structural evidence.
+
 ### 5.3 KVM / QEMU Virtual Machines
 
 | Requirement | Configuration |
@@ -204,6 +227,28 @@ docker run --rm -it --privileged --pid=host \
 (resctrl is not virtualizable). `llcmr` works only with PMU
 passthrough.
 
+**Structural RDT/PMU gap (vm-guest).** Inside a KVM guest the canonical
+7-metric contract degrades by construction, not by configuration:
+
+- `cpu` attributes correctly per-cgroup inside the guest (vm-guest now
+  yields valid per-cgroup CPU).
+- `mbw`, `llcocc`, and `llcmr` are **structurally gapped under KVM**:
+  resctrl is a host-only filesystem (the RMID/CMT/MBM hardware is not
+  surfaced to the guest), and the LL-cache perf events are not
+  virtualized. PMU passthrough recovers `llcmr` only on a dedicated
+  `.metal`-class host; on shared virtual CPUs the events still read 0.
+
+**VM-portable benchmark (`--portable-metrics`).** Rather than emit
+silent `--`/0 columns for the gapped RDT/PMU metrics, the VM path is a
+separate, flag-gated benchmark surface enabled with
+`--portable-metrics`. It substitutes guest-observable proxies —
+`schedlat`, `psi_mem`, `membw_est`, `psi_io`, `schedthr`, and `steal` —
+that characterise the same contention axes without resctrl or hardware
+PMU access. The canonical 7-metric contract (netp nets blk mbw llcmr
+llcocc cpu) is left intact and ABI-invariant; the portable set is an
+additive, opt-in alternative for the vm-guest deployment, never a
+silent substitution.
+
 ### 5.4 Cloud Instances
 
 | Cloud | Instance | V2 | V3.1 | V3 | mbw/llcocc |
@@ -213,6 +258,34 @@ passthrough.
 | AWS | Standard EC2 | ✓ | ✓ | ✓ | ✗ (no resctrl) |
 | Azure | Bare metal (Ev5) | ✓ | ✓ | ✓ | ✓ |
 | GCP | Sole-tenant node | ✓ | ✓ | ✓ | ✓ |
+
+---
+
+## 5.5 Cross-Deployment Suite (Paper 2)
+
+Paper 2 runs the **same application** across the deployment ladder and
+profiles each rung with v2.1-c-abi-cgroup and v3.3-ebpf-core-cgroup, taking
+paired deltas against the bare-metal reference:
+
+```text
+bare → docker (container) → podman (container-podman)
+     → incus (container-lxc) → k3s (container-k8s) → vm-guest
+```
+
+Each metric carries a **claim class** wired to the W4 faithfulness
+verdicts: `cpu` is reported as an absolute claim, `llcmr` as
+directional only, and the remaining metrics (netp, nets, blk, mbw,
+llcocc) as descriptive. A **parity contract** keeps the comparison
+honest: network mode and storage backend are the only treatment
+variables across rungs, and every run records a `caps_applied` audit so
+that capability differences between runtimes are visible rather than
+confounded.
+
+The bare→container rungs preserve the full canonical 7-metric contract.
+The `vm-guest` rung is the one structural exception (§5.3): its RDT/PMU
+metrics are gapped under KVM, so it is profiled with the canonical set
+for `cpu` plus the `--portable-metrics` surface for the contention axes
+that resctrl and the hardware PMU can no longer cover.
 
 ---
 

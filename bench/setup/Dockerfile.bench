@@ -1,0 +1,54 @@
+# Dockerfile.bench — LEAN per-tenant bench image for the container / container-lxc
+# envs. This is NOT the heavy all-in-one intp-full image: it carries no
+# Hadoop/Spark/HiBench/JDK. Its only job is to remove the per-run
+# `apt-get install stress-ng` latency the harness otherwise pays on every
+# rep against a stock ubuntu:24.04 (see launch_workload_container /
+# launch_workload_container_lxc in bench/run-intp-bench.sh).
+#
+# Containers share the HOST kernel, so "kernel 6.17 HWE" is automatic here —
+# nothing kernel-related is (or can be) baked in. The package set mirrors the
+# runtime bench deps setup-host.sh installs on the bare host, so a tenant sees
+# the same userspace tooling the workload expects.
+#
+# Build:
+#   docker build -f bench/setup/Dockerfile.bench -t ghcr.io/ggrv-intp/intp-bench:24.04 bench/setup
+#   (or via bench/setup/publish-images.sh, which wraps build + optional push)
+#
+# Point the harness at it (opt-in; the default stays ubuntu:24.04):
+#   INTP_BENCH_CONTAINER=ghcr.io/ggrv-intp/intp-bench:24.04 \
+#     sudo bash bench/run-intp-bench.sh --env container ...
+#
+# The harness execs `stress-ng ...` into the running container, so the image
+# just needs to stay alive and have the tools present — hence CMD sleep infinity.
+
+# Optional digest pin for byte-for-byte reproducibility. The mutable tag is the
+# default so the image tracks ubuntu:24.04 security updates; uncomment and set a
+# digest to freeze a campaign:
+#   FROM ubuntu:24.04@sha256:<digest>
+FROM ubuntu:24.04
+
+LABEL org.opencontainers.image.title="intp-bench" \
+      org.opencontainers.image.description="Lean IntP bench tenant (stress-ng + bench deps; NOT the full HDFS/Spark intp-full image)" \
+      org.opencontainers.image.source="https://github.com/ggrv-intp/across-intp" \
+      org.opencontainers.image.base.name="ubuntu:24.04"
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# ── 1. runtime bench deps ──────────────────────────────────────────────────────
+# Mirrors the runtime subset of setup-host.sh install_common() that a container
+# workload actually touches: the stress-ng workload driver plus the network /
+# system / NUMA tooling the harness and per-run measurement helpers expect.
+#   stress-ng   workload driver the harness execs into the tenant
+#   iperf3      network workloads (app12*/net_v_net)
+#   sysstat     pidstat/mpstat sampling used around runs
+#   numactl     NUMA-aware placement parity with the bare host
+#   bc          arithmetic in harness helper math
+#   procps      ps/top/kill used to resolve and stop the in-container PID
+#   iproute2    ip(8) for the container network path
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+        stress-ng iperf3 sysstat numactl bc procps iproute2 && \
+    rm -rf /var/lib/apt/lists/*
+
+# The harness execs the workload into the live container; keep PID 1 alive.
+CMD ["sleep", "infinity"]

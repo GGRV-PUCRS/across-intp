@@ -106,9 +106,9 @@ Constants **not** placed via the template:
 - Upstream archival repo: <https://github.com/projectintp/intp> -- the
   original layout (additional `.STP` build variants, screenshots, and
   Debian/RedHat install guides) is preserved there.
-- Top-level [README.md](../README.md) -- variant matrix and quick start.
-- [VERSIONS.md](../VERSIONS.md) -- legacy ↔ current naming map.
-- [METRICS-ALIGNMENT.md](../METRICS-ALIGNMENT.md) -- per-metric formulas
+- Top-level [README.md](../../README.md) -- variant matrix and quick start.
+- [VERSIONS.md](../../VERSIONS.md) -- legacy ↔ current naming map.
+- [METRICS-ALIGNMENT.md](../../METRICS-ALIGNMENT.md) -- per-metric formulas
   across all variants, with stap-2022 as reference.
 
 ## Standalone use (packaging)

@@ -1,0 +1,46 @@
+#cloud-config
+# vm-bench.cloud-init.yaml — LEAN bench-tenant cloud-init for the vm env.
+# Turns a stock Ubuntu 24.04 cloud image into a bench VM that matches the
+# remote testbed: the HWE kernel (so the guest tracks the host's 6.17 HWE
+# line) plus the same runtime bench deps as bench/setup/Dockerfile.bench.
+# This is NOT the heavy vm-full stack — no Hadoop/Spark/HiBench.
+#
+# Unlike containers (which share the host kernel automatically), a VM has its
+# OWN kernel, so it must install one to match the host. The Ubuntu 24.04 HWE
+# kernel is the supported approximation of the remote's 6.17:
+#   - linux-generic-hwe-24.04 tracks the rolling HWE kernel for noble.
+#   - Matching the remote's EXACT 6.17 may require a mainline/edge kernel from
+#     the Ubuntu mainline-PPA, which is unsupported and not installed here.
+#     If exact 6.17 parity is required for a campaign, install the mainline
+#     6.17 debs by hand after first boot and re-run the harness.
+#
+# This file is consumed by bench/setup/build-bench-vm.sh (via cloud-localds)
+# to produce a qcow2 for INTP_BENCH_VM_IMAGE. It can also be used directly as
+# the seed user-data for an ad-hoc `qemu ... -drive seed.iso` boot.
+
+package_update: true
+package_upgrade: true
+
+packages:
+  # Match the host's HWE kernel line (approximates the remote's 6.17).
+  - linux-generic-hwe-24.04
+  # Mirrors bench/setup/Dockerfile.bench / setup-host.sh runtime bench deps.
+  - stress-ng   # workload driver the harness runs in-guest
+  - iperf3      # network workloads (app12*/net_v_net)
+  - sysstat     # pidstat/mpstat sampling around runs
+  - numactl     # NUMA-aware placement parity with the bare host
+  - bc          # harness helper arithmetic
+  - procps      # ps/top/kill
+  - iproute2    # ip(8) for the guest network path
+  # build-bench-vm.sh can --copy-in the repo and run setup-host.sh in-guest
+  # for the full profiler toolchain; git/curl let that path bootstrap.
+  - git
+  - curl
+
+# Optional: bring the in-guest profiler toolchain up to parity with the bare
+# host by running setup-host.sh against a copied-in checkout. build-bench-vm.sh
+# copies the repo to /opt/across-intp when INCLUDE_SETUP_HOST=1; this hook then
+# runs the modern bootstrap. Left commented so the lean image stays lean by
+# default — uncomment (or use build-bench-vm.sh INCLUDE_SETUP_HOST=1) to enable.
+# runcmd:
+#   - [ bash, -lc, "test -x /opt/across-intp/bench/setup/setup-host.sh && bash /opt/across-intp/bench/setup/setup-host.sh --profile modern --no-build || true" ]

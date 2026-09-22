@@ -18,8 +18,8 @@
 #   SMOKE_IADA=0             exercise the IADA M1 closed loop
 #
 # Variant / scale knobs:
-#   SMOKE_BENCH_VARIANTS=v0.2,v1.1,v2,v3.1,v3,v3.2   stress-ng bench-quick variants
-#   SMOKE_HIBENCH_VARIANTS=v0.2,v1.1,v2,v3           HiBench smoke variants
+#   SMOKE_BENCH_VARIANTS=v0.2,v1.1,v2,v2.1,v3.1,v3,v3.2  stress-ng bench-quick variants
+#   SMOKE_HIBENCH_VARIANTS=v0.2,v1.1,v2,v2.1,v3          HiBench smoke variants
 #   SMOKE_NF_VARIANT=v3                              noise-floor variant (v3|v3.2)
 #   SMOKE_BENCH_WORKLOADS=app01_ml_llc               stress-ng workloads (1 = quick)
 #   SMOKE_DURATION=20                                per-rep stress-ng duration (s)
@@ -46,8 +46,8 @@ SMOKE_NOISE_FLOOR="${SMOKE_NOISE_FLOOR:-0}"
 SMOKE_PLOTS="${SMOKE_PLOTS:-1}"
 
 # ── Variant / scale knobs ────────────────────────────────────────────────────
-SMOKE_BENCH_VARIANTS="${SMOKE_BENCH_VARIANTS:-v0.2,v1.1,v2,v3.1,v3,v3.2}"
-SMOKE_HIBENCH_VARIANTS="${SMOKE_HIBENCH_VARIANTS:-v0.2,v1.1,v2,v3}"
+SMOKE_BENCH_VARIANTS="${SMOKE_BENCH_VARIANTS:-v0.2,v1.1,v2,v2.1,v3.1,v3,v3.2}"
+SMOKE_HIBENCH_VARIANTS="${SMOKE_HIBENCH_VARIANTS:-v0.2,v1.1,v2,v2.1,v3}"
 SMOKE_NF_VARIANT="${SMOKE_NF_VARIANT:-v3}"
 SMOKE_BENCH_WORKLOADS="${SMOKE_BENCH_WORKLOADS:-app01_ml_llc}"
 SMOKE_DURATION="${SMOKE_DURATION:-20}"
@@ -86,6 +86,8 @@ run_step "v0.2 build" make -C variants/v0.2-legacy-intp-baseline clean all
 run_step "v1.1 build" make -C variants/v1.1-stap-modern clean all
 run_step "v2 build" make -C variants/v2-c-abi clean all
 run_step "v2 unit tests" make -C variants/v2-c-abi run-tests
+run_step "v2.1 build" make -C variants/v2.1-c-abi-cgroup clean all
+run_step "v2.1 unit tests" make -C variants/v2.1-c-abi-cgroup run-tests
 run_step "v3.1 deps" make -C variants/v3.1-bpftrace deps
 run_step "v3.1 tests" make -C variants/v3.1-bpftrace test
 run_step "v3 build" make -C variants/v3-ebpf-ring clean all

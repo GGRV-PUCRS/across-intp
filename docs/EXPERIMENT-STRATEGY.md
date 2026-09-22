@@ -104,9 +104,11 @@ into two named modalities; pick the one that matches your scientific
 question:
 
 - **M1 (IADA-aligned, default).** `ENVS=container` only. The shipped
-  classifier was trained on container-collected profiles (Meyer 2021,
-  LXC + Node-Tiers); container-only keeps the comparison inside that
-  training domain. M1 is the right modality for *instrumentation-
+  classifier was trained on container-collected synthetic-stressor
+  profiles (the fork's `R/forced/` set — **not** the published 50k
+  Node-Tiers set; see finding F4 in `bench/iada/CONFORMANCE.md`);
+  container-only keeps the comparison as close to that training domain
+  as the artifact allows. M1 is the right modality for *instrumentation-
   fidelity* claims — i.e. "variant X produces scheduling-quality Y
   with the scheduler fixed". Sanity-checked at startup.
 - **M2 (cross-domain transfer, opt-in).** Adds `bare` and `vm-guest`.
@@ -119,6 +121,126 @@ question:
   transfer ablation and must be framed as such.
 
 Full guide: [bench/iada/docs/iada-campaign.md](../bench/iada/docs/iada-campaign.md).
+
+---
+
+## Paper 2 — cross-deployment benchmark suite
+
+The Paper 2 suite measures the *same* application across the full deployment
+axis and reports its profiled behaviour as paired deltas against the
+bare-metal baseline — the cross-deployment analogue of the fixed-time
+relative-degradation statistic D = Cᵢ/C_b (Volpert et al., ICPE 2025). The
+operational pipeline (parity knobs, KW/MW/Cliff engine, artefact layout) is in
+[CROSS-ENV-CAMPAIGN.md](CROSS-ENV-CAMPAIGN.md); this section is the normative
+suite definition + parity contract. Design decisions and their evidence are
+logged in [DECISIONS-container.md](DECISIONS-container.md) C25.
+
+### Axis, variants, metrics, scope
+
+- **Deployment axis (treatment):** `bare → docker(container) →
+  podman(container-podman) → incus(container-lxc) → k3s(container-k8s) →
+  vm-guest`. The `bare` row is the paired baseline; every delta is reported
+  vs bare, in deployment-axis order (not alphabetical).
+- **Variants:** `v2.1-c-abi-cgroup`, `v3.3-ebpf-core-cgroup`.
+- **Metrics:** `netp nets blk mbw llcmr llcocc cpu` (7).
+- **Scope:** solo deltas are the headline result; the W5 colocation campaign
+  and the IADA closed loop (above) are in-paper. The cpu absolute claim is
+  solo-only (see claim classes); colocation requires a cgroup-scoped CPU
+  ground truth before cpu can keep an absolute claim.
+
+### Workload set
+
+One representative per interference class, identical binary + inputs across
+all six envs:
+
+| Workload           | Class              | Primary metrics | Source        |
+|--------------------|--------------------|-----------------|---------------|
+| `app01_ml_llc`     | cache / LLC        | llcmr, llcocc   | W4 spine      |
+| `app05_streaming`  | memory bandwidth   | mbw, llcocc     | new (P1)      |
+| `app07_ordering`   | memory             | mbw, llcmr      | W4 spine      |
+| `app10_search`     | cpu                | cpu             | W4 spine      |
+| `app11b_tcp_veth`  | network (real NIC) | netp, nets      | upgraded (P1) |
+| `app13_query_scan` | disk               | blk             | W4 spine      |
+
+`app05_streaming` is added so memory bandwidth has a saturating driver (the
+W4 spine only reached mbw≈17). The network class uses the real veth/iperf3
+workload `app11b_tcp_veth` extended to run across the whole axis (TAP in the
+VM, per VM semantics) — not the loopback `app11_sort_net`, which reads netp=0
+on v2.1-c-abi-cgroup and a cgroup_skb=100 loopback artifact on v3.3-ebpf-core-cgroup. `app05`'s 16 GB
+working set must fit under `--bench-mem` (ample at the 2/3-host default on the
+testbed).
+
+### Rep shape
+
+`--reps 12 --duration 120` (3 IADA cycles; the orchestrator default). The
+statistical sample is the per-rep mean, so reps drive `n` (and the cpu
+bootstrap-CI width) while duration steadies each per-rep mean. A measured
+wall-clock estimate is produced and signed off before launching a full-axis
+campaign.
+
+### Parity contract
+
+**Held constant (the "same application"):** workload binary + arguments; the
+CPU/RAM budget (`--bench-cpus` / `--bench-mem`, default floor(2/3-host));
+profiler interval + duration; the cross-env quiesce keep-set
+{docker lxd incus k3s}.
+
+**Treatment variables (what the axis varies):** the deployment environment
+(6 points), the profiler variant (2), the **network mode** (host / veth /
+TAP / SLIRP), and the **storage backend** (native / overlayfs / qcow2).
+Network mode and storage backend are *not* forced identical across envs —
+that would be unrepresentative; each env runs its canonical net + storage,
+these are recorded per run, and a delta vs bare is attributed to the *env
+bundle* (isolation boundary + net + storage), not to the isolation boundary
+alone. Where a decomposition is needed, add an explicit arm (e.g. docker
+`--net=host` vs bridge).
+
+**Auditability:** every run records whether the CPU/RAM caps actually applied
+(`caps_applied`). The launchers warn-and-retry-without-caps when an engine
+rejects `cpu.max`/`memory.max`; an unrecorded drop would silently void
+parity. A run with `caps_applied=false` is excluded from parity comparisons.
+Each run also records its `net_mode` and `storage_backend` so the treatment
+axes are reconstructable.
+
+### Comparison statistic + claim classes
+
+Each metric carries a claim class wired to the W4 verdicts (C24a). The class
+gates which statistic is emitted, so a descriptive metric can never carry an
+absolute-overhead claim:
+
+| Class       | Metrics                    | Statistic vs bare                                         | Basis (W4)                                                |
+|-------------|----------------------------|-----------------------------------------------------------|-----------------------------------------------------------|
+| Absolute    | `cpu`                      | log-ratio overhead + bootstrap CI; faithful band 0.8–1.25 | 20/20 faithful, ratios 0.90–1.02 (solo-only)              |
+| Directional | `llcmr`                    | Spearman ρ + rank-preservation flag; no absolute ratio    | ρ: v2.1 0.66 / v3.3 0.83, p<0.001                         |
+| Descriptive | `mbw llcocc blk netp nets` | median + IQR delta vs bare, stamped descriptive           | no independent GT (resctrl CMT exclusivity; loopback net) |
+
+Reps are treated as independent samples (Kruskal-Wallis omnibus + pairwise
+Mann-Whitney + Cliff's δ); multiple-comparison correction is BH-FDR over the
+15-pair 6-env table. The `claim_class` is stamped into `stats.tsv`.
+
+### VM semantics (vm-guest)
+
+`vm-guest` (in-guest profiler) is the canonical VM row; its per-process
+attribution is comparable to bare/container. The guest boots with PMU
+pass-through (`-cpu host,pmu=on`) so `llcmr` is measurable (directional), and
+with a TAP NIC bridged to the host so `netp`/`nets` see a real device. `mbw`
+and `llcocc` are structurally unavailable in a stock KVM guest (resctrl is
+host-only; no vRDT pass-through) — they are recorded with an `unsupported`
+availability status, distinct from `missing`, and are never emitted as 0 (the
+v3.3-ebpf-core-cgroup silent-zero → `--` correction that makes this hold is a Phase-1
+prerequisite, verified at the T1 smoke). Host-observer `vm` is not used for
+paper rows.
+
+### v2.1 (c-abi-cgroup) LLC-occupancy in containers
+
+c-abi-cgroup's in-container `llcocc` inflation (≈97 vs ≈2 on bare) is corrected at the
+harness level — v2.1-c-abi-cgroup is given a cgroup-scoped mon_group for the PID-launched
+container envs (docker/podman), mirroring v3.3-ebpf-core-cgroup — and the occupancy cells are
+re-run; the v2.1-c-abi-cgroup `llcocc` claim class is provisional until the re-run confirms
+the expected drop to ≈2 on docker/podman. The residual incus(lxc)
+whole-container-cgroup scope difference is a
+documented caveat (the harness fix cannot remove it, and `llcocc` has no
+independent ground truth by RDT-CMT design). See C25 / C24a.
 
 ---
 

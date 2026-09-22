@@ -527,7 +527,7 @@ static const char *env_name(exec_env_t e)
 void print_capabilities(const system_capabilities_t *c, FILE *out)
 {
     if (!c || !out) return;
-    fprintf(out, "# IntP V1 (%s) capability report\n", V3_VERSION);
+    fprintf(out, "# IntP V3 (%s) capability report\n", V3_VERSION);
     fprintf(out, "  vendor          %s\n", vendor_name(c->vendor));
     fprintf(out, "  model           %s\n", c->cpu_model);
     fprintf(out, "  sockets/cores   %d / %d\n", c->num_sockets, c->num_cores);

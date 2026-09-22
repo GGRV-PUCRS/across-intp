@@ -1,0 +1,9 @@
+metric	value
+cpu_in_band	60
+cpu_total	60
+cpu_ratio_min	0.9234
+cpu_ratio_max	0.9879
+llcmr_rho	0.8475
+llcmr_n	70
+membw_est_rho	0.8071
+membw_est_n	70

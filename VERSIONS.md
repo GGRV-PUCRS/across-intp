@@ -5,6 +5,14 @@ Use it to translate references between the legacy naming (used in commits
 before the rename, in the original IntP paper, and in the `pre-rename-2026-05-05`
 git tag) and the current naming (used everywhere else).
 
+The active profiler variants for the container + cross-deployment work are
+**v2.1 (c-abi-cgroup)** (C, per-cgroup via stable kernel ABIs) and
+**v3.3 (ebpf-core-cgroup)** (eBPF/CO-RE, in-kernel aggregation); v0.x–v3.2 remain as
+comparison and structural evidence. All variants emit the same canonical
+7-metric contract — `netp nets blk mbw llcmr llcocc cpu` — as the leading
+columns; this ordering is ABI-invariant (the IADA classifier consumes it) and
+is what each row below means by "the canonical IntP fingerprint".
+
 ## Naming scheme
 
 Major version groups variants by *paradigm*; minor version distinguishes
@@ -16,18 +24,28 @@ implementations within the same paradigm.
   fragility cliff.
 - **v1.x** -- modern SystemTap. Active.
 - **v2.x** -- userspace C using stable kernel ABIs (procfs, perf_event_open,
-  resctrl). Active.
+  resctrl). Active. v2 attributes system-wide / per-PID; **v2.1** (new) adds
+  continuous per-cgroup attribution (cgroup v2 `cpu.stat`/`io.stat`, perf
+  cgroup mode) for the container / VM + IADA work -- the c-abi-cgroup, no-eBPF
+  analogue of v3.2's per-cgroup path. `nets` stays system-wide (softirq is
+  host-global without eBPF).
 - **v3.x** -- eBPF-based implementations. Active. v3 streams events
   through a ring buffer (predecessor); v3.1 is the bpftrace companion;
   **v3.2** is the in-kernel-aggregation endpoint (paper §III-A)
-  that supersedes v3 as the measured eBPF endpoint.
+  that supersedes v3 as the measured eBPF endpoint; **v3.3** (new)
+  scopes the v3.2 design to a single cgroup (`cgroup_skb` + cgroup-id
+  counter maps) -- the eBPF-native sibling of v3.2 and companion to
+  v2.1 for the container / IADA work. Its `nets` is a per-cgroup proxy
+  (byte-share cost model) that diverges by design from v2.1's
+  system-wide `nets`.
 
 ## Mapping
 
 The **Name** column is the descriptive, paper-facing name used verbatim in the
-plot legends/titles (see `VARIANT_LABELS` in `bench/plot/*.py`). The four
-**measured** versions are **v0.2 (legacy-intp-baseline)**, **v1.1 (stap-modern)**,
-**v2 (C-ABI)** and **v3.2 (eBPF-CORE)**. In paper prose v0 is also referred
+plot legends/titles (see `VARIANT_LABELS` in `bench/plot/*.py`). The three
+**measured** versions are **v0.2 (legacy-intp-baseline)**, **v2 (C-ABI)** and
+**v3.2 (eBPF-CORE)**; **v1.1 (stap-modern)** is the kernel-6.8 architectural
+proof, not a measured endpoint. In paper prose v0 is also referred
 to as the "2022 baseline".
 
 | Current | Name | Legacy | Directory | Approach | Status |
@@ -38,9 +56,11 @@ to as the "2022 baseline".
 | v1      | stap-nohelper| v3*    | `variants/v1-stap-nohelper/`         | Stap-only, native probes (`probe perf.type(3).config(...).process(@1)`); no embedded C creating perf events; mbw and llcocc reported as 0 | Active |
 | v1.1    | stap-modern  | (new)  | `variants/v1.1-stap-modern/`       | New build: stap for software metrics + userspace helper for hardware metrics (uncore IMC via `perf_event_open` syscall, LLC occupancy via resctrl mon\_groups). Helper architecture isolates RCU-unsafe operations from probe context | Active |
 | v2      | C-ABI     | v4     | `variants/v2-c-abi/`        | Pure C (no framework): procfs polling, `perf_event_open` syscall, resctrl filesystem. Runtime-adaptive backend hierarchy | Active |
+| v2.1    | c-abi-cgroup | (new)  | `variants/v2.1-c-abi-cgroup/`    | v2's hybrid-C backends with **per-cgroup attribution**: cgroup v2 `cpu.stat`/`io.stat`, `perf_event_open` cgroup mode (LLC), resctrl mon\_groups; disk bandwidth self-detected. `nets` stays system-wide. One code path for bare co-located + container + VM-guest. Target kernel **5.8+** (cgroup v2). See `variants/v2.1-c-abi-cgroup/DESIGN.md` | Active (container / IADA, paper #2) |
 | v3      | ebpf-ring    | v6     | `variants/v3-ebpf-ring/`         | C + libbpf + CO-RE; software metrics through 16 MiB ring buffer (streaming pattern); hardware metrics through resctrl. **Predecessor of v3.2**; retained for overhead-evidence documentation. | Active (predecessor) |
 | v3.1    | bpftrace     | v5     | `variants/v3.1-bpftrace/`          | bpftrace DSL scripts + Python orchestrator + resctrl. SystemTap-script-style ergonomics on top of eBPF | Active (companion) |
 | v3.2    | eBPF-CORE     | (new)  | `variants/v3.2-ebpf-core/`    | C + libbpf + CO-RE with **in-kernel aggregation**: `BPF_MAP_TYPE_PERCPU_ARRAY` + `BPF_MAP_TYPE_HASH` counters polled once per interval (no ring buffer). Eliminates the 194-416x context-switch amplification documented for v3; emits both `mbw_pct` and `mbw_raw_mbps`. See `variants/v3.2-ebpf-core/DESIGN.md` and `docs/V3-OVERHEAD-FINDINGS.md`. | Active (measured eBPF endpoint) |
+| v3.3    | ebpf-core-cgroup   | (new)  | `variants/v3.3-ebpf-core-cgroup/`    | C + libbpf + CO-RE with **per-cgroup attribution**: the in-kernel-aggregation design of v3.2 (counter maps polled once per interval, no ring buffer) scoped to one cgroup via `cgroup_skb` (netp) and cgroup-id-keyed counter maps. The **eBPF-native sibling of v3.2** and the **companion to v2.1**: same per-cgroup question, eBPF mechanism instead of c-abi-cgroup stable ABIs. `nets` is a per-cgroup **proxy** (byte-share cost model) that diverges by design from v2.1's system-wide `nets` (the v2.1-vs-v3.3 comparison axis). Binary `intp-ebpf-core-cgroup`. CLI adds `--cgroup`, `--target-container`, `--target-vm`, `--tap-iface`, `--exact`, `--no-diag-cols`. See `variants/v3.3-ebpf-core-cgroup/DESIGN.md`. | Active (container / IADA, paper #2) |
 
 \* The v3 lineage was discontinued at the `pre-rename-2026-05-05` tag because
 its embedded-C `perf_event_create_kernel_counter()` calls triggered RCU
@@ -156,3 +176,85 @@ to avoid the RCU-unsafe pattern, recovering the full 7-metric coverage.
 - Acceptance gate: `make -C variants/v3.2-ebpf-core test-amplification`
   must pass (ratio <= 1.10 on a 90 s stress-ng window) before v3.2
   joins a campaign. v3 fails this test at 194-416x by construction.
+
+## Status after v2.1 introduction (2026-05-24)
+
+- v2.1 (`variants/v2.1-c-abi-cgroup/`) was added as the c-abi-cgroup
+  sibling of v2 for the paper-#2 container + IADA work: the same `intp-c-abi`
+  CLI and backend-hierarchy design, but its cpu/blk/llcmr backends attribute
+  **per-cgroup** (continuous, child-inclusive) when given `--cgroup`, via
+  cgroup v2 `cpu.stat` (usage_usec), `io.stat` (rbytes+wbytes, normalized by a
+  self-detected disk-bandwidth ceiling), and `perf_event_open` cgroup mode
+  (`PERF_FLAG_PID_CGROUP`) for LLC. It is the stable-ABI, C99 analogue of
+  v3.2's per-cgroup eBPF path (the future eBPF-native sibling is v3.3).
+- `nets` is kept **system-wide**: softirq CPU time (`/proc/stat`,
+  `/proc/softirqs`) is host-global with no per-cgroup counter absent eBPF, so
+  6/7 metrics attribute per-cgroup and `nets` is the one irreducible eBPF
+  advantage -- the v2.1-vs-v3.3 comparison axis for paper #2.
+- "A container is a cgroup": the same per-cgroup code path serves bare
+  co-located processes, containers, and VM guests. Wired into the bench harness
+  as the `container-lxc` env (LXC/LXD, host-side profiler on the container
+  cgroup) and the `containerun24.sh` campaign launcher. v2.1 is built on
+  request via `BENCH_VARIANTS=...,v2.1`; the released paper-#1 matrices
+  (ub24run.sh, ub22run.sh) are unchanged.
+
+## Status after v3.3 introduction (2026-06-02)
+
+- v3.3 (`variants/v3.3-ebpf-core-cgroup/`) was added as the **eBPF-native
+  sibling of v3.2** and the **companion to v2.1** for the paper-#2
+  container + IADA work. It scopes v3.2's in-kernel-aggregation design
+  (counter maps polled once per `--interval`, no ring buffer) to a
+  single cgroup: netp via a `cgroup_skb` program attached to the
+  target cgroup, and the remaining software metrics via cgroup-id-keyed
+  counter maps. Binary `intp-ebpf-core-cgroup`; target picked via `--cgroup`,
+  `--target-container`, or `--target-vm` / `--tap-iface`.
+- The v2.1 vs v3.3 axis answers the same per-cgroup question with two
+  mechanisms: v2.1 uses c-abi-cgroup stable ABIs (cgroup v2
+  `cpu.stat`/`io.stat`, perf cgroup mode, resctrl) with no eBPF; v3.3
+  uses eBPF. Six of the seven metrics (netp, blk, mbw, llcmr, llcocc,
+  cpu) are expected to agree within tolerance.
+- **`nets` is the one expected-divergent metric.** v3.3's `nets` is a
+  per-cgroup **proxy** computed from a byte-share cost model, whereas
+  v2.1's `nets` is host-global softirq CPU time (system-wide). The
+  divergence is by design, not a defect: any v2.1<->v3.3 equivalence
+  check must EXEMPT `nets`. Whether the eBPF per-cgroup proxy is more
+  faithful to true per-cgroup softirq cost than the system-wide
+  attribution is a **hypothesis** to be settled by measurement, not an
+  asserted advantage.
+- Diagnostic columns: with `--no-diag-cols` (the harness/validate
+  capture mode, mirroring v3.2's `--no-raw-mbw`) v3.3 emits leading-ts +
+  exactly the 7 canonical columns. Without the flag it appends four
+  trailing diagnostics -- `netp_dev`, `nets_sys`, `mbw_raw_mbps`,
+  `blk_MBps` -- which are diagnostic, not metric. The first 7 columns
+  remain the canonical IntP fingerprint.
+- v3.3 inherits the existing `run.json` per-stage schemas (11-field
+  stress-ng, 6-field HiBench) through the existing harness writers; no
+  schema change. Built on request via `BENCH_VARIANTS=...,v3.3`; the
+  released paper-#1 matrices (ub24run.sh, ub22run.sh) are unchanged.
+
+## Status after the VM-portable metrics build (2026-06-04)
+
+- v2.1 and v3.3 gained an OPT-IN `--portable-metrics` benchmark: six
+  metrics computed by the **guest's own kernel** so a stock KVM guest
+  (where `mbw`/`llcocc`/`llcmr` are structurally gapped) still has a
+  scheduling + memory interference signal. Set:
+  `schedlat psi_mem membw_est psi_io schedthr steal`
+  (DECISIONS-container.md C26/C27; design in
+  `docs/reports/8th-metric-vm-portable-design.md`).
+- **It is a SEPARATE benchmark, not a schema change.** The canonical
+  7-metric fingerprint, its on-disk TSV, the `off=n-7` report path, the
+  stap byte-compat, and the IADA 7-vector are byte-identical when the
+  flag is off (the v2.1 backend-registry test still reports exactly
+  "7 metrics, 21 backends"). The 6 columns are appended only on demand,
+  with their own `portable.tsv` capture, `aggregate-portable-means.tsv`
+  report, and `bench/analyze-portable.py` adjudicator.
+- v3.3's `schedlat` (formerly a trailing diagnostic) moved into the
+  portable block; the four diagnostic columns are unchanged. `membw_est`
+  reuses v3.3's `llc_misses` counter (× 64 B / interval → MB/s), which
+  falls back to the architectural cache-misses event in-guest, so it
+  carries the memory-bandwidth dimension where `llcmr` cannot.
+- Released paper-#1 matrices and the canonical paper-#2 container campaign
+  are unaffected; the portable campaign is run separately
+  (`run-intp-bench.sh --portable-metrics --variants v2.1,v3.3`).
+- PENDING: testbed validation campaign + report, then back-porting the
+  system-wide backends into v2/v3.2.

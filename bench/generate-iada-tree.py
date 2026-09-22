@@ -127,6 +127,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print planned actions without writing files.",
     )
+    parser.add_argument(
+        "--no-clamp",
+        action="store_true",
+        help="Do not clamp aggregated values to [0,100] (needed for absolute-rate "
+             "columns like membw_est/psp in the 15-metric Approach B traces).",
+    )
     return parser.parse_args()
 
 
@@ -282,8 +288,8 @@ def read_meyer_csv(path: Path) -> list[list[int]]:
         for line_no, fields in enumerate(reader, start=1):
             if not fields:
                 continue
-            if len(fields) != 7:
-                raise SystemExit(f"Expected 7 columns in {path}:{line_no}, got {len(fields)}")
+            if len(fields) not in (7, 15):
+                raise SystemExit(f"Expected 7 (T1/A) or 15 (B) columns in {path}:{line_no}, got {len(fields)}")
             try:
                 values = [int(float(field)) for field in fields]
             except ValueError as exc:
@@ -295,7 +301,12 @@ def read_meyer_csv(path: Path) -> list[list[int]]:
     return rows
 
 
+CLAMP = True  # clamp aggregated values to [0,100]; disabled (--no-clamp) for B
+
+
 def clamp_percent(value: int) -> int:
+    if not CLAMP:
+        return value
     if value < 0:
         return 0
     if value > 100:
@@ -344,12 +355,19 @@ def materialize_aggregated(link: LinkedFile, method: str, force: bool, dry_run: 
             f"truncating to {min_rows} rows"
         )
 
+    # Column width is read from the data (7 for T1/A, 15 for B), not hardcoded --
+    # a fixed range(7) here silently truncated every tier-B merge (portable +
+    # regime columns 8-15 dropped) whenever a multi-rep pattern (mean/median)
+    # was requested, e.g. any campaign with >4 reps/workload needing to merge
+    # onto the canonical inc/dec/osc/con set. All series share one row width
+    # (guaranteed by write_meyer_csv's source format), so series[0][0] is safe.
+    width = len(series[0][0])
     merged: list[list[int]] = []
     for idx in range(min_rows):
         merged.append(
             [
                 aggregate_metric([trace[idx][metric_idx] for trace in series], method)
-                for metric_idx in range(7)
+                for metric_idx in range(width)
             ]
         )
     write_meyer_csv(dst, merged)
@@ -441,6 +459,9 @@ def write_tree_manifest(
 
 def main() -> int:
     args = parse_args()
+    global CLAMP
+    if args.no_clamp:
+        CLAMP = False
     rep_to_pattern = parse_rep_pattern_map(args.rep_pattern_map)
     manifest_rows = read_manifest(args.manifest)
 

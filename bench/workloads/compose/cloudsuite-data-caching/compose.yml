@@ -1,0 +1,28 @@
+# CloudSuite data-caching: memcached server (profiled) + the CloudSuite client
+# image running a continuous loader loop (load-client -> `load*` convention:
+# kept outside the profiled parent cgroup, pinned to the host third by the
+# harness-generated override). Images are pre-pulled by
+# bench/setup/setup-cloudsuite-workload.sh.
+#
+# Server sizing: 4 worker threads / 4096 MB object memory / 550-byte min
+# object — the CloudSuite-documented single-server configuration, which fits
+# the 1/3-footprint memory cap in every deployment class.
+#
+# The client image ships NO docker_servers.txt (verified: the entrypoint
+# hard-codes the path but the file is absent), so ours is bind-mounted in,
+# pointing at the `server` service on the project network.
+services:
+  server:
+    image: cloudsuite/data-caching:server
+    command: ["-t", "4", "-m", "4096", "-n", "550"]
+
+  load-client:
+    image: cloudsuite/data-caching:client
+    depends_on:
+      - server
+    entrypoint: ["/bin/bash", "/driver/dc-load-loop.sh"]
+    environment:
+      DC_SCALE: "${DC_SCALE:-2}"
+    volumes:
+      - ./dc-load-loop.sh:/driver/dc-load-loop.sh:ro
+      - ./servers.txt:/usr/src/memcached/memcached_client/docker_servers/docker_servers.txt:ro

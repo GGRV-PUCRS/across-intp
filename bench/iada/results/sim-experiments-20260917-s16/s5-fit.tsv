@@ -1,0 +1,13 @@
+geomean_cost_B	1.9261
+closed_form	(28/d)*(g*d)^d/6 with d=48/containerPes, g=geomean_cost_B
+excluded_zero_interference_densities	1(cp48),1(cp48),1(cp48),1(cp48),1(cp48),1(cp48),1(cp48),1(cp48),1(cp48),1(cp48),1.5(cp32),1.5(cp32),1.5(cp32),1.5(cp32),1.5(cp32),1.5(cp32),1.5(cp32),1.5(cp32),1.5(cp32),1.5(cp32)
+unit	slope	intercept	r2	slope_se	slope_ci95_lo	slope_ci95_hi	n
+per_rep	1.0272	-0.5984	0.9450	0.0358	0.9552	1.0991	50
+per_density_mean	1.0276	-0.6000	0.9452	0.1428	0.5732	1.4820	5
+
+containerPes	d	closed_form	interference_avg_mean	n
+24	2.0000	34.6254	33.5802	10
+20	2.4000	76.6535	48.7627	10
+17	2.8200	195.5485	67.5867	10
+14	3.4300	883.5271	418.4498	10
+12	4.0000	4110.5703	4415.7528	10

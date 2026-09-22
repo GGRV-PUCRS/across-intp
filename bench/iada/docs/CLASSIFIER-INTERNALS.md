@@ -1,5 +1,9 @@
 # IADA Classifier — internals reference
 
+> For **conformance claims** (what the papers say vs what the code does),
+> [`../CONFORMANCE.md`](../CONFORMANCE.md) is authoritative and supersedes
+> this file; this file remains the internals snapshot.
+
 Snapshot of how the **CloudSimInterference** fork (ggrv-intp branch
 `master` at the time of writing) loads and uses the shipped
 classifier, captured to anchor the sanity-check + retrain pipelines
@@ -28,7 +32,7 @@ source files. All paths below are relative to `<CLOUDSIM_REPO>/R/`.
 | `input_dataset.R` | source   | Loads `forced/*.csv` into the 7-feature + category data frame.             |
 | `svm.R`           | source   | Trains (`firstTime==0`) or loads (`firstTime==1`) `svm_model.rda`.         |
 | `kmeans.R`        | source   | Trains or loads the per-class K-Means models; defines `predict.kmeans`.    |
-| `forced/`         | dir      | Per-class training CSVs (Meyer 2021 paper dataset).                        |
+| `forced/`         | dir      | Per-class training CSVs (~500 rows/class; **not** the Meyer 2021 paper's 50k Node-Tiers set — zero row overlap; finding F4 in [`../CONFORMANCE.md`](../CONFORMANCE.md)). |
 
 The five class names used end-to-end are **`cpu`, `mem`, `disk`,
 `net`, `cache`**. Note the abbreviations: this is the exact label set
@@ -53,14 +57,16 @@ headers; the separator is `;`.
 | 6            | `llcocc`  | last-level cache occupancy  |
 | 7            | `cpu`     | CPU utilisation             |
 
-> **Quirk noted but preserved**: `MLClassifier.java` constructs the
-> at-classification-time data frame using the column ordering
-> `(nets, netp, blk, mbw, llcmr, llcocc, cpu)`, i.e. `nets`/`netp` are
-> swapped relative to the training order in `input_dataset.R`
-> (`netp, nets, blk, …`). This appears to be a long-standing bug in
-> the upstream classifier. Our pipeline does **not** attempt to fix
-> it: drop-in compatibility requires that retrained `.rda` files
-> follow the exact same convention as the shipped ones.
+> **Quirk (fixed in the classification path, 2026-08)**: upstream
+> `MLClassifier.java` constructed the at-classification-time data frame
+> using the column ordering `(nets, netp, blk, mbw, llcmr, llcocc,
+> cpu)`, i.e. `nets`/`netp` swapped relative to the training order in
+> `input_dataset.R` (`netp, nets, blk, …`) — a long-standing upstream
+> bug. Since `a24fe55` the classification path derives column names
+> from the loaded training frame (`feat_cols <- setdiff(names(total),
+> "category")`), which removes the swap for classification. The swapped
+> header survives only in the (never-executed) OCPD path
+> `getIntervalsOCPM` (see F1 in [`../CONFORMANCE.md`](../CONFORMANCE.md)).
 
 ---
 
@@ -79,8 +85,11 @@ net100.csv       → category = "net"
 
 `input_dataset.R` builds the training frame as:
 `total <- rbind(cpu, mem, disk, net, cache)` — `cache_miss` is loaded
-but **excluded** from the rbind. This is intentional in the upstream
-fork; the retrain pipeline mirrors the behaviour by default.
+but **excluded** from the rbind. Note this is a **fork divergence, not
+upstream intent**: the published classifier's `input_dataset.R`
+(`interference-classifier` repo) rbinds `cache_miss` as a sixth class
+labelled `miss` (finding F4, [`../CONFORMANCE.md`](../CONFORMANCE.md)).
+The retrain pipeline mirrors the fork's 5-class behaviour by default.
 
 ---
 

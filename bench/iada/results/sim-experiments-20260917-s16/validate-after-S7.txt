@@ -1,0 +1,15 @@
+[FAIL] C10 membw_est host to guest (v3.3): vm/bare ratio 0.00 to 21.87; workload rank rho=0.70 (text: one factor of ten)
+[FAIL] C11 netp v2.1 never activates: 8 app/env cells with v2.1 netp > 0, e.g. [['bare', 'app19_cs_datacaching', 94.0], ['bare', 'app20_cs_websearch', 1.0], ['container', 'app19_cs_datacaching', 94.0]]
+[FAIL] C12 web-search guest load: {('v2.1', 'bare'): {'cpu': 33.0, 'netp': 1.0, 'nets': 6.0, 'psp': 0.0}, ('v2.1', 'container'): {'cpu': 33.0, 'netp': 1.0, 'nets': 6.0, 'psp': 0.0}, ('v2.1', 'vm-guest'): {'cpu': 3.0, 'netp': 0.0, 'nets': 0.0, 'psp': 0.0}, ('v3.3', 'bare'): {'cpu': 33.0, 'netp': 1.0, 'nets': 4.0, 'psp': 7425.0}, ('v3.3', 'container'): {'cpu': 33.0, 'netp': 1.0, 'nets': 4.0, 'psp': 7238.0}, ('v3.3', 'vm-guest'): {'cpu': 3.0, 'netp': 0.0, 'nets': 0.0, 'psp': 4.0}}
+[INFO] C13 real-app container/bare cpu: {('v2.1', 'app18_redis_kv'): 1.0, ('v2.1', 'app19_cs_datacaching'): 1.0, ('v2.1', 'app20_cs_websearch'): 1.0, ('v2.1', 'app21_cs_imanalytics'): 1.0, ('v2.1', 'app22_dsb_socialnet'): 0.75, ('v3.3', 'app18_redis_kv'): 1.0, ('v3.3', 'app19_cs_datacaching'): 1.0, ('v3.3', 'app20_cs_websearch'): 1.0, ('v3.3', 'app21_cs_imanalytics'): 1.0, ('v3.3', 'app22_dsb_socialnet'): 0.37}
+[INFO] C14 transfer recall per class: {'A': {'cache': 0.0, 'cpu': 1.0, 'disk': 0.059, 'mem': 0.249, 'net': 1.0, 'regime': nan}, 'B': {'cache': 0.451, 'cpu': 1.0, 'disk': 0.012, 'mem': 1.0, 'net': 1.0, 'regime': 1.0}, 'T1': {'cache': 0.0, 'cpu': 1.0, 'disk': 0.225, 'mem': 0.41, 'net': 1.0, 'regime': nan}}
+[INFO] C15 B accuracy on the five shared classes: {'T1': np.float64(0.508), 'A': np.float64(0.426), 'B': np.float64(0.744)}
+[INFO] C16 T1 interval decomposition: geo-mean cloudlet cost 2.014; first interval 8018; last 4896
+[INFO] C16 A interval decomposition: geo-mean cloudlet cost 1.725; first interval 4054; last 3932
+[INFO] C16 B interval decomposition: geo-mean cloudlet cost 2.018; first interval 8614; last 4043
+[INFO] C17 closed-form A/T1 ratio: (gmA/gmT1)^4 = 0.539 vs paper 3619/6521 = 0.555
+[INFO] R1 cpu vs ground truth (host, busy > 5%): 60/60 in band, 0.92 to 0.99
+[INFO] R1 llcmr vs GT miss ratio: rho=0.85 n=70
+[INFO] R1 membw_est vs GT llc_miss: rho=0.81 n=70
+[INFO] D1 density index composition: {1.0: {'idi': 0.0, 'interf': 0.0, 'elapsed': 400.4, 'migration_share': nan}, 1.5: {'idi': 0.0, 'interf': 0.0, 'elapsed': 400.2, 'migration_share': nan}, 2.0: {'idi': 63.9, 'interf': 33.6, 'elapsed': 57.0, 'migration_share': 0.5}, 2.82: {'idi': 117.5, 'interf': 66.8, 'elapsed': 57.2, 'migration_share': 0.4}, 4.0: {'idi': 4263.7, 'interf': 4222.7, 'elapsed': 57.8, 'migration_share': 0.0}}
+[INFO] D2 self score per placement tier across oracle batches (differs => separate batches): {'A': {'A': 3856.0, 'B': 3621.0, 'T1': 4680.0}, 'B': {'A': 3817.0, 'B': 3607.0, 'T1': 4811.0}, 'T1': {'A': 4051.0, 'B': 3552.0, 'T1': 4822.0}}

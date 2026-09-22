@@ -1,0 +1,203 @@
+diff --git a/R/retrain.R b/R/retrain.R
+index 2adf4bc..cc62f36 100644
+--- a/R/retrain.R
++++ b/R/retrain.R
+@@ -45,7 +45,8 @@ parse_args <- function(argv) {
+     cv_folds     = 5L,
+     cv_repeats   = 10L,
+     seed         = 42L,
+-    dry_run      = FALSE
++    dry_run      = FALSE,
++    tier         = "T1"
+   )
+   i <- 1
+   while (i <= length(argv)) {
+@@ -57,6 +58,7 @@ parse_args <- function(argv) {
+       "--cv-folds"     = { opt$cv_folds     <- as.integer(argv[[i + 1]]); i <- i + 2 },
+       "--cv-repeats"   = { opt$cv_repeats   <- as.integer(argv[[i + 1]]); i <- i + 2 },
+       "--seed"         = { opt$seed         <- as.integer(argv[[i + 1]]); i <- i + 2 },
++      "--tier"         = { opt$tier         <- argv[[i + 1]]; i <- i + 2 },
+       "--dry-run"      = { opt$dry_run      <- TRUE;                       i <- i + 1 },
+       "-h"             = { opt$help         <- TRUE;                       i <- i + 1 },
+       "--help"         = { opt$help         <- TRUE;                       i <- i + 1 },
+@@ -113,6 +115,23 @@ LEGACY_FILES <- c(
+ # "hig/mod/low" level assignment. Must match upstream R/kmeans.R.
+ LEVEL_COL <- list(cpu = 7L, mem = 4L, disk = 3L, net = 1L, cache = 6L)
+ 
++# Approach B: full 15-metric fingerprint + a 6th "regime" (oversubscription)
++# class. Level columns pick each class's discriminating VM-AVAILABLE metric
++# (canonical mbw/llcocc read 0 in a guest): mem->membw_est(10), cache->llcmr(5),
++# regime->schedlat(8); cpu/disk/net keep their canonical positions.
++if (identical(opt$tier, "B")) {
++  FEATURES <- c("netp", "nets", "blk", "mbw", "llcmr", "llcocc", "cpu",
++                "schedlat", "psi_mem", "membw_est", "psi_io", "schedthr",
++                "steal", "psp", "idle_preempt")
++  CLASSES  <- c("cpu", "mem", "disk", "net", "cache", "regime")
++  LEGACY_FILES <- c("cpu100.csv" = "cpu", "memory100.csv" = "mem",
++                    "disk100.csv" = "disk", "net100.csv" = "net",
++                    "cache100.csv" = "cache", "regime100.csv" = "regime")
++  SUBDIR_TO_CLASS <- c(SUBDIR_TO_CLASS, "regime" = "regime")
++  LEVEL_COL <- list(cpu = 7L, mem = 10L, disk = 3L, net = 1L,
++                    cache = 5L, regime = 8L)
++}
++
+ # ─── dataset loading ─────────────────────────────────────────────────────────
+ read_meyer_csv <- function(path, label) {
+   df <- read.csv2(path, sep = ";", header = FALSE,
+@@ -280,10 +299,10 @@ rand_index_for_kmeans <- function(total, km, k) {
+     if (length(unique(sub[, col_idx])) < k) {
+       per_class[[cls]] <- NA_real_; next
+     }
+-    quant <- as.integer(cut(sub[, col_idx],
+-                            breaks = quantile(sub[, col_idx],
+-                                              probs = seq(0, 1, length.out = k + 1),
+-                                              na.rm = TRUE),
++    brks <- unique(quantile(sub[, col_idx],
++                            probs = seq(0, 1, length.out = k + 1), na.rm = TRUE))
++    if (length(brks) < 2) { per_class[[cls]] <- NA_real_; next }  # zero-skewed col
++    quant <- as.integer(cut(sub[, col_idx], breaks = brks,
+                             include.lowest = TRUE, labels = FALSE))
+     per_class[[cls]] <- rand(quant, km[[cls]]$cluster)
+   }
+@@ -315,11 +334,9 @@ save_artifacts <- function(svm_model, km, output_dir, dry_run) {
+     }
+   }
+   do_save("svm_model.rda", svm_model,    "modelo_svm")
+-  do_save("cpuk.rda",      km[["cpu"]],  "cl_cpu")
+-  do_save("memk.rda",      km[["mem"]],  "cl_mem")
+-  do_save("diskk.rda",     km[["disk"]], "cl_disk")
+-  do_save("netk.rda",      km[["net"]],  "cl_net")
+-  do_save("cachek.rda",    km[["cache"]],"cl_cache")
++  # file names are uniformly <class>k.rda (cpu->cpuk ... regime->regimek);
++  # var names cl_<class> match the inference-path load() in kmeans.R.
++  for (cls in CLASSES) do_save(paste0(cls, "k.rda"), km[[cls]], paste0("cl_", cls))
+ }
+ 
+ # ─── Driver ──────────────────────────────────────────────────────────────────
+@@ -352,4 +369,4 @@ cat(sprintf("  (paper aggregate Rand Index: ~0.82)\n\n"))
+ 
+ save_artifacts(svm_model, km_models, opt$output_dir, opt$dry_run)
+ 
+-log_msg("done — six .rda files written under %s", normalizePath(opt$output_dir))
++log_msg("done — %d .rda files written under %s", length(CLASSES) + 1L, normalizePath(opt$output_dir))
+diff --git a/src/cloudsim/interference/Degradation.java b/src/cloudsim/interference/Degradation.java
+index f3a9ed4..c71fcef 100644
+--- a/src/cloudsim/interference/Degradation.java
++++ b/src/cloudsim/interference/Degradation.java
+@@ -13,6 +13,7 @@ public class Degradation {
+ 	public static HashMap<String, Double> deg_disk = new HashMap<String, Double>();
+ 	public static HashMap<String, Double> deg_cache = new HashMap<String, Double>();
+ 	public static HashMap<String, Double> deg_net = new HashMap<String, Double>();
++	public static HashMap<String, Double> deg_regime = new HashMap<String, Double>();
+ 
+ 	
+ 	
+@@ -61,6 +62,20 @@ public class Degradation {
+ 		return deg_net.get(level);
+ 	}
+ 
++	// Approach B's oversubscription "regime" class. Calibrated from the W5
++	// victim-delta study (results/p2-15metric-xdeploy-1of3-w5): regime/sched-
++	// pressure interference, when present, saturates (Cliff's |delta|->1 for
++	// schedlat/membw_est primaries), so the multipliers are strong — above mem,
++	// just under disk. abs<0.147 low<0.33 mod<0.474 hig>=0.474 (|cliffs| bins).
++	public static double getRegime(String level) {
++		deg_regime.put("abs", 1.00);
++		deg_regime.put("low", 1.20);
++		deg_regime.put("mod", 1.55);
++		deg_regime.put("hig", 1.95);
++
++		return deg_regime.get(level);
++	}
++
+ 	
+ 	
+ /*	
+diff --git a/src/cloudsim/interference/Interference.java b/src/cloudsim/interference/Interference.java
+index f4060fa..a2422cb 100644
+--- a/src/cloudsim/interference/Interference.java
++++ b/src/cloudsim/interference/Interference.java
+@@ -60,7 +60,7 @@ public class Interference {
+ 
+ 			br = new BufferedReader(new FileReader(csvFile));
+ 			while ((line = br.readLine()) != null) {
+-				int[] aux = new int[7];
++				int[] aux = new int[15];  // widen for Approach B 15-metric traces; 7-col traces fill the first 7 (fill loop is i<split.length)
+ 
+ 				// use comma as separator
+ 				String[] aux1 = line.split(";");
+diff --git a/src/cloudsim/interference/MLCResult.java b/src/cloudsim/interference/MLCResult.java
+index ee96c45..431f88c 100644
+--- a/src/cloudsim/interference/MLCResult.java
++++ b/src/cloudsim/interference/MLCResult.java
+@@ -42,12 +42,18 @@ public class MLCResult {
+ 		return this.result.get("disk");
+ 	}
+ 
++	// Approach B's 6th class; null for T1/A (5-class) — guarded in getCloudletCost.
++	public String getRegime() {
++		return this.result.get("regime");
++	}
++
+ 	public double getCloudletCost() {
+ 		double cost = 0;
+ 		cost = Degradation.getCpu(getCpu()) * Degradation.getMem(getMemory()) * Degradation.getDisk(getDisk()) * Degradation.getCache(getCache()) * Degradation.getNet(getNetwork());
+-		//Log.printLine("CPU: "+getCpu()+" Mem: "+getMemory()+" Disk: "+getDisk()+" Cache: "+getCache()+" Net: "+getNetwork());			
+-		
+-		
++		if (getRegime() != null) cost *= Degradation.getRegime(getRegime());  // B only
++		//Log.printLine("CPU: "+getCpu()+" Mem: "+getMemory()+" Disk: "+getDisk()+" Cache: "+getCache()+" Net: "+getNetwork());
++
++
+ 		return cost>1 ? cost : 1;
+ 		
+ 	}
+diff --git a/src/cloudsim/interference/MLClassifier.java b/src/cloudsim/interference/MLClassifier.java
+index 6c31895..478df30 100644
+--- a/src/cloudsim/interference/MLClassifier.java
++++ b/src/cloudsim/interference/MLClassifier.java
+@@ -146,25 +146,30 @@ public class MLClassifier {
+ 		re.eval("source(\"" + project_folder + "kmeans.R\")");
+ 		re.eval("source(\"" + project_folder + "svm.R\")");
+ 
+-		re.eval("teste <- as.data.frame(matrix(0, ncol = 7))");
+-		re.eval("teste <- setNames(teste, c(\"nets\",\"netp\",\"blk\",\"mbw\",\"llcmr\",\"llcocc\",\"cpu\"))");
+-
+-		int[] aux = new int[7];
++		// Generic over feature width (7 for T1/A, 15 for B): take the column
++		// names from the loaded training frame `total` so names + order match
++		// the .rda exactly (this also removes the legacy netp/nets swap), and
++		// build each row data.frame from the trace's actual width.
++		// width = number of FEATURES in the training frame (7 for T1/A, 15 for B),
++		// not the trace buffer length (always 15 after the int[15] widening — the
++		// trailing slots are zero-padding for 7-col traces and must be ignored).
++		re.eval("feat_cols <- setdiff(names(total), \"category\")");
++		int width = re.eval("length(feat_cols)").asInt();
++		re.eval("teste <- setNames(as.data.frame(matrix(0, ncol = length(feat_cols))), feat_cols)");
++
++		int[] aux = new int[width];
+ 
+ 		for (int i = start; i < finish; i++) {
+-
+-			for (int j = 0; j < 7; j++) {
++			StringBuilder sb = new StringBuilder("aux <- data.frame(");
++			for (int j = 0; j < width; j++) {
+ 				aux[j] = interf.getIntByLine(i)[j];
+-				// System.out.print(a.getIntByLine(i)[j] + " ");
+-
++				sb.append("as.integer(").append(aux[j]).append(")");
++				if (j < width - 1) sb.append(",");
+ 			}
+-			re.eval("aux <- data.frame(as.integer(" + aux[0] + "),as.integer(" + aux[1] + "),as.integer(" + aux[2]
+-					+ "),as.integer(" + aux[3] + "),as.integer(" + aux[4] + "),as.integer(" + aux[5] + "),as.integer("
+-					+ aux[6] + "))");
+-			re.eval("aux <- setNames(aux, c(\"nets\",\"netp\",\"blk\",\"mbw\",\"llcmr\",\"llcocc\",\"cpu\"))");
++			sb.append(")");
++			re.eval(sb.toString());
++			re.eval("aux <- setNames(aux, feat_cols)");
+ 			re.eval("teste <- rbind(teste, aux)");
+-			// System.out.print("\n");
+-
+ 		}
+ 
+ 		REXP hh = re.eval("abc <-svm_classifier_level(teste,1,nrow(teste))");

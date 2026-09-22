@@ -77,8 +77,10 @@ def main() -> int:
     interference: list[float] = []
     migrations: list[float] = []
     idi: list[float] = []
+    self_score: list[float] = []
+    oracle: list[float] = []
 
-    section = None  # 'placement' | 'interference' | 'migrations' | 'idi'
+    section = None  # 'placement' | 'interference' | 'migrations' | 'idi' | 'self' | 'oracle'
     sim_finished = False
     sim_wallclock_min = 0
     classifier_calls = 0
@@ -102,6 +104,12 @@ def main() -> int:
             if "interf with mig" in line:
                 section = "idi"
                 continue
+            if "self re-score" in line:
+                section = "self"
+                continue
+            if "oracle re-score" in line:
+                section = "oracle"
+                continue
             if line.startswith("======"):
                 if section == "placement":
                     section = None
@@ -124,7 +132,7 @@ def main() -> int:
                 pm = PLACEMENT_RE.match(line)
                 if pm:
                     placements.append(tuple(float(x) for x in pm.groups()))
-            elif section in ("interference", "migrations", "idi"):
+            elif section in ("interference", "migrations", "idi", "self", "oracle"):
                 nm = NUM_RE.match(line)
                 if nm:
                     val = float(nm.group(1))
@@ -134,6 +142,13 @@ def main() -> int:
                         migrations.append(val)
                     elif section == "idi":
                         idi.append(val)
+                    elif section == "self":
+                        self_score.append(val)
+                        section = None  # single value, not per-interval
+                    elif section == "oracle":
+                        oracle.append(val)
+                        section = None  # single value, not per-interval -- don't
+                                        # keep swallowing unrelated numbers after it
 
     cloudlet_costs = [t[4] for t in placements]
     n_int = len(interference)
@@ -154,6 +169,15 @@ def main() -> int:
         "idi_avg": round(mean(idi), 4) if idi else 0,
         "idi_sum": round(sum(idi), 4),
         "idi_max": round(max(idi), 4) if idi else 0,
+        # -Diada.oracleLabels=on only (jsa-repo-fix-brief Phase 3.2): the final
+        # converged solution re-scored twice, both over the SAME full-trace
+        # window (idi_avg above used the search's own narrow per-interval
+        # windows, not comparable to either of these on window alone):
+        # self_idi = this tier's own classifier; oracle_idi = tier B's. The
+        # self_idi vs oracle_idi gap isolates classifier width; empty/"" when
+        # the flag was off (nothing printed to parse).
+        "self_idi": round(self_score[0], 4) if self_score else "",
+        "oracle_idi": round(oracle[0], 4) if oracle else "",
         "sim_wallclock_min": sim_wallclock_min,
         "sim_finished": int(sim_finished),
         "classifier_calls": classifier_calls,

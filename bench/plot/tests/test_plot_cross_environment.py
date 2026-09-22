@@ -125,6 +125,76 @@ class CrossEnvPlotTest(unittest.TestCase):
         self.assertGreaterEqual(len(plots), 1,
                                 "expected at least one PNG under cross-env/plots/")
 
+    def test_claim_class_column(self) -> None:
+        # Every (variant, workload, metric) row carries the Paper-2 claim tier,
+        # wired to the W4 verdicts; the tier is metric-determined.
+        rows = _read_tsv(self.outdir / "stats.tsv")
+        by_metric = {r["metric"]: r["claim_class"] for r in rows}
+        self.assertEqual(by_metric.get("cpu"), "absolute")
+        self.assertEqual(by_metric.get("llcmr"), "directional")
+        for m in ("mbw", "llcocc", "blk", "netp", "nets"):
+            with self.subTest(metric=m):
+                self.assertEqual(by_metric.get(m), "descriptive")
+        # summary.tsv carries it too
+        srows = _read_tsv(self.outdir / "summary.tsv")
+        self.assertTrue(srows and all("claim_class" in r for r in srows))
+
+    def test_bh_fdr_q_column(self) -> None:
+        # The BH-adjusted q-value column is emitted for run pairs (replaces the
+        # Bonferroni-threshold-only scheme).
+        rows = _read_tsv(self.outdir / "stats.tsv")
+        r = next(r for r in rows
+                 if r["variant"] == "v2" and r["workload"] == "app01_ml_llc"
+                 and r["metric"] == "cpu")
+        for pair in ("bare_vs_container", "bare_vs_vm", "container_vs_vm"):
+            with self.subTest(pair=pair):
+                self.assertIn(f"mw_q_{pair}", r)
+                self.assertNotIn(r.get(f"mw_q_{pair}"), ("", "skip"))
+
+
+class CrossEnvUnsupportedTest(unittest.TestCase):
+    """vm-guest RDT metrics (mbw/llcocc) that are '--' must read as
+       'unsupported' (structural: resctrl is host-only), while a non-RDT '--'
+       stays 'missing' (a collection gap)."""
+
+    def setUp(self) -> None:
+        self.tmpdir = Path(tempfile.mkdtemp(prefix="cross-env-unsup-"))
+        bench_full = self.tmpdir / "bench-full"
+        bench_full.mkdir()
+        cols = "env\tvariant\tstage\tworkload\trep\tnetp\tnets\tblk\tmbw\tllcmr\tllcocc\tcpu\n"
+        lines = [cols]
+        for rep in (1, 2):
+            lines.append(f"bare\tv3.3\tsolo\tapp10_search\t{rep}\t1\t1\t0.5\t10\t0.2\t2\t50\n")
+        # vm-guest: mbw/llcocc structurally absent; blk a (non-RDT) gap; cpu OK
+        for rep in (1, 2):
+            lines.append(f"vm-guest\tv3.3\tsolo\tapp10_search\t{rep}\t1\t1\t--\t--\t0.2\t--\t50\n")
+        (bench_full / "aggregate-means.tsv").write_text("".join(lines))
+        proc = subprocess.run(
+            [sys.executable, str(SCRIPT), str(self.tmpdir)],
+            capture_output=True, text=True, check=False,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"script failed (rc={proc.returncode}): {proc.stderr}")
+        self.rows = _read_tsv(bench_full / "cross-env" / "availability.tsv")
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _status(self, env: str, metric: str) -> str:
+        return next(r["status"] for r in self.rows
+                    if r["env"] == env and r["metric"] == metric
+                    and r["workload"] == "app10_search")
+
+    def test_vm_guest_rdt_unsupported(self) -> None:
+        self.assertEqual(self._status("vm-guest", "mbw"), "unsupported")
+        self.assertEqual(self._status("vm-guest", "llcocc"), "unsupported")
+
+    def test_vm_guest_nonrdt_gap_is_missing(self) -> None:
+        self.assertEqual(self._status("vm-guest", "blk"), "missing")
+
+    def test_bare_present_is_ok(self) -> None:
+        self.assertEqual(self._status("bare", "cpu"), "OK")
+
 
 if __name__ == "__main__":
     unittest.main()

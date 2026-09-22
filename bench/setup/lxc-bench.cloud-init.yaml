@@ -1,0 +1,36 @@
+#cloud-config
+# lxc-bench.cloud-init.yaml — LEAN bench-tenant cloud-init for the container-lxc
+# env (LXD / Incus). Pre-installs the same runtime bench deps as
+# bench/setup/Dockerfile.bench so the per-rep `apt-get install stress-ng`
+# inside launch_workload_container_lxc is skipped. This is NOT the heavy
+# intp-full stack — no Hadoop/Spark/HiBench/JDK.
+#
+# LXC/Incus containers share the HOST kernel, so kernel 6.17 HWE is automatic;
+# nothing kernel-related is provisioned here.
+#
+# Launch a tenant with it baked in (opt-in; harness default stays ubuntu:24.04):
+#
+#   # LXD:
+#   lxc launch ubuntu:24.04 intp-bench-lxc \
+#     --config=cloud-init.user-data="$(cat bench/setup/lxc-bench.cloud-init.yaml)"
+#
+#   # Incus:
+#   incus launch images:ubuntu/24.04 intp-bench-lxc \
+#     --config=cloud-init.user-data="$(cat bench/setup/lxc-bench.cloud-init.yaml)"
+#
+# Then either point the harness at a published image alias built from such a
+# tenant (lxc publish ... --alias intp-bench), or set:
+#   INTP_BENCH_LXC_IMAGE=intp-bench   (LXD local alias)
+#   INTP_BENCH_LXC_IMAGE=images:ubuntu/24.04  + this user-data via your own profile
+# See bench/setup/README.md for the publish-as-image recipe.
+
+package_update: true
+packages:
+  # Mirrors bench/setup/Dockerfile.bench / setup-host.sh runtime bench deps.
+  - stress-ng   # workload driver the harness execs into the tenant
+  - iperf3      # network workloads (app12*/net_v_net)
+  - sysstat     # pidstat/mpstat sampling around runs
+  - numactl     # NUMA-aware placement parity with the bare host
+  - bc          # harness helper arithmetic
+  - procps      # ps/top/kill to resolve and stop the in-container PID
+  - iproute2    # ip(8) for the container network path

@@ -11,6 +11,8 @@ from typing import Iterable
 
 
 METRICS = ("netp", "nets", "blk", "mbw", "llcmr", "llcocc", "cpu")
+CLAMP = True   # clamp values to [0,100]; disabled (--no-clamp) for proxy columns
+               # like membw_est (MB/s) whose magnitude must survive into the trace
 
 # Execution-environment directory names emitted by bench/run-intp-bench.sh.
 # Result layout is <env>/<variant>/<stage>/<workload>/rep<R>/profiler.tsv.
@@ -75,6 +77,16 @@ def parse_args() -> argparse.Namespace:
         help="Write a TSV manifest with source/output path and run metadata.",
     )
     parser.add_argument(
+        "--capture-name",
+        default="profiler.tsv",
+        help=(
+            "Capture filename to scan for (default: profiler.tsv). The 15-metric "
+            "--portable-metrics campaigns write portable.tsv instead (C26); the "
+            "canonical 7 columns are located via the header, so the extra "
+            "portable/scheduling-regime columns are ignored."
+        ),
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Overwrite existing output files.",
@@ -84,24 +96,39 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print planned conversions without writing files.",
     )
+    parser.add_argument(
+        "--metrics",
+        default=None,
+        help=(
+            "Comma-separated 7 metric names to emit (header-mapped), overriding the "
+            "canonical set. For Approach A: netp,nets,blk,membw_est,llcmr,llcocc,cpu "
+            "(membw_est replaces mbw)."
+        ),
+    )
+    parser.add_argument(
+        "--no-clamp",
+        action="store_true",
+        help="Do not clamp values to [0,100] (needed when a column is an absolute "
+             "rate like membw_est MB/s).",
+    )
     return parser.parse_args()
 
 
-def iter_profiler_paths(inputs: Iterable[str]) -> list[Path]:
+def iter_profiler_paths(inputs: Iterable[str], capture_name: str = "profiler.tsv") -> list[Path]:
     results: list[Path] = []
     for raw in inputs:
         path = Path(raw)
         if path.is_file():
-            if path.name != "profiler.tsv":
-                raise SystemExit(f"Expected a profiler.tsv file, got: {path}")
+            if path.name != capture_name:
+                raise SystemExit(f"Expected a {capture_name} file, got: {path}")
             results.append(path)
             continue
         if path.is_dir():
-            results.extend(sorted(path.rglob("profiler.tsv")))
+            results.extend(sorted(path.rglob(capture_name)))
             continue
         raise SystemExit(f"Input path does not exist: {path}")
     if not results:
-        raise SystemExit("No profiler.tsv files found.")
+        raise SystemExit(f"No {capture_name} files found.")
     return dedupe_preserve_order(results)
 
 
@@ -138,7 +165,12 @@ def split_fields(line: str) -> list[str]:
     return line.split()
 
 
-def parse_metric_row(line: str, line_no: int, source: Path) -> list[int] | None:
+def parse_metric_row(
+    line: str,
+    line_no: int,
+    source: Path,
+    header_cols: list[str] | None = None,
+) -> list[int] | None:
     stripped = line.strip()
     if not stripped:
         return None
@@ -149,13 +181,27 @@ def parse_metric_row(line: str, line_no: int, source: Path) -> list[int] | None:
     if len(fields) < 7:
         return None
 
-    tail = fields[-7:]
+    if header_cols and all(metric in header_cols for metric in METRICS):
+        # Header-mapped extraction: portable.tsv carries the canonical 7 FIRST
+        # plus portable/scheduling-regime columns after them, and the harness
+        # prepends a timestamp to data rows but not the header -- the offset
+        # accounts for it. For a plain 7-column profiler.tsv this reduces to
+        # the same last-7 slice as the fallback below.
+        offset = len(fields) - len(header_cols)
+        if offset < 0:
+            return None
+        tail = [fields[offset + header_cols.index(metric)] for metric in METRICS]
+    else:
+        tail = fields[-7:]
     try:
-        values = [round(float(field)) for field in tail]
+        # '--'/empty = source unavailable in this env (e.g. RDT mbw/llcocc/llcmr
+        # in a KVM guest) -> 0, matching campaign-to-trainsets.py. Without this
+        # the canonical 7 of a vm-guest capture abort the whole conversion.
+        values = [0 if field in ("--", "") else round(float(field)) for field in tail]
     except ValueError as exc:
         raise ValueError(f"{source}:{line_no}: could not parse metrics from {tail}") from exc
 
-    return [clamp_percent(value) for value in values]
+    return [clamp_percent(value) if CLAMP else value for value in values]
 
 
 def clamp_percent(value: int) -> int:
@@ -198,9 +244,16 @@ def convert_one(source: Path, output_root: Path | None, force: bool, dry_run: bo
         raise FileExistsError(f"Output already exists (use --force): {output}")
 
     rows: list[list[int]] = []
+    header_cols: list[str] | None = None
     with source.open("r", encoding="utf-8") as handle:
         for line_no, line in enumerate(handle, start=1):
-            record = parse_metric_row(line, line_no, source)
+            stripped = line.strip()
+            if stripped.startswith("netp") or stripped.startswith("ts\t"):
+                # Column header (portable.tsv: canonical 7 + portable cols)
+                cols = split_fields(stripped)
+                header_cols = cols[1:] if cols and cols[0] == "ts" else cols
+                continue
+            record = parse_metric_row(line, line_no, source, header_cols)
             if record is not None:
                 rows.append(record)
 
@@ -239,9 +292,16 @@ def write_manifest(path: Path, results: list[ConversionResult]) -> None:
 
 def main() -> int:
     args = parse_args()
-    profiler_paths = filter_by_stage(iter_profiler_paths(args.inputs), args.stage)
+    global METRICS, CLAMP
+    if args.metrics:
+        METRICS = tuple(m.strip() for m in args.metrics.split(","))
+        if len(METRICS) not in (7, 15):
+            raise SystemExit(f"--metrics needs 7 (T1/A) or 15 (B) names, got {len(METRICS)}")
+    if args.no_clamp:
+        CLAMP = False
+    profiler_paths = filter_by_stage(iter_profiler_paths(args.inputs, args.capture_name), args.stage)
     if not profiler_paths:
-        raise SystemExit("No profiler.tsv files matched the requested filters.")
+        raise SystemExit(f"No {args.capture_name} files matched the requested filters.")
 
     results: list[ConversionResult] = []
     for source in profiler_paths:

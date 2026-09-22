@@ -7,16 +7,16 @@ Reads the manifest.tsv produced by `run-iada-campaign.sh` (driven by
 *modality*:
 
     M1 (IADA-aligned, 1 env): variant-only views
-      fig_iada_variant_ranking.png
-      fig_iada_migrations_vs_idi.png
-      fig_iada_wallclock.png
+      fig_iada_variant_ranking
+      fig_iada_migrations_vs_idi
+      fig_iada_wallclock
 
     M2 (cross-domain transfer, >1 env): adds env-aware views
-      fig_iada_transfer_heatmap.png
-      fig_iada_transfer_degradation.png
+      fig_iada_transfer_heatmap
+      fig_iada_transfer_degradation
 
     --fragility-tsv FILE: adds, in any modality
-      fig_iada_fragility_vs_idi.png
+      fig_iada_fragility_vs_idi
 
 Modality detection is by `--modality {M1,M2,auto}` (default auto:
 inferred from the number of distinct envs in the manifest).
@@ -33,6 +33,9 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "plot"))
+import fig_names  # noqa: E402  (figure naming registry)
 
 import matplotlib
 matplotlib.use("Agg")
@@ -63,11 +66,11 @@ VARIANT_LABELS = {
     "v1":   "stap-nohelper",
     "v1.1": "stap-modern",
     "v2":   "C-ABI",
-    "v2.1": "cgroup-native",
+    "v2.1": "c-abi-cgroup",
     "v3":   "ebpf-ring",
     "v3.1": "bpftrace",
     "v3.2": "eBPF-CORE",
-    "v3.3": "ebpf-cgroup",
+    "v3.3": "ebpf-core-cgroup",
 }
 
 
@@ -356,6 +359,7 @@ def main() -> int:
                     help="variant name used as M1 reference line (default: v0 if present, else lowest IDI)")
     ap.add_argument("--fragility-tsv", type=Path, default=None,
                     help="optional TSV with per-variant fragility column")
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
 
     if not args.manifest.exists():
@@ -369,36 +373,42 @@ def main() -> int:
     print(f"loaded n={len(df)} rows  variants={list(df['variant'].cat.categories)}  "
           f"envs={n_envs}  modality={modality}")
 
+    dataset = args.dataset or fig_names.dataset_tag(args.manifest.parent)
+
+    def path_of(stem: str) -> Path:
+        """Where one figure lands: <what-it-shows>--<which-campaign>.png."""
+        return out_dir / fig_names.name(stem, dataset, ext="png")
+
     written: list[str] = []
     baseline = None
     if modality == "M1":
         baseline = pick_baseline(df, args.baseline_variant)
-        fig_variant_ranking(df, baseline, out_dir / "fig_iada_variant_ranking.png")
-        written.append("fig_iada_variant_ranking.png")
-        fig_migrations_vs_idi(df, out_dir / "fig_iada_migrations_vs_idi.png")
+        fig_variant_ranking(df, baseline, path_of("fig_iada_variant_ranking"))
+        written.append(path_of("fig_iada_variant_ranking").name)
+        fig_migrations_vs_idi(df, path_of("fig_iada_migrations_vs_idi"))
         if "migrations_total" in df.columns:
-            written.append("fig_iada_migrations_vs_idi.png")
-        fig_wallclock(df, out_dir / "fig_iada_wallclock.png")
+            written.append(path_of("fig_iada_migrations_vs_idi").name)
+        fig_wallclock(df, path_of("fig_iada_wallclock"))
         if "sim_wallclock_min" in df.columns:
-            written.append("fig_iada_wallclock.png")
+            written.append(path_of("fig_iada_wallclock").name)
     else:  # M2
         baseline = pick_baseline(df, args.baseline_variant)
-        fig_variant_ranking(df, baseline, out_dir / "fig_iada_variant_ranking.png")
-        written.append("fig_iada_variant_ranking.png")
-        fig_migrations_vs_idi(df, out_dir / "fig_iada_migrations_vs_idi.png")
+        fig_variant_ranking(df, baseline, path_of("fig_iada_variant_ranking"))
+        written.append(path_of("fig_iada_variant_ranking").name)
+        fig_migrations_vs_idi(df, path_of("fig_iada_migrations_vs_idi"))
         if "migrations_total" in df.columns:
-            written.append("fig_iada_migrations_vs_idi.png")
-        fig_wallclock(df, out_dir / "fig_iada_wallclock.png")
+            written.append(path_of("fig_iada_migrations_vs_idi").name)
+        fig_wallclock(df, path_of("fig_iada_wallclock"))
         if "sim_wallclock_min" in df.columns:
-            written.append("fig_iada_wallclock.png")
-        fig_transfer_heatmap(df, out_dir / "fig_iada_transfer_heatmap.png")
-        written.append("fig_iada_transfer_heatmap.png")
-        fig_transfer_degradation(df, out_dir / "fig_iada_transfer_degradation.png")
-        written.append("fig_iada_transfer_degradation.png")
+            written.append(path_of("fig_iada_wallclock").name)
+        fig_transfer_heatmap(df, path_of("fig_iada_transfer_heatmap"))
+        written.append(path_of("fig_iada_transfer_heatmap").name)
+        fig_transfer_degradation(df, path_of("fig_iada_transfer_degradation"))
+        written.append(path_of("fig_iada_transfer_degradation").name)
 
     if args.fragility_tsv is not None:
-        fig_fragility_vs_idi(df, args.fragility_tsv, out_dir / "fig_iada_fragility_vs_idi.png")
-        written.append("fig_iada_fragility_vs_idi.png")
+        fig_fragility_vs_idi(df, args.fragility_tsv, path_of("fig_iada_fragility_vs_idi"))
+        written.append(path_of("fig_iada_fragility_vs_idi").name)
 
     write_summary(df, modality, out_dir / "summary.tsv")
     written.append("summary.tsv")

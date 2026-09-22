@@ -1,0 +1,2 @@
+variant	env	workload_mix	cloudlets_total	cloudletcost_avg	cloudletcost_sum	intervals_count	interference_avg	interference_sum	interference_max	migrations_total	migrations_avg	idi_avg	idi_sum	idi_max	self_idi	oracle_idi	sim_wallclock_min	sim_finished	classifier_calls
+v3.3	vm-guest	smoke-before	28	1.9886	55.68	0	0	0	0	0	0	0	0	0			0	0	28

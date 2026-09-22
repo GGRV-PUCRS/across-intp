@@ -1,7 +1,19 @@
 # IADA campaign — second-phase scheduling experiment
 
+> For **conformance claims** (what the papers say vs what the code does),
+> [`../CONFORMANCE.md`](../CONFORMANCE.md) is authoritative and supersedes
+> this file; this file remains the campaign how-to.
+
 **Status:** scaffold ready, smoke test validated 2026-05-05; closed-loop
 wrapper (Section V) added in `iada-closed-loop` branch.
+**Update 2026-08-12:** the tier campaign (T1/A/B, 12 hosts, 28 traces) ran and
+banked; the follow-on simulation-side campaign (gate + E1–E5) and every
+decision it settled — including the two the June handoff left open, the
+host-sweep range (ratio-matched 9/14/19/23/28, decision S6) and upstreaming
+the sizing parameters (now committed on `feat/approach-b-15metric`, decision
+S4/S5) — are logged in [`../DECISIONS-sim-experiments.md`](../DECISIONS-sim-experiments.md).
+The phase checklists below are kept as written for provenance; where they
+conflict, the decisions file wins.
 **Host:** local (laptop) — CloudSim is a deterministic simulation
 **Reference dataset validated:** 192 apps on 48 PMs, 24 intervals,
 mean IDI 3476.2
@@ -10,13 +22,15 @@ mean IDI 3476.2
 
 ## Methodological framing
 
-The shipped IADA classifier (SVM + per-class K-Means) was trained by
-Meyer (2021) on profiles collected in **LXC containers** under
-**Node-Tiers** synthetic stressors. Our IntP campaign collects with
-**`stress-ng`** workloads in **Docker** containers on Sapphire Rapids
-hardware. That difference is a documented **distribution shift**, and
-how big it is depends on which target environment a campaign claims
-to compare against.
+The shipped IADA classifier (SVM + per-class K-Means) was trained on
+the fork's `R/forced/` synthetic-stressor set (~500 low-cardinality
+rows/class) — **not**, as this document previously claimed, on the
+published 50k LXC + Node-Tiers set of Meyer (2021); the two datasets
+share zero rows (finding F4, [`../CONFORMANCE.md`](../CONFORMANCE.md)).
+Our IntP campaign collects with **`stress-ng`** workloads in **Docker**
+containers on Sapphire Rapids hardware. The difference remains a
+documented **distribution shift**, but M1's in-domain argument rests on
+environment-closeness only, not on training-set provenance.
 
 We split the IADA campaign into two named modalities so that the
 methodologically tight question (M1) is not entangled with the
@@ -225,10 +239,14 @@ is one sampling interval; rows are integers in the [0, 100] range.
 
 ### IADA tree layout
 
-`generate-iada-tree.py` then sorts those Meyer files into the four
+`generate-iada-tree.py` then names the files after the four
 behavioural classes IADA expects (`inc`, `dec`, `osc`, `con` —
-increasing, decreasing, oscillating, constant) using the same
-classifier rules from the IADA paper. The result is a directory tree
+increasing, decreasing, oscillating, constant) — but the assignment is
+a **per-repetition alias** (rep1→inc, rep2→dec, …), not shape
+classification; no such "classifier rules" exist in the IADA lineage
+(finding F5, [`../CONFORMANCE.md`](../CONFORMANCE.md)). The genuinely
+patterned traces are Meyer's own 12 (3 apps × 4 patterns), used by the
+W2.2 validation leg. The result is a directory tree
 that CloudSim's `MLClassifier` can consume as an interference source:
 
 ```

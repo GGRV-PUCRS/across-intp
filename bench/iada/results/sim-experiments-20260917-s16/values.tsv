@@ -1,0 +1,8 @@
+id	occurrence	old_text	new_text	source_file	source_row_or_query
+R1	1	all 60 host cells with more than 5\,\% busy time (0.92 to 0.99)	all 60 host cells with more than 5\,\% busy time (0.92 to 0.99)	r1-summary.tsv	cpu_in_band=60,cpu_total=60,min=0.92,max=0.99
+R1	2	$\rho=0.85$ over the 70 one-third-footprint host cells	$\rho=0.85$ over the 70 one-third-footprint host cells	r1-summary.tsv	llcmr_rho=0.85,llcmr_n=70
+R1	3	$\rho=0.81$ over 70 cells	$\rho=0.81$ over 70 cells	r1-summary.tsv	membw_est_rho=0.81,membw_est_n=70
+R1	4	60/60, 0.92 to 0.99	60/60, 0.92 to 0.99	r1-summary.tsv	cpu_in_band=60,cpu_total=60,min=0.92,max=0.99
+R1	5	$\rho=0.85$, $n=70$	$\rho=0.85$, $n=70$	r1-summary.tsv	llcmr_rho=0.85,llcmr_n=70
+R1	6	$\rho=0.81$, $n=70$	$\rho=0.81$, $n=70$	r1-summary.tsv	membw_est_rho=0.81,membw_est_n=70
+R1	7	60 of 60	60 of 60	r1-summary.tsv	cpu_in_band=60,cpu_total=60
