@@ -56,10 +56,9 @@ venv/
 # Local-only rename artifacts (kept around the migration window)
 /rename-preview*.diff
 
-# Local Claude Code instructions (kept out of git on purpose)
+# Local assistant instructions and settings (kept out of git on purpose)
 /CLAUDE.md
 /.claude
-# Claude local/private
 .claude/settings.local.json
 
 # Generated knowledge graph
