@@ -24,7 +24,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#define V3_VERSION "v3-0.1"
+#define V3_VERSION "v3.2-0.1"
 
 static system_capabilities_t g_caps;
 static int                   g_caps_ready;
@@ -527,7 +527,7 @@ static const char *env_name(exec_env_t e)
 void print_capabilities(const system_capabilities_t *c, FILE *out)
 {
     if (!c || !out) return;
-    fprintf(out, "# IntP V1 (%s) capability report\n", V3_VERSION);
+    fprintf(out, "# IntP V3.2 (%s) capability report\n", V3_VERSION);
     fprintf(out, "  vendor          %s\n", vendor_name(c->vendor));
     fprintf(out, "  model           %s\n", c->cpu_model);
     fprintf(out, "  sockets/cores   %d / %d\n", c->num_sockets, c->num_cores);

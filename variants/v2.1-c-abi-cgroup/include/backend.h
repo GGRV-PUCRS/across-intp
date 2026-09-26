@@ -1,0 +1,108 @@
+/*
+ * backend.h -- Backend interface and registry for V2 metrics.
+ *
+ * A backend is a (probe, init, read, cleanup) tuple that knows how to
+ * collect one metric through one specific kernel interface. Multiple
+ * backends per metric form an ordered fallback chain.
+ *
+ * Lifecycle:
+ *   probe()   -- 0 if usable on this host (cheap, no side effects)
+ *   init()    -- 0 on success, allocates resources (fds, mon_groups, ...)
+ *   read()    -- fills *out, returns 0 on success
+ *   cleanup() -- releases all resources, must be safe to call twice
+ */
+
+#ifndef INTP_BACKEND_H
+#define INTP_BACKEND_H
+
+#include "intp.h"
+
+typedef struct backend {
+    const char *backend_id;             /* short identifier in output         */
+    const char *description;            /* human-readable, for --list-backends */
+    int  (*probe)(void);
+    int  (*init)(void);
+    int  (*read)(metric_sample_t *out, double interval_sec);
+    void (*cleanup)(void);
+} backend_t;
+
+/* Targeting hint -- how the binding maps to a container/VM tenant.           */
+typedef enum {
+    INTP_TARGET_DEFAULT = 0,    /* system-wide, or raw --pids/--cgroup        */
+    INTP_TARGET_CONTAINER,      /* --target-container: cgroup-scoped tenant   */
+    INTP_TARGET_VM,             /* --target-vm: VM scope cgroup + host tap netp */
+} intp_target_kind_t;
+
+/* Target binding -- set by main before metric_init_all().                    */
+typedef struct {
+    pid_t       pids[INTP_MAX_PIDS];
+    int         n_pids;
+    const char *cgroup_path;            /* may be NULL                        */
+    const char *iface;                  /* may be NULL = autodetect           */
+    const char *disk;                   /* may be NULL = autodetect           */
+    const char *tap_iface;              /* VM netp: host tap/vnet iface, NULL = none */
+    intp_target_kind_t kind;            /* container/VM targeting hint for backends  */
+    long        nic_speed_bps_override; /* 0 = use detection                  */
+    long        mem_bw_max_bps_override;/* 0 = use detection                  */
+    long        llc_size_bytes_override;/* 0 = use detection                  */
+    long        disk_bw_max_bps_override;/* 0 = use detection/assumed default */
+} intp_target_t;
+
+void intp_target_set(const intp_target_t *t);
+const intp_target_t *intp_target_get(void);
+
+/* All seven metrics -- accessors returning the singleton metric_t.            */
+metric_t *metric_netp(void);
+metric_t *metric_nets(void);
+metric_t *metric_blk(void);
+metric_t *metric_mbw(void);
+metric_t *metric_llcmr(void);
+metric_t *metric_llcocc(void);
+metric_t *metric_cpu(void);
+
+/* Eight VM-portable metrics (--portable-metrics, C26 / DESIGN §10). A SEPARATE
+ * flag-gated benchmark: emitted only on demand, never folded into the canonical
+ * 7. Order matches intp_portable_metrics() / portable.c: schedlat psi_mem
+ * membw_est psi_io schedthr steal psp idle_preempt. membw_est is a RATE (MB/s),
+ * psp + idle_preempt are RATES (events/s, scheduling-regime sub-family); the
+ * rest are %. idle_preempt is eBPF-only -> "--" on this C-ABI variant.          */
+#define INTP_N_PORTABLE 8
+metric_t *metric_schedlat(void);
+metric_t *metric_psi_mem(void);
+metric_t *metric_membw_est(void);
+metric_t *metric_psi_io(void);
+metric_t *metric_schedthr(void);
+metric_t *metric_steal(void);
+metric_t *metric_psp(void);
+metric_t *metric_idle_preempt(void);
+
+/* Registry helpers used by main. */
+metric_t **intp_all_metrics(int *n_out);
+
+/* The 8 portable metrics in canonical order. NULL-safe; n_out set to 8.        */
+metric_t **intp_portable_metrics(int *n_out);
+
+/* Probe and select active backend. Returns 0 if at least one metric bound. */
+int  metric_select_backend(metric_t *m);
+
+/* Initialize the previously-selected backend. */
+int  metric_init(metric_t *m);
+
+/* Read latest sample using the active backend (or returns UNAVAILABLE).      */
+void metric_read(metric_t *m, metric_sample_t *out, double interval_sec);
+
+/* Cleanup all backends that were init'd. Idempotent. */
+void metric_cleanup(metric_t *m);
+
+/* Override selection for --force-backend. Returns 0 if id matched. */
+int  metric_force_backend(metric_t *m, const char *backend_id);
+
+/* Disable a metric entirely (--disable-metric). */
+void metric_disable(metric_t *m);
+
+/* Public helpers shared with the unit tests -- safe to call at startup. */
+int  intp_parse_pid_list(const char *spec, pid_t *out, int max);
+int  intp_find_pids_by_comm(const char *comm, pid_t *out, int max);
+long netp_resolve_speed(const char *iface, int *assumed_out);
+
+#endif /* INTP_BACKEND_H */

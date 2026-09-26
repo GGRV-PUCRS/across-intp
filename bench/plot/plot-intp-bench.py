@@ -72,6 +72,7 @@ except ImportError:
     HAS_SCIPY = False
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
 import paper_style  # noqa: E402  (shared camera-ready typography)
 
 # Camera-ready mode (--camera-ready). When on, the paper figures are rendered
@@ -81,6 +82,9 @@ import paper_style  # noqa: E402  (shared camera-ready typography)
 # script (the 15-figure exploratory set) is unaffected.
 CAMERA_READY = False
 PAPER_SUBSET: str | None = None
+#: Campaign this render is drawing, for the output filenames. Set from
+#: --dataset, or derived from results_dir; see bench/plot/fig_names.py.
+DATASET: str | None = None
 
 # ---------------------------------------------------------------------------
 # Constants — palette aligned with IntP Fig. 8 / IADA Fig. 5 conventions:
@@ -151,11 +155,11 @@ VARIANT_LABELS = {
     "v1":   "stap-nohelper",
     "v1.1": "stap-modern",
     "v2":   "C-ABI",
-    "v2.1": "cgroup-native",
+    "v2.1": "c-abi-cgroup",
     "v3":   "ebpf-ring",
     "v3.1": "bpftrace",
     "v3.2": "eBPF-CORE",
-    "v3.3": "ebpf-cgroup",
+    "v3.3": "ebpf-core-cgroup",
 }
 
 
@@ -248,19 +252,22 @@ FORMATS: list[str] = ["png", "pdf"]
 def _save(fig, path: Path, label: str) -> None:
     """Save figure to each configured format under <path.parent>/<format>/.
 
-    The `path` argument carries the legacy .png filename for backwards
-    compat with callers; the stem is reused for every format and the
-    extension is replaced. With matplotlib defaults, PDFs are pure vector
-    (scatter/line/bar/pcolormesh all draw as vector primitives) — paper-
-    grade quality without an Inkscape round-trip."""
+    The `path` argument carries the figure's internal stem as a .png
+    filename; the stem selects the printed geometry and the description, and
+    the name on disk comes from `fig_names` — `<figure-id>-<what-it-shows>--
+    <which-campaign>` — so a figure dragged out of the tree still says what
+    it is. With matplotlib defaults, PDFs are pure vector (scatter/line/bar/
+    pcolormesh all draw as vector primitives) — paper-grade quality without
+    an Inkscape round-trip."""
     base_dir = path.parent
     stem = path.stem
     spec = paper_style.spec_for(PAPER_SUBSET, stem) if CAMERA_READY else None
+    name = fig_names.name(stem, DATASET)
     written = []
     for fmt in FORMATS:
         sub = base_dir / fmt
         sub.mkdir(parents=True, exist_ok=True)
-        out = sub / f"{stem}.{fmt}"
+        out = sub / f"{name}.{fmt}"
         if spec is not None:
             # Exact printed width, so LaTeX includes the PDF at scale 1.0 and
             # the point sizes in the file are the point sizes on paper.
@@ -2097,6 +2104,7 @@ def main() -> None:
                    help="Which variant subset this render is for. Selects the "
                         "printed size of each figure. baseline=v0.2, "
                         "new=v2+v3.2, merged=v0.2+v2+v3.2.")
+    fig_names.add_dataset_arg(p)
     args = p.parse_args()
     if args.camera_ready and not args.paper_subset:
         sys.exit("--camera-ready requires --paper-subset "
@@ -2105,6 +2113,8 @@ def main() -> None:
         sys.exit(f"results_dir does not exist: {args.results_dir}")
     outdir = args.out or (args.results_dir / "plots")
     outdir.mkdir(parents=True, exist_ok=True)
+    global DATASET
+    DATASET = args.dataset or fig_names.dataset_tag(args.results_dir)
     global FORMATS
     FORMATS = [f.strip() for f in args.formats.split(",") if f.strip()] or ["png"]
 

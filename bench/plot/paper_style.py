@@ -25,6 +25,8 @@ from dataclasses import dataclass
 import matplotlib.pyplot as plt
 from matplotlib.transforms import Bbox
 
+import fig_names
+
 # --------------------------------------------------------------------------
 # Page geometry (IEEEtran, conference mode)
 # --------------------------------------------------------------------------
@@ -121,18 +123,25 @@ class FigSpec:
                    the QA gate rather than shrinking its fonts.
     height         the height actually used for the render (tuned per figure).
     paper_fig      placement in the camera-ready, for the QA report.
-    out_name       filename in the paper's figures/ directory.
+    qualifier      what distinguishes this cut of the figure from the others
+                   of the same stem, in words: the restricted variant subset
+                   it shows, or the CI method. It is the tail of the figure's
+                   filename -- see out_stem() / out_name() and
+                   bench/plot/fig_names.py. "" for the stem's default cut: the
+                   merged panel the paper places, or a stem that renders once.
+                   Saying "all variants" there would only repeat the campaign
+                   tag the name already ends with.
     artifact_only  the figure is gated and shipped in the campaign artifact,
                    but no camera-ready float includes it, so it is not copied
                    into figures/. Keeps the Overleaf drop-in holding exactly
-                   the figures main.tex includes. out_name is still the QA
-                   report's label for the row.
+                   the figures main.tex includes. It is still the QA report's
+                   label for the row.
     """
     width: float
     height_budget: float
     height: float
     paper_fig: str
-    out_name: str
+    qualifier: str
     artifact_only: bool = False
 
 
@@ -151,55 +160,55 @@ PAPER_FIGURES: dict[tuple[str, str], FigSpec] = {
     # three-panel Fig. 3, kept so the author can revert to the 2-float layout.
     ("baseline", "fig01b_per_variant_bars"): FigSpec(
         COLUMN_WIDTH, 4.2, 4.15, "alternative (legacy panel, unplaced)",
-        "baseline-fig01b_per_variant_bars.pdf"),
+        "legacy-baseline-only"),
     # Addendum B.2 item 1: old Figs. 2+3 in one full-width, three-panel float.
     # Keeps the filename the old Fig. 3 used so main.tex's \includegraphics
     # line needs only its width= factor changed.
     ("merged", "fig01b_per_variant_bars"): FigSpec(
         TEXT_WIDTH, 3.30, 3.25, "Fig. 2 (figure*, \\textwidth)",
-        "new-fig01b_per_variant_bars.pdf"),
+        ""),
     # Untouched by Addendum B: the dendrogram leaf labels were the worst
     # legibility offender and this height is what fixed them.
     ("merged", "fig02_pca_dendro"): FigSpec(
         5.87, 3.0, 3.00, "Fig. 3 (figure*, 0.82\\textwidth)",
-        "merged-fig02_pca_dendro.pdf"),
+        ""),
     # Addendum B.2 item 4: compact full-width strip.
     ("new", "fig13_iada_segmented"): FigSpec(
         TEXT_WIDTH, 1.60, 1.58, "Fig. 4 (figure*, \\textwidth)",
-        "new-fig13_iada_segmented.pdf"),
+        "c-abi-and-ebpf-core"),
     # Addendum B.2 item 2: the 4x2 profile grid collapsed to one heatmap of
     # 21 (variant x profile) rows, which fits a single column.
     ("merged", "fig10_variant_resource_heatmap"): FigSpec(
         COLUMN_WIDTH, 3.05, 3.00, "Fig. 5 (single column)",
-        "merged-fig10_variant_resource_heatmap.pdf"),
+        ""),
     # Addendum B.2 item 5: the left panel carries the shared legend, so it is
     # taller than the other two by exactly the legend strip. The three are
     # bottom-aligned in LaTeX, so their axes line up and the float's height is
     # the left panel's.
     ("merged", "fig04_overhead_throughput"): FigSpec(
         2.33, 1.75, 1.72, "Fig. 6 left (0.325\\linewidth, shared legend)",
-        "merged-fig04_overhead_throughput.pdf"),
+        ""),
     ("merged", "fig04b_overhead_cpu_jiffies"): FigSpec(
         2.33, 1.50, 1.47, "Fig. 6 center (0.325\\linewidth)",
-        "merged-fig04b_overhead_cpu_jiffies.pdf"),
+        ""),
     ("merged", "fig04c_overhead_sched_switch"): FigSpec(
         2.33, 1.50, 1.47, "Fig. 6 right (0.325\\linewidth)",
-        "merged-fig04c_overhead_sched_switch.pdf"),
+        ""),
     # Addendum B.2 item 6: same layout, dead vertical margin removed.
     ("merged", "fig07_pairwise_heatmap_bare"): FigSpec(
         COLUMN_WIDTH, 1.95, 1.90, "Fig. 7 (single column)",
-        "merged-fig07_pairwise_heatmap_bare.pdf"),
+        ""),
     # Addendum B.2 item 3: the IDI bars carry the argument and now stand alone
     # at column width.
     ("merged", "fig11_idi_bars"): FigSpec(
         COLUMN_WIDTH, 2.25, 2.20, "Fig. 8 (single column)",
-        "merged-fig11_rep_errorbars.pdf"),
+        "rep-level-ci"),
     # Addendum B.2 item 3: nine Pearson r values, now also emitted as
     # qa/pearson_ground_truth.tsv for inlining as a table or in running text.
     # Still rendered in case the author keeps the matrix.
     ("merged", "fig05_fidelity_matrix"): FigSpec(
         3.01, 2.4, 2.10, "alternative (Pearson matrix, unplaced)",
-        "merged-fig05_fidelity_matrix.pdf"),
+        ""),
     # Artifact-only. The camera-ready places each of these panels for one
     # subset only, so the other subset's cut kept whatever size the
     # pre-camera-ready plotter defaulted to. published/new/fig01b was the one
@@ -210,12 +219,12 @@ PAPER_FIGURES: dict[tuple[str, str], FigSpec] = {
     # dropped. Neither is copied into figures/.
     ("new", "fig01b_per_variant_bars"): FigSpec(
         TEXT_WIDTH, 3.30, 3.25, "artifact-only (new subset: v2 + v3.2)",
-        "published-new-fig01b_per_variant_bars.pdf", artifact_only=True),
+        "c-abi-and-ebpf-core", artifact_only=True),
     # §V-B promises the intp-baseline trace in the companion repository; this
     # is the cut that carries it alongside the modern pair.
     ("merged", "fig13_iada_segmented"): FigSpec(
         TEXT_WIDTH, 1.60, 1.58, "artifact-only (merged subset: all three)",
-        "published-merged-fig13_iada_segmented.pdf", artifact_only=True),
+        "", artifact_only=True),
 }
 
 
@@ -406,6 +415,23 @@ PRIMARY_STEMS = {
     "fig04b_overhead_cpu_jiffies",
     "fig04c_overhead_sched_switch",
 }
+
+
+def out_stem(key: tuple[str, str]) -> str:
+    """Campaign-independent filename stem for one paper figure.
+
+    The name the camera-ready ``figures/`` directory and the QA report use to
+    identify the figure; ``out_name`` adds the campaign the data came from.
+    """
+    subset, stem = key
+    return fig_names.head(stem, PAPER_FIGURES[key].qualifier)
+
+
+def out_name(key: tuple[str, str], dataset: str, ext: str = "pdf") -> str:
+    """Filename for one paper figure rendered from ``dataset``."""
+    subset, stem = key
+    return fig_names.name(stem, dataset,
+                          qualifier=PAPER_FIGURES[key].qualifier, ext=ext)
 
 
 def spec_for(subset: str | None, stem: str) -> FigSpec | None:

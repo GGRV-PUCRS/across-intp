@@ -16,33 +16,38 @@ kept only as history.
 
 ## Figures
 
-The paper's `figures/` filenames and the artifact's `published/` layout do not
-match one-to-one — two names are historical aliases kept so `main.tex` did not
-have to change. This table is generated from `PAPER_FIGURES` in
-`bench/plot/paper_style.py`, which is the source of truth.
+Every rendered figure is named `<figure-id>-<what-it-shows>--<campaign>` (see
+`bench/plot/fig_names.py`), so a PDF still says what it is once it is out of
+this tree. The `figures/` and `published/` names differ only where one stem is
+rendered for more than one variant subset: the flat `figures/` directory adds
+that subset to the name, the `published/` tree carries it as the directory.
+This table is generated from `PAPER_FIGURES` in `bench/plot/paper_style.py`,
+which is the source of truth, for the canonical `ubuntu22+24-all-variants`
+campaign; re-rendering another campaign changes only the tail.
 
-| Camera-ready | `figures/` (Overleaf) | `published/<subset>/<stem>.pdf` (artifact) |
+| Camera-ready | `figures/` (Overleaf) | `published/<subset>/` (artifact) |
 | --- | --- | --- |
-| Fig. 2 (`figure*`, `\textwidth`) | `new-fig01b_per_variant_bars.pdf` | `published/merged/fig01b_per_variant_bars.pdf` |
-| Fig. 3 (`figure*`, `0.82\textwidth`) | `merged-fig02_pca_dendro.pdf` | `published/merged/fig02_pca_dendro.pdf` |
-| Fig. 4 (`figure*`, `\textwidth`) | `new-fig13_iada_segmented.pdf` | `published/new/fig13_iada_segmented.pdf` |
-| Fig. 5 (single column) | `merged-fig10_variant_resource_heatmap.pdf` | `published/merged/fig10_variant_resource_heatmap.pdf` |
-| Fig. 6 left | `merged-fig04_overhead_throughput.pdf` | `published/merged/fig04_overhead_throughput.pdf` |
-| Fig. 6 center | `merged-fig04b_overhead_cpu_jiffies.pdf` | `published/merged/fig04b_overhead_cpu_jiffies.pdf` |
-| Fig. 6 right | `merged-fig04c_overhead_sched_switch.pdf` | `published/merged/fig04c_overhead_sched_switch.pdf` |
-| Fig. 7 (single column) | `merged-fig07_pairwise_heatmap_bare.pdf` | `published/merged/fig07_pairwise_heatmap_bare.pdf` |
-| **Fig. 8** (single column) | **`merged-fig11_rep_errorbars.pdf`** | **`published/merged/fig11_idi_bars.pdf`** |
-| alternative (legacy panel, unplaced) | `baseline-fig01b_per_variant_bars.pdf` | `published/baseline/fig01b_per_variant_bars.pdf` |
-| alternative (Pearson matrix, unplaced) | `merged-fig05_fidelity_matrix.pdf` | `published/merged/fig05_fidelity_matrix.pdf` |
+| Fig. 2 (`figure*`, `\textwidth`) | `fig01b-per-variant-workload-fingerprint--ubuntu22+24-all-variants.pdf` | `published/merged/fig01b-per-variant-workload-fingerprint--ubuntu22+24-all-variants.pdf` |
+| Fig. 3 (`figure*`, `0.82\textwidth`) | `fig02-pca-and-ward-dendrogram-of-workload-clusters--ubuntu22+24-all-variants.pdf` | `published/merged/fig02-pca-and-ward-dendrogram-of-workload-clusters--ubuntu22+24-all-variants.pdf` |
+| Fig. 4 (`figure*`, `\textwidth`) | `fig13-segmented-loess-interference-trace-c-abi-and-ebpf-core--ubuntu22+24-all-variants.pdf` | `published/new/fig13-segmented-loess-interference-trace--ubuntu22+24-all-variants.pdf` |
+| Fig. 5 (single column) | `fig10-hibench-variant-by-resource-family-heatmap--ubuntu22+24-all-variants.pdf` | `published/merged/fig10-hibench-variant-by-resource-family-heatmap--ubuntu22+24-all-variants.pdf` |
+| Fig. 6 left (`0.325\linewidth`, shared legend) | `fig04-profiler-induced-workload-slowdown--ubuntu22+24-all-variants.pdf` | `published/merged/fig04-profiler-induced-workload-slowdown--ubuntu22+24-all-variants.pdf` |
+| Fig. 6 center (`0.325\linewidth`) | `fig04b-profiler-extra-system-cpu-time--ubuntu22+24-all-variants.pdf` | `published/merged/fig04b-profiler-extra-system-cpu-time--ubuntu22+24-all-variants.pdf` |
+| Fig. 6 right (`0.325\linewidth`) | `fig04c-profiler-extra-context-switches--ubuntu22+24-all-variants.pdf` | `published/merged/fig04c-profiler-extra-context-switches--ubuntu22+24-all-variants.pdf` |
+| Fig. 7 (single column) | `fig07-pairwise-colocation-interference-signal-bare--ubuntu22+24-all-variants.pdf` | `published/merged/fig07-pairwise-colocation-interference-signal-bare--ubuntu22+24-all-variants.pdf` |
+| **Fig. 8 (single column)** | **`fig11-interference-discrimination-index-by-resource-rep-level-ci--ubuntu22+24-all-variants.pdf`** | **`published/merged/fig11-interference-discrimination-index-by-resource--ubuntu22+24-all-variants.pdf`** |
+| alternative (legacy panel, unplaced) | `fig01b-per-variant-workload-fingerprint-legacy-baseline-only--ubuntu22+24-all-variants.pdf` | `published/baseline/fig01b-per-variant-workload-fingerprint--ubuntu22+24-all-variants.pdf` |
+| alternative (Pearson matrix, unplaced) | `fig05-profiler-vs-ground-truth-pearson-r--ubuntu22+24-all-variants.pdf` | `published/merged/fig05-profiler-vs-ground-truth-pearson-r--ubuntu22+24-all-variants.pdf` |
 
 Two rows are worth reading twice:
 
-- **Fig. 8** is the only row where the stem differs from the paper filename.
-  `fig11_idi_bars` is the real stem; `merged-fig11_rep_errorbars.pdf` is the
-  name `main.tex` includes.
-- **Fig. 2** ships as `new-*` but is the **merged** subset (all three measured
-  versions). The `new-` prefix is the filename the pre-consolidation Fig. 3
-  used, kept so only the `width=` factor had to change.
+- **Fig. 8** carries a `-rep-level-ci` tail: `fig11_idi_bars` is the stem, and
+  the tail records that these are the rep-round bootstrap error bars (the file
+  `main.tex` includes was historically named `fig11_rep_errorbars`).
+- **Fig. 2** is the **merged** subset (all three measured versions), which is
+  the paper's default cut and therefore carries no subset in its name. The
+  restricted cuts of the same stem say which subset they show
+  (`-legacy-baseline-only`, `-c-abi-and-ebpf-core`).
 
 Subsets are variant sets: `baseline` = intp-baseline (v0.2), `new` = C-ABI +
 eBPF-CORE (v2 + v3.2), `merged` = all three. Each subset holds the full plotter
@@ -68,11 +73,11 @@ by `bench/plot/qa_fig_fonts.py`, whose report ships as `published/QA-FIGS.md`.
 | §IV | "the exact stress-ng invocation behind each workload" | repo: [bench/run-intp-bench.sh](../bench/run-intp-bench.sh) (`WORKLOADS`, `REF_LOADS`), tabulated in [bench/OVERVIEW.md](../bench/OVERVIEW.md) |
 | §IV | HiBench sweep (6 workloads × 7 profiles × 12 reps) | repo: [bench/hibench/run-hibench-subset.sh](../bench/hibench/run-hibench-subset.sh) |
 | §IV | campaign stages (solo / pairwise / overhead / timeseries; 313 runs per variant) | repo: [bench/OVERVIEW.md](../bench/OVERVIEW.md) "Campaign stages", parameters in [bench/run-intp-bench.sh](../bench/run-intp-bench.sh) |
-| §V-A | "per-workload radar plots (companion repository)" | artifact: `sbac_results-publish/figures/full/bench-full/plots/pdf/fig09_radar_fingerprint.pdf` and `.../hibench/plots/pdf/fig05_radar_fingerprint.pdf` |
+| §V-A | "per-workload radar plots (companion repository)" | artifact: `sbac_results-publish/figures/full/bench-full/plots/pdf/fig09-per-workload-radar-fingerprint--*.pdf` and `.../hibench/plots/pdf/fig05-hibench-per-workload-radar-fingerprint--*.pdf` |
 | §V-A | Pearson correlations between variants | artifact: `sbac_results-publish/paper-tables/correlation-*.tsv`; also emitted as `qa/pearson_ground_truth.tsv` by the render driver |
 | §V-B | "∼194–416× (vmstat)" | artifact: `extra/intp-aux-rerun-v3-20260524-164742/ringbuf_pidstat/<ref>/{baseline,with_profiler}/rep*/vmstat.txt`; recomputed in [docs/V3-OVERHEAD-FINDINGS.md](V3-OVERHEAD-FINDINGS.md) §1 |
 | §V-B | overhead bounds | artifact: `sbac_results-publish/paper-tables/overhead-bounds.tsv` |
-| §V-B, Fig. 4 caption | "the intp-baseline trace itself is in the companion repository" | artifact: `published/merged/fig13_iada_segmented.pdf` (artifact-only render carrying all three versions) |
+| §V-B, Fig. 4 caption | "the intp-baseline trace itself is in the companion repository" | artifact: `published/merged/fig13-segmented-loess-interference-trace--*.pdf` (artifact-only render carrying all three versions) |
 | §V-B | "occasional flat mbw/llcocc windows" | same trace as above; mechanism in [docs/V3-OVERHEAD-FINDINGS.md](V3-OVERHEAD-FINDINGS.md) §3 |
 | §V-B, Table IV | sample-loss / fragility tables | artifact: `sbac_results-publish/fragility-*.tsv` |
 | Table I | variant taxonomy, `variants/v{tag}-*/` | repo: [VERSIONS.md](../VERSIONS.md) maps every tag to its directory |
@@ -86,7 +91,7 @@ here:
   measurement (§1), its two-mechanism decomposition (§2), and the `mbw` silent
   clip (§3). §3 has no camera-ready counterpart at all.
 - [docs/VARIANT-COMPARISON.md](VARIANT-COMPARISON.md) — the rationale for each
-  of the nine variants, including the five the paper mentions only as
+  of the eleven variants, including the six the paper mentions only as
   structural evidence.
 - [docs/METRICS-DEEP-DIVE.md](METRICS-DEEP-DIVE.md) — probe points, formulas
   and constants behind the seven metrics.

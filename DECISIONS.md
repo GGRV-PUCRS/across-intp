@@ -123,7 +123,147 @@ a note that `hibench-sample-loss.py` is safe to re-run on the published tree
 (writes only `fragility-hibench-*.tsv`) whereas `extract-fragility.py` would
 rewrite the stall-bearing tables.
 
-## D10 — camera-ready release refresh: two assets, redacted raws, recreated tag
+## D10 — v2.1 + v3.3 ported-and-frozen into ggrv-intp/intp (2026-06-10)
+
+The production repository (`ggrv-intp/intp`, local `../intp`) ported
+the measured engines at freeze commit `2e87b30fc762` of
+`feat/container-based-interference`:
+
+- v2.1 (c-abi-cgroup) → the baseline backend set (per-metric files
+  under `src/backends/`, selection semantics from
+  `backend_registry.c`, detection/resctrl/perfev/procutil infra).
+- v3.3 (ebpf-core-cgroup) → the higher-priority eBPF backends
+  (`intp_agg.bpf.c` byte-frozen; `intp_agg.c` split into a refcounted
+  loader + per-metric shims).
+
+Contract (recorded in `../intp/SYNC.md`): the migration is one-way and
+frozen; the repositories evolve independently. Fixes to the production
+profiler belong in intp; this repository remains the experiment
+harness and the papers' record. Any future re-sync requires a new ADR
+on the intp side and a D-entry here. Cross-variant equivalence checks
+against the intp binary must EXEMPT per-cgroup `nets` (the byte-share
+proxy divergence, C2) and compare `blk` only within semantic model
+families (io_ticks vs svctm vs cgroup-throughput; see intp ADR-0010).
+
+The port was verified file-by-file against the originals (formulas,
+constants, vendor event codes, chain order, status assignments):
+zero behavioral drift; intentional additions are limited to RMID
+hygiene (stale mon_group reaping + a 75% num_rmids budget preflight)
+documented in the intp tree.
+
+## D11 — latent per-overflow perf wakeup load in v3.2/v3.3 llcmr (observation from the intp port, 2026-06-11)
+
+While gating the production port (ggrv-intp/intp, see D10), the
+v3.3-inherited ctxsw-amplification acceptance test FAILED on a hybrid
+client CPU (Intel Core 7 240H, kernel 6.17) at **ratio 6.84** under a
+cpu-bound stress-ng load — despite the identical attr passing <= 1.10
+on the Sapphire Rapids testbed. A four-arm bisect (no-profiler floor
+0.95; pure-C 1.0-equivalent; eBPF minus llcmr 0.95; full default 6.84)
+isolated the amplifier to the **llcmr perf-overflow sampling path**:
+~6.7k extra context switches/s.
+
+Cause: `attr.wakeup_events = 1` on the sampled LLC events —
+
+- `variants/v3.3-ebpf-core-cgroup/src/intp_agg.c:275`
+- `variants/v3.2-ebpf-core/src/intp_agg.c:143`
+
+requests a perf-fd wakeup on every overflow, but in the v3.2/v3.3
+design **nothing ever consumes that fd**: the attached BPF program
+handles each overflow and the counts live in the counter maps, scaled
+by sample_period. The wakeups are pure waste. On the server testbed
+the load was invisible (absorbed by the much larger ctxsw baseline and
+a different PMU/overflow profile); on a quiet hybrid client CPU it
+dominates the ratio.
+
+Fix applied on the production side (intp commit 6127c78): delete the
+`attr.wakeup_events = 1;` line. Metric values are unchanged by
+construction (the BPF handler runs per overflow regardless); the
+amplification gate on the same laptop went 6.84 -> **1.06**.
+
+Resolution (author-approved 2026-06-11): the deletion is APPLIED to
+both variants in this commit (with a D11-referencing comment at each
+attr site); both rebuild clean. PENDING before the next campaign:
+re-run `make -C variants/v3.2-ebpf-core test-amplification` (and the
+v3.3 equivalent) as root to re-gate.
+- **Measurement-consistency caveat:** any paper-2 overhead legs already
+  executed measured v3.3 WITH the wakeup load. Fixing mid-campaign
+  changes the overhead characteristics between legs — either re-run
+  the affected overhead stages after the fix, or keep v3.3 as-is for
+  the remaining legs and annotate.
+- v3-ebpf-ring also sets the field (src/intp.c:296) but is retained
+  precisely as the documented-overhead predecessor; not a fix target.
+- Paper-2 angle: the finding itself is a portability observation for
+  the eBPF overhead claim — "<= 1.10x on the reference server" does
+  not transfer to client/hybrid CPUs while the wakeup load is present,
+  which sharpens the scope qualifier the overhead claims must carry.
+
+## D12 — v2.1 per-cgroup/PID mbw was silently system-wide; shared RMID group; test robustness back-ports (2026-06-12)
+
+Found while closing the intp v0.9.0 release gate on the RDT testbed
+(kernel ground truth via a manual resctrl mon_group) and back-ported
+here after evaluation, per the alignment review.
+
+**1. v2.1 mbw scope bug (FIXED).** The mbw chain preferred the uncore
+memory-controller PMUs (Intel IMC / AMD DF / ARM CMN) unconditionally,
+but those count TOTAL socket DRAM traffic and physically cannot
+attribute to a cgroup or PID set — so for `--cgroup`/`--pids` targets
+v2.1 reported the SYSTEM-WIDE figure as the target's mbw (an idle
+cgroup read ~58% while the kernel's own per-RMID mon_group read 0%).
+This contradicted v2.1's own scoped-mon_group intent in
+`mbw.c:resctrl_init_` and `bench/validate-attribution.sh`'s
+`SEPARABLE_METRICS` claim that mbw is "per-cgroup attributable in
+v2.1". Fix: the uncore probes now reject non-system targets so the
+resctrl mbm backend (per-RMID, isolatable) is selected for
+cgroup/PID targets; system-wide keeps IMC (its most accurate source).
+
+**2. v2.1 single-RMID clash (FIXED, required by 1).** With resctrl
+selected for a target, mbw and llcocc each created their own mon_group
+(`intp_v2_mbw_*` / `intp_v2_occ_*`) and assigned the SAME tasks — but a
+task can be in only one RMID, so the loser's group read 0. Both
+counters live in one mon_group's mon_data; they now share a refcounted
+`intp_v2_rdt_<pid>` group (`resctrl_target_group_acquire/rescan/
+release`). Verified on the testbed: one group, heavy cgroup reads mbw
+72–99 AND llcocc 74–96 concurrently, idle cgroup mbw isolates to 0.
+
+**Measurement caveats:**
+- Any prior per-cgroup or per-PID v2.1 row recorded mbw as the
+  system-wide value. `--pids` mbw semantics change from
+  IMC-system-wide to task-scoped resctrl (the correct reading of "this
+  workload's mbw", and now the same scope v3.3 reports). Re-run or
+  annotate affected legs; system-wide rows are unaffected.
+- v3.3 needed NO product change (single shared `intp-v3.3` group +
+  resctrl for cgroup mbw already — it was right all along; D11's
+  "v3.3 mbw over-read" observations vs v2.1/intp were in fact v3.3
+  being correctly cgroup-scoped while the others read system-wide).
+
+**3. v3.2/v3.3 test-load-attach robustness (FIXED).** The leak check
+compared global `bpftool prog show | wc -l` before/after — on a busy
+multi-tenant host the system-wide count churns (the testbed now runs
+k3s with ~111 BPF programs; the test false-fails there today), and BPF
+teardown is asynchronous (tp_btf programs linger <0.5s post-exit).
+Now counts only the variant's OWN program names and polls up to 5 s
+for the async drain. Per-variant name lists (v3.2 has
+tp_sched_process_* and no cg_skb/tp_schedlat). Verified 3/3 PASS on
+the k3s-busy testbed.
+
+**Evaluated and deliberately NOT changed:**
+- `shared/validate-cross-variant.sh` — already sequential and
+  PID-targeted; the system-wide/concurrent parity bugs existed only in
+  intp's port of it, fixed there (intp 7c19e21).
+- `bench/validate-attribution.sh` — FLAG: its intra leg profiles
+  heavy/idle/slice-TOTAL with three CONCURRENT v2.1 instances whose
+  cgroups OVERLAP (total ⊇ heavy+idle). With per-target mon_groups,
+  the instances steal each other's tasks via the same single-RMID
+  physics as (2) — per-(metric, instance) values can read ~0 or flap
+  with the rescan cadence. Needs sequential windows or disjoint legs
+  before its resctrl rows are trusted; left to the paper-2 analysis
+  pass rather than a mechanical rewrite here.
+
+> The two entries below arrived from `main` with the camera-ready work and
+> were renumbered on this branch: `main`'s D10 and D11 are D13 and D14 here,
+> since this branch had already allocated D10-D12 in June.
+
+## D13 — camera-ready release refresh: two assets, redacted raws, recreated tag
 
 The camera-ready figure pipeline merged as `862dc6d` (no-ff, PR #1). The
 release plan changed twice from the original "tag never moves, assets
@@ -153,13 +293,13 @@ key material and platform tokens is clean. The published fragility tables
 remain the canonical v0.2 stall counts; `ANONYMIZATION.md` in the payload
 was rewritten to record both assets' policies.
 
-## D11 — post-camera-ready audit: stale amplification figure, draft section numbering
+## D14 — post-camera-ready audit: stale amplification figure, draft section numbering
 
 An audit against the accepted camera-ready found the repository publishing a
 context-switch amplification figure the paper contradicts, plus cross-references
 to a draft section numbering that no longer exists.
 
-1. **`188-390x` was wrong; the correct figure is `194-416x`.** Recomputed from
+1. **`194-416x` was wrong; the correct figure is `194-416x`.** Recomputed from
    the published artifact's raw `vmstat` traces
    (`extra/intp-aux-rerun-v3-20260524-164742/`) with `parse_vmstat_cs` from
    `bench/plot/plot-aux-rerun.py`, mean of 3 reps per cell: `ref_stream` 194x,
@@ -192,7 +332,7 @@ to a draft section numbering that no longer exists.
    `fig11_idi_bars`) were otherwise undiscoverable.
 
 5. **Two artifact-only figure specs.** Measuring all 33 PDFs in `published/`
-   put the audit's premise straight: the D10 refresh covered the eleven stems in
+   put the audit's premise straight: the D13 refresh covered the eleven stems in
    `PAPER_FIGURES`, leaving 22 at the exploratory plotter's default size, and
    exactly **one** of those 22 was below the 6.5 pt floor —
    `new/fig01b_per_variant_bars` at 5.8 pt, 670x421 pt. `merged/fig13` was
@@ -228,11 +368,51 @@ to a draft section numbering that no longer exists.
    environment, and now documented as such.
 
 7. **`PROVENANCE.md` no longer pins the tag's commit hash.** It claimed
-   `9795c5b` and "the tag does not move", both contradicted by D10. Since the
+   `9795c5b` and "the tag does not move", both contradicted by D13. Since the
    tag is re-cut at every asset refresh, any hash written here goes stale by
    construction; `git rev-parse v0.1.0` is now the stated authority. The asset
-   count is also reconciled with D10's wording (two tarballs plus `SHA256SUMS`).
+   count is also reconciled with D13's wording (two tarballs plus `SHA256SUMS`).
 
 The release keeps version `v0.1.0`, the tag is re-cut at this pass's head, and
 the assets are clobbered in place. The camera-ready PDF is untouched: no placed
 figure was re-rendered, so the 11-page layout stands.
+
+## D15 — v0.2.0: container-based interference published; pinned re-sync with ggrv-intp/intp (2026-09-22)
+
+The container-based interference work (PR #1, `feat/container-based-interference`,
+C25 to C37 in `docs/DECISIONS-container.md`, the S15/S16 simulator campaigns)
+is released publicly as **`v0.2.0`** of `ggrv-intp/across-intp`. This
+repository (`cutting-edge-intp`) stays the private working copy; its `main`
+is pushed to a branch of across-intp and merged there through a pull request,
+so every commit hash cited in this log resolves in the public repository.
+
+1. **`v0.1.0` stays the SBAC-PAD 2026 artifact.** Its tag, release assets and
+   the D13/D14 re-cut policy are unchanged. A `release/v0.1.0` branch on
+   across-intp points at the same commit, for readers who want the artifact
+   tree without downloading the release tarballs.
+2. **`v0.2.0` is the JSA artifact.** The tag is cut from source; the campaign
+   results and the frozen campaign archive (indexed by its manifest) are
+   attached to the release as assets afterwards, as the JSA data-availability
+   statement describes. Outputs committed under `bench/iada/results/` travel
+   with the tree, and the SBAC-PAD data stays attached to `v0.1.0`.
+3. **Re-sync with the production line.** D10's port-and-freeze contract is
+   replaced on the intp side by a pinned re-sync (intp ADR-0012, intp
+   `SYNC.md`). The pin is the commit that introduces this entry, reachable from
+   across-intp `main` and tagged `v0.2.0` there. What moved: nothing new in
+   code — D11 and D12 were already back-ported — plus two production fixes
+   found during the audit that do not change the variants here:
+   - intp's pure-C target resolution read `cgroup.procs` of the target cgroup
+     only. Under the cgroup v2 no-internal-processes rule a nested container
+     cgroup (Incus `.lxc`, systemd `init.scope`) lists no PIDs at the top, and
+     the per-task `llcmr` backend then fell back to system-wide counting. intp
+     now reads the subtree recursively, as v3.3 does (`read_cgroup_pids_rec`).
+     v2.1 keeps its non-recursive read (C25); campaign results are unaffected
+     because the harness targets leaf cgroups.
+   - intp records where the `mbw` ceiling came from and flags the DDR4
+     fallback that produced the 42 656 MB/s campaign ceiling (C34). The
+     derivation itself (IMC channels x configured MT/s x 8 B) is the same as
+     v2.1 `src/detect.c` and was correct on the testbed (281 600 MB/s).
+4. **Portable metrics stay fenced in production.** intp keeps
+   `system.portable.*` behind `--experimental` until the JSA verdicts are
+   final: PSI was falsified as a bandwidth signal and `membw_est` carries the
+   C31 net-path caveat.

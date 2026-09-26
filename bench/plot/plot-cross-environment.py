@@ -11,15 +11,20 @@
 #   One row per (env, variant, stage, workload, rep); values are the per-rep
 #   mean of the underlying profiler.tsv samples.
 #
+# Envs span the deployment axis: bare, container (and the podman / lxc / k8s
+# runtimes), and vm-guest. The c-abi-cgroup (v2.1) and ebpf-core-cgroup (v3.3)
+# variants are the per-cgroup, container-aware emitters whose cross-deployment
+# samples this omnibus compares against the bare baseline.
+#
 # For each (variant, workload, metric) the script:
 #
 #   1. Gathers the per-rep mean across envs (one numeric sample per rep per env).
 #   2. If at least 2 envs have n >= 2 samples, runs Kruskal-Wallis as the
 #      omnibus test.
 #   3. If the KW p-value < alpha, runs Mann-Whitney U pairwise for every env
-#      pair, Bonferroni-adjusts the threshold (alpha / num_pairs), and
-#      computes Cliff's delta as a non-parametric effect size with the
-#      Vargha-Delaney magnitude classification.
+#      pair, applies Benjamini-Hochberg FDR across the env-pair family (q-value
+#      per pair), and computes Cliff's delta as a non-parametric effect size
+#      with the Vargha-Delaney magnitude classification.
 #   4. Writes summary.tsv, stats.tsv, availability.tsv, and one PNG per
 #      (variant, workload) with 7 panels (boxplots, one panel per metric).
 #
@@ -42,6 +47,15 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Sequence, Tuple
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import intp_metrics as M  # noqa: E402  (shared metric model; see bench/intp_metrics.py)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
+
+#: Campaign this run is comparing, for the output filenames. Set in main()
+#: from --dataset or the campaign dir; see bench/plot/fig_names.py.
+DATASET: str | None = None
+
 try:
     import numpy as np
     import pandas as pd
@@ -63,17 +77,26 @@ except ImportError:
         "Mann-Whitney U). Install with: pip install scipy"
     )
 
-METRICS = ["netp", "nets", "blk", "mbw", "llcmr", "llcocc", "cpu"]
-MISSING_TOKEN = "--"
+METRICS = M.METRICS_CANON          # canonical 7 (this omnibus operates on them)
+MISSING_TOKEN = M.MISSING_TOKEN
 MAX_PIXELS = 1900
 SAVE_DPI = 130
 FORMATS: list[str] = ["png", "pdf"]
+
+# Per-metric claim class, deployment-axis order, and structurally-unavailable
+# metrics are the shared model (bench/intp_metrics.py); the 13-metric CLAIM_CLASS
+# returns the same tier for the canonical 7 this tool iterates (cpu=absolute,
+# llcmr=directional, rest=descriptive), so output is unchanged.
+CLAIM_CLASS = M.CLAIM_CLASS
+DEPLOY_ORDER = M.DEPLOY_ORDER
+UNSUPPORTED = M.UNSUPPORTED
 
 
 # Descriptive, paper-facing variant names. Figures show these instead of the
 # bare vN tags so a reader need not consult the variant table to know what a
 # panel measures. Canonical map: VERSIONS.md. The four measured versions are
-# intp-baseline (v0.2), stap-modern (v1.1), C-ABI (v2) and eBPF-CORE (v3.2).
+# intp-baseline (v0.2), stap-modern (v1.1), C-ABI (v2) and eBPF-CORE (v3.2);
+# the cross-deployment axis adds c-abi-cgroup (v2.1) and ebpf-core-cgroup (v3.3).
 VARIANT_LABELS = {
     "v0":   "stap-2022",
     "v0.1": "stap-nollc",
@@ -81,17 +104,21 @@ VARIANT_LABELS = {
     "v1":   "stap-nohelper",
     "v1.1": "stap-modern",
     "v2":   "C-ABI",
-    "v2.1": "cgroup-native",
+    "v2.1": "c-abi-cgroup",
     "v3":   "ebpf-ring",
     "v3.1": "bpftrace",
     "v3.2": "eBPF-CORE",
-    "v3.3": "ebpf-cgroup",
+    "v3.3": "ebpf-core-cgroup",
 }
 
 
 def variant_label(v):
     """Paper-facing descriptive name for a dataset variant tag."""
     return VARIANT_LABELS.get(str(v), str(v))
+
+
+# Backwards-compatible alias for callers/tests expecting the underscored name.
+_variant_label = variant_label
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +181,25 @@ def signif_marker(p: float, threshold: float) -> str:
     if p < threshold:
         return "*"
     return "n.s."
+
+
+def bh_adjust(pvals: Sequence[float]) -> np.ndarray:
+    """Benjamini-Hochberg FDR. Returns adjusted q-values in the input order;
+       non-finite inputs map to nan and are excluded from the rank count.
+       Replaces the Bonferroni alpha/num_pairs threshold for the larger
+       6-env (15-pair) deployment axis (CROSS-ENV-CAMPAIGN.md)."""
+    p = np.asarray(pvals, dtype=float)
+    finite = np.isfinite(p)
+    q = np.full(p.shape, np.nan)
+    m = int(finite.sum())
+    if m == 0:
+        return q
+    idx = np.where(finite)[0]
+    order = idx[np.argsort(p[idx])]
+    adj = p[order] * m / np.arange(1, m + 1)
+    adj = np.minimum.accumulate(adj[::-1])[::-1]
+    q[order] = np.clip(adj, 0.0, 1.0)
+    return q
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +276,9 @@ def build_summary(
                     if n == 0:
                         rows.append({
                             "env": env, "variant": variant, "workload": workload,
-                            "metric": metric, "n": 0,
+                            "metric": metric,
+                            "claim_class": CLAIM_CLASS.get(metric, "descriptive"),
+                            "n": 0,
                             "mean": float("nan"), "stdev": float("nan"),
                             "median": float("nan"), "q25": float("nan"),
                             "q75": float("nan"), "missing_pct": missing_pct,
@@ -238,7 +286,9 @@ def build_summary(
                         continue
                     rows.append({
                         "env": env, "variant": variant, "workload": workload,
-                        "metric": metric, "n": n,
+                        "metric": metric,
+                        "claim_class": CLAIM_CLASS.get(metric, "descriptive"),
+                        "n": n,
                         "mean": float(np.mean(vals)),
                         "stdev": float(np.std(vals, ddof=1)) if n > 1 else 0.0,
                         "median": float(np.median(vals)),
@@ -262,7 +312,12 @@ def build_availability(
                              & (df["variant"] == variant)
                              & (df["workload"] == workload)]
                     n_samples = int(sub[metric].dropna().size)
-                    status = "OK" if n_samples >= 1 else "missing"
+                    if n_samples >= 1:
+                        status = "OK"
+                    elif metric in UNSUPPORTED.get(env, set()):
+                        status = "unsupported"
+                    else:
+                        status = "missing"
                     rows.append({
                         "env": env, "variant": variant, "workload": workload,
                         "metric": metric, "n_samples": n_samples,
@@ -284,6 +339,7 @@ def build_stats(
                 if len(usable) < 2:
                     rows.append({
                         "variant": variant, "workload": workload, "metric": metric,
+                        "claim_class": CLAIM_CLASS.get(metric, "descriptive"),
                         "n_envs": len(usable),
                         "kw_stat": float("nan"), "kw_p": float("nan"),
                         "kw_signif": "n/a",
@@ -297,31 +353,44 @@ def build_stats(
                     kw_stat, kw_p = float("nan"), float("nan")
                 row = {
                     "variant": variant, "workload": workload, "metric": metric,
+                    "claim_class": CLAIM_CLASS.get(metric, "descriptive"),
                     "n_envs": len(env_order),
                     "kw_stat": float(kw_stat), "kw_p": float(kw_p),
                     "kw_signif": signif_marker(kw_p, alpha),
                 }
                 pairs = list(itertools.combinations(env_order, 2))
-                bonf_threshold = alpha / max(1, len(pairs)) if pairs else alpha
+                keys = [f"{a}_vs_{b}" for a, b in pairs]
                 run_pairwise = np.isfinite(kw_p) and kw_p < alpha
-                for a, b in pairs:
-                    key = f"{a}_vs_{b}"
-                    if run_pairwise:
+                if run_pairwise:
+                    # First pass: raw pairwise MW p-value + Cliff's delta.
+                    pair_stat: Dict[str, float] = {}
+                    pair_p: Dict[str, float] = {}
+                    pair_delta: Dict[str, Tuple[float, str]] = {}
+                    for (a, b), key in zip(pairs, keys):
                         try:
                             mw_stat, mw_p = mannwhitneyu(
                                 usable[a], usable[b], alternative="two-sided"
                             )
                         except ValueError:
                             mw_stat, mw_p = float("nan"), float("nan")
-                        delta, mag = cliffs_delta(usable[a], usable[b])
-                        row[f"mw_stat_{key}"] = float(mw_stat)
-                        row[f"mw_p_{key}"] = float(mw_p)
-                        row[f"mw_signif_{key}"] = signif_marker(mw_p, bonf_threshold)
+                        pair_stat[key] = float(mw_stat)
+                        pair_p[key] = float(mw_p)
+                        pair_delta[key] = cliffs_delta(usable[a], usable[b])
+                    # Benjamini-Hochberg FDR across this omnibus's env-pair family.
+                    qvals = bh_adjust([pair_p[k] for k in keys])
+                    for key, q in zip(keys, qvals):
+                        delta, mag = pair_delta[key]
+                        row[f"mw_stat_{key}"] = pair_stat[key]
+                        row[f"mw_p_{key}"] = pair_p[key]
+                        row[f"mw_q_{key}"] = float(q)
+                        row[f"mw_signif_{key}"] = signif_marker(q, alpha)
                         row[f"cliffs_delta_{key}"] = float(delta)
                         row[f"cliffs_mag_{key}"] = mag
-                    else:
+                else:
+                    for key in keys:
                         row[f"mw_stat_{key}"] = float("nan")
                         row[f"mw_p_{key}"] = float("nan")
+                        row[f"mw_q_{key}"] = float("nan")
                         row[f"mw_signif_{key}"] = "skip"
                         row[f"cliffs_delta_{key}"] = float("nan")
                         row[f"cliffs_mag_{key}"] = "skip"
@@ -379,17 +448,20 @@ def render_panels(
     if not any_data:
         plt.close(fig)
         return False
-    # outpath is conventionally <plots_dir>/<variant>/<stem>.png. We split
-    # the format prefix in so the caller-side caller stays unchanged but
-    # we emit one file per configured FORMATS entry under
-    # <plots_dir>/<format>/<variant>/<stem>.<format>.
+    # outpath is conventionally <plots_dir>/<variant>/<workload>.png. We split
+    # the format prefix in so the caller stays unchanged but we emit one file
+    # per configured FORMATS entry under
+    # <plots_dir>/<format>/<variant>/<name>.<format>. The name says what the
+    # panel shows and for which (workload, variant), so a figure lifted out of
+    # the per-variant directory still carries that context.
     plots_dir = outpath.parent.parent
     variant_sub = outpath.parent.name
-    stem = outpath.stem
+    name = fig_names.name(f"cross-environment-{outpath.stem}-{variant_sub}",
+                          DATASET)
     for fmt in FORMATS:
         fmt_dir = plots_dir / fmt / variant_sub
         fmt_dir.mkdir(parents=True, exist_ok=True)
-        fig.savefig(fmt_dir / f"{stem}.{fmt}", bbox_inches="tight")
+        fig.savefig(fmt_dir / f"{name}.{fmt}", bbox_inches="tight")
     plt.close(fig)
     return True
 
@@ -406,29 +478,37 @@ Generated by `bench/plot/plot-cross-environment.py` from
 ## Files
 
 - `summary.tsv` — per (env, variant, workload, metric) descriptive stats
-  (n, mean, stdev, median, q25, q75, missing_pct). `missing_pct` is the
-  share of reps for this (env, variant, workload) where the metric column
-  was `--` in `aggregate-means.tsv`.
+  (claim_class, n, mean, stdev, median, q25, q75, missing_pct).
+  `claim_class` is the metric's Paper-2 claim tier (absolute / directional /
+  descriptive), wired to the W4 verdicts. `missing_pct` is the share of reps
+  for this (env, variant, workload) where the metric column was `--` in
+  `aggregate-means.tsv`.
 - `availability.tsv` — same key but lighter: status is `OK` if the metric
   has at least one numeric sample across all reps of that
-  (env, variant, workload), else `missing`. Use this to identify cells the
-  profiler couldn't capture in a given env (e.g. RDT metrics inside a
-  guest without vRDT pass-through).
+  (env, variant, workload); `unsupported` if the metric is structurally
+  unobservable in that env (e.g. RDT mbw/llcocc inside a stock KVM
+  `vm-guest`, where resctrl is host-only); else `missing` (a collection
+  failure to investigate, not a structural gap).
 - `stats.tsv` — for each (variant, workload, metric):
+  - `claim_class`: the metric's Paper-2 claim tier (absolute / directional /
+    descriptive).
   - `kw_stat`, `kw_p`, `kw_signif`: Kruskal-Wallis omnibus across envs
     with n>=2. `kw_signif` annotates the p-value against alpha={alpha}:
     `*` < alpha, `**` < alpha/5, `***` < alpha/50.
   - For each pair `(a, b)` of envs:
-    - `mw_stat_a_vs_b`, `mw_p_a_vs_b`, `mw_signif_a_vs_b`: Mann-Whitney U
-      two-sided. Significance is Bonferroni-corrected: alpha_pair =
-      alpha / num_pairs. Pairwise tests are run only when the KW omnibus
-      is significant; otherwise the field is `skip`.
+    - `mw_stat_a_vs_b`, `mw_p_a_vs_b`, `mw_q_a_vs_b`, `mw_signif_a_vs_b`:
+      Mann-Whitney U two-sided. `mw_q` is the Benjamini-Hochberg FDR-adjusted
+      p across the env-pair family; `mw_signif` annotates `mw_q` against
+      alpha. Pairwise tests are run only when the KW omnibus is significant;
+      otherwise the field is `skip`.
     - `cliffs_delta_a_vs_b`, `cliffs_mag_a_vs_b`: Cliff's delta with the
       Vargha-Delaney magnitude classification (negligible <0.147,
       small <0.33, medium <0.474, large >=0.474).
-- `plots/<variant>/<workload>.png` — one figure per (variant, workload)
+- `plots/<format>/<variant>/<name>.<format>` — one figure per (variant, workload)
   with one panel per metric. Each panel is a horizontal boxplot, one box
-  per env, with the KW significance code in the panel title.
+  per env, with the KW significance code in the panel title. Figures are
+  titled with the descriptive variant name (intp-baseline, C-ABI,
+  c-abi-cgroup, eBPF-CORE, ebpf-core-cgroup, ...).
 
 ## Method
 
@@ -438,9 +518,11 @@ is not defensible here. Kruskal-Wallis followed by Mann-Whitney pairs
 preserves interpretability without assuming a distribution. Cliff's
 delta provides an effect size that is also distribution-free.
 
-Bonferroni correction (alpha/num_pairs) is the conservative choice and
-matches the small number of envs we compare here. For larger env sets
-consider switching to Holm-Bonferroni or BH-FDR upstream.
+Multiple-comparison correction is Benjamini-Hochberg FDR across each
+omnibus's env-pair family (15 pairs for the 6-env deployment axis),
+controlling the false-discovery rate rather than the family-wise error
+rate — less conservative than Bonferroni and appropriate for the larger
+axis. `mw_signif` is the marker on the BH-adjusted q-value.
 """
 
 
@@ -452,6 +534,11 @@ def parse_csv_arg(value: str | None) -> List[str] | None:
     if value is None:
         return None
     return [v.strip() for v in value.split(",") if v.strip()]
+
+
+# Deployment-axis env ordering is shared (bench/intp_metrics.py order_envs):
+# bare < container (podman/lxc/k8s) < vm-guest, unknown envs after, alpha.
+order_envs = M.order_envs
 
 
 def main() -> int:
@@ -478,7 +565,10 @@ def main() -> int:
     ap.add_argument("--formats", type=str, default="png,pdf",
                     help="Comma-separated output formats (default: png,pdf). "
                          "Each format is written under plots/<format>/<variant>/.")
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
+    global DATASET
+    DATASET = args.dataset or fig_names.dataset_tag(args.campaign_dir)
     global FORMATS
     FORMATS = [f.strip() for f in args.formats.split(",") if f.strip()] or ["png"]
 
@@ -501,7 +591,7 @@ def main() -> int:
     if df.empty:
         sys.exit(f"no rows in aggregate-means.tsv for stage={args.stage!r}")
 
-    envs = parse_csv_arg(args.envs) or sorted(df["env"].unique().tolist())
+    envs = parse_csv_arg(args.envs) or order_envs(df["env"].unique().tolist())
     variants = parse_csv_arg(args.variants) or sorted(df["variant"].unique().tolist())
     workloads = parse_csv_arg(args.workloads) or sorted(df["workload"].unique().tolist())
     metrics = parse_csv_arg(args.metrics) or list(METRICS)

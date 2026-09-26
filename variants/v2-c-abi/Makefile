@@ -19,6 +19,7 @@ SRCS = \
 	src/procutil.c \
 	src/backend_registry.c \
 	src/cpu.c \
+	src/portable.c \
 	src/netp.c \
 	src/nets.c \
 	src/blk.c \
@@ -46,7 +47,7 @@ $(TARGET): $(OBJS)
 TEST_DEPS       = src/detect.o src/procutil.o src/resctrl.o
 # Tests that exercise the backend registry pull in every metric source.
 TEST_DEPS_FULL  = $(TEST_DEPS) src/perfev.o src/backend_registry.o \
-                  src/cpu.o src/netp.o src/nets.o src/blk.o \
+                  src/cpu.o src/portable.o src/netp.o src/nets.o src/blk.o \
                   src/mbw.o src/llcmr.o src/llcocc.o
 
 tests: $(TEST_BINS)

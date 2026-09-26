@@ -19,10 +19,24 @@
 #     BENCH_ENVS=bare           comma-separated execution environments. Values:
 #                                 bare              workload + profiler on host
 #                                 container         workload in Docker, profiler on host (--pid=host)
+#                                 container-podman  workload in rootful Podman (daemonless OCI), profiler on
+#                                                   host (--pid=host); host-visible cgroups => attributed
+#                                                   like the docker env, but no daemon to start or quiesce
+#                                 container-lxc     workload in LXC/LXD (Incus), profiler on host on the
+#                                                   container cgroup (c-abi-cgroup v2.1 / per-cgroup eBPF v3.3)
+#                                 container-k8s     workload in a Kubernetes pod (k3s), profiler on host; the
+#                                                   DEEPEST cgroup nesting (kubepods.slice/.../cri-containerd-
+#                                                   <id>.scope) -- the per-cgroup attribution stress test. Needs
+#                                                   --with-k8s + a running k3s; k3s is a heavy daemon, so it is
+#                                                   quiesced for non-k8s campaigns and kept for container-k8s ones
 #                                 container-guest   workload + profiler INSIDE container (own PID ns)
 #                                 vm                workload in QEMU guest, profiler on host (qemu PID)
 #                                 vm-guest          workload + profiler INSIDE guest, results scp'd back
-#                               container-guest needs Docker; vm-guest needs cloud-localds + a qcow2
+#                               container/container-guest need Docker; container-podman needs the `podman`
+#                               client (daemonless -- no daemon to start); container-lxc needs the LXD/Incus
+#                               `lxc` client + running daemon; container-k8s needs k3s installed via
+#                               setup-host.sh --with-k8s (bundles kubectl/crictl/containerd) and k3s.service up;
+#                               vm-guest needs cloud-localds + a qcow2
 #                               with sshd + cloud-init, ideally with IntP build deps preinstalled.
 #     BENCH_VARIANTS=v0.2,v1.1,v2,v3  comma-separated profiler variants for full
 #                                   bench (the measured UB22 4-variant matrix).
@@ -46,6 +60,13 @@
 #                                  prior campaign — e.g. drop app15_query_merge
 #                                  if V1 stap captured <15% of expected samples.
 #     CONTAINER_IMAGE=ubuntu:24.04  Docker image for container/container-guest envs
+#     INTP_BENCH_PODMAN_IMAGE=ubuntu:24.04  OCI image for container-podman env
+#                                  (same bench image as docker; pulled via podman)
+#     INTP_BENCH_K8S_IMAGE=docker.io/library/ubuntu:24.04  pod image for container-k8s env
+#                                  (default mirrors docker: stock ubuntu + on-the-fly
+#                                  stress-ng install; import the bench image via
+#                                  'k3s ctr images import' or pull from ghcr.io to skip it)
+#     INTP_BENCH_K8S_NS=intp-bench  Kubernetes namespace for the container-k8s pod
 #     VM_IMAGE=                 path to .qcow2 for vm/vm-guest envs (required when set)
 #     VM_MEM=                   memory for QEMU guest (default: inherits BENCH_MEM)
 #     VM_CPUS=                  vCPUs for QEMU guest (default: inherits BENCH_CPUS)
@@ -142,16 +163,24 @@ COOLDOWN="${COOLDOWN:-10}"
 # vm      → stress-ng in QEMU/KVM guest (profiler measures qemu PID on host);
 #            requires /dev/kvm, cloud-localds, and VM_IMAGE pointing to a qcow2
 BENCH_ENVS="${BENCH_ENVS:-bare}"
-# Default measured matrix: the 4-variant UB22 campaign — v0.2 (the
-# v0-faithful, recalibrated baseline), v1.1, v2, v3. The planned next
-# campaign replaces v3 with v3.2 → BENCH_VARIANTS="v0.2,v1.1,v2,v3.2".
+# Default matrix: the 4-variant UB22 campaign — v0.2 (the v0-faithful,
+# recalibrated baseline), v1.1, v2, v3. The published SBAC-PAD campaign ran
+# v3.2 in place of v3 → BENCH_VARIANTS="v0.2,v1.1,v2,v3.2"; of those, the
+# paper reports v0.2, v2 and v3.2 as the measured versions (v1.1 is the
+# kernel-6.8 architectural proof).
 # Opt-in extras:
 #   v0   classic stap baseline — only builds on very old kernels; add with
 #        BENCH_VARIANTS="v0,v0.2,v1.1,v2,v3".
 #   v1   stap-native (pre-helper) — BENCH_VARIANTS="...,v1".
+#   v2.1 c-abi-cgroup C-ABI — per-cgroup attribution without eBPF
+#        (container/VM + IADA loop, paper #2); see
+#        variants/v2.1-c-abi-cgroup/DESIGN.md — BENCH_VARIANTS="...,v2.1".
 #   v3.1 bpftrace alternative — BENCH_VARIANTS="...,v3.1".
 #   v3.2 in-kernel-aggregating variant (addresses the §V-B amplification);
 #        see variants/v3.2-ebpf-core/DESIGN.md — BENCH_VARIANTS="...,v3.2".
+#   v3.3 per-cgroup eBPF variant — eBPF-native sibling of v3.2 / companion to
+#        v2.1 (container/VM + IADA loop, paper #2); see
+#        variants/v3.3-ebpf-core-cgroup/DESIGN.md — BENCH_VARIANTS="...,v3.3".
 BENCH_VARIANTS="${BENCH_VARIANTS:-v0.2,v1.1,v2,v3}"
 # HIBENCH_VARIANTS defaults to BENCH_VARIANTS, EXCEPT that the classic V0
 # (exact token "v0", not v0.2) is excluded from HiBench by default.
@@ -282,8 +311,10 @@ fi
 _variant_requested v0.2 && run_step "build v0.2" make -C variants/v0.2-legacy-intp-baseline all
 _variant_requested v1.1 && run_step "build v1.1" make -C variants/v1.1-stap-modern all
 _variant_requested v2   && run_step "build v2"   make -C variants/v2-c-abi all
+_variant_requested v2.1 && run_step "build v2.1" make -C variants/v2.1-c-abi-cgroup all
 _variant_requested v3   && run_step "build v3"   make -C variants/v3-ebpf-ring all
 _variant_requested v3.2 && run_step "build v3.2" make -C variants/v3.2-ebpf-core all
+_variant_requested v3.3 && run_step "build v3.3" make -C variants/v3.3-ebpf-core-cgroup all
 _variant_requested v3.1 && run_step "v3.1 deps check" make -C variants/v3.1-bpftrace deps
 true   # keep exit status clean after the short-circuit && chains above
 run_step "python benchmark deps" bash -c '
@@ -323,6 +354,44 @@ case ",$BENCH_ENVS," in
     ;;
 esac
 
+# Podman preflight (only when container-podman in BENCH_ENVS). Mirrors the
+# docker preflight, minus the daemon check: podman is DAEMONLESS, so there is no
+# `info`-style daemon to assert -- just the client + a warm image pull.
+case ",$BENCH_ENVS," in
+  *,container-podman,*)
+    run_step "container-podman preflight (podman)" bash -c '
+      command -v "${INTP_BENCH_PODMAN_BIN:-podman}" >/dev/null 2>&1 || { echo "${INTP_BENCH_PODMAN_BIN:-podman} not found"; exit 1; }
+      "${INTP_BENCH_PODMAN_BIN:-podman}" pull -q "${INTP_BENCH_PODMAN_IMAGE:-ubuntu:24.04}" >/dev/null || { echo "pull failed"; exit 1; }
+    '
+    ;;
+esac
+
+# LXC/LXD preflight (only when container-lxc in BENCH_ENVS). The image is
+# pulled lazily on first `lxc launch`, so we only assert the client + daemon.
+case ",$BENCH_ENVS," in
+  *,container-lxc,*)
+    run_step "container-lxc preflight (lxd/incus)" bash -c '
+      command -v "${INTP_BENCH_LXC_BIN:-lxc}" >/dev/null 2>&1 || { echo "${INTP_BENCH_LXC_BIN:-lxc} (LXD/Incus client) not found"; exit 1; }
+      "${INTP_BENCH_LXC_BIN:-lxc}" list >/dev/null 2>&1 || { echo "LXD/Incus daemon not reachable (is lxd/incus running and the user in its group?)"; exit 1; }
+    '
+    ;;
+esac
+
+# Kubernetes (k3s) preflight (only when container-k8s in BENCH_ENVS). Mirrors the
+# lxc preflight: assert the API client + a reachable cluster, plus crictl (used to
+# resolve the in-pod stress-ng host PID). The pod image is pulled lazily on first
+# apply, so we do not pull it here. INTP_BENCH_KUBECTL='k3s kubectl' works on a
+# k3s-only host; k3s is opt-in heavy (setup-host.sh --with-k8s).
+case ",$BENCH_ENVS," in
+  *,container-k8s,*)
+    run_step "container-k8s preflight (k3s/kubectl/crictl)" bash -c '
+      command -v ${INTP_BENCH_KUBECTL:-kubectl} >/dev/null 2>&1 || { echo "${INTP_BENCH_KUBECTL:-kubectl} not found (install k3s via setup-host.sh --with-k8s; or set INTP_BENCH_KUBECTL=\"k3s kubectl\")"; exit 1; }
+      command -v ${INTP_BENCH_CRICTL:-crictl} >/dev/null 2>&1 || { echo "${INTP_BENCH_CRICTL:-crictl} not found (bundled with k3s; install via setup-host.sh --with-k8s)"; exit 1; }
+      ${INTP_BENCH_KUBECTL:-kubectl} get nodes >/dev/null 2>&1 || { echo "Kubernetes API not reachable (is k3s.service running? try: systemctl start k3s)"; exit 1; }
+    '
+    ;;
+esac
+
 # VM preflight (only when vm is in BENCH_ENVS)
 case ",$BENCH_ENVS," in
   *,vm,*)
@@ -335,6 +404,33 @@ case ",$BENCH_ENVS," in
     '
     ;;
 esac
+
+# ── Quiesce idle container-runtime daemons (interference hygiene) ──────────────
+# Idle docker / lxd / incus / k3s daemons inject background CPU/cache/IO/network
+# noise that biases the interference profile -- the daemon analog of pausing
+# HiBench for stress-ng campaigns. k3s is the heaviest (kubelet + embedded
+# containerd + control plane), so a non-k8s campaign especially benefits from
+# stopping it. Stop the runtimes that NO selected env needs, and restore them on
+# exit. Runs AFTER the per-env preflights (which require the daemons up) and is
+# keyed off BENCH_ENVS. Opt out with INTP_BENCH_QUIESCE_RUNTIMES=0.
+if [ "${INTP_BENCH_QUIESCE_RUNTIMES:-1}" = "1" ] && command -v systemctl >/dev/null 2>&1; then
+  runtime_keep=""
+  case ",$BENCH_ENVS," in *,container,*|*,container-guest,*|*,container-full,*) runtime_keep="$runtime_keep docker" ;; esac
+  case ",$BENCH_ENVS," in *,container-lxc,*) runtime_keep="$runtime_keep lxd incus" ;; esac
+  # container-k8s keeps k3s (kubelet + embedded containerd + control plane) up;
+  # a non-k8s campaign quiesces k3s as the heaviest idle runtime (mirrors lxc).
+  case ",$BENCH_ENVS," in *,container-k8s,*) runtime_keep="$runtime_keep k3s" ;; esac
+  # container-podman is intentionally absent: podman is DAEMONLESS, so it has no
+  # persistent runtime daemon to keep. A container-podman-only campaign thus
+  # matches no keep-set entry => empty keep-set => docker+lxd+incus all get
+  # quiesced, which is correct (there is nothing podman-side to keep alive) and
+  # the cleanest interference baseline of the container envs (no idle daemon).
+  # See _runtime_units in bench/deploy/host-services.sh (podman has no unit entry).
+  trap 'bash "$ROOT/bench/deploy/host-services.sh" restore-runtimes >/dev/null 2>&1 || true' EXIT
+  # shellcheck disable=SC2086  # intentional word-split: keep-set passed as separate args
+  run_step "quiesce idle container runtimes (keep:${runtime_keep:- none})" \
+    bash bench/deploy/host-services.sh quiesce-runtimes $runtime_keep
+fi
 
 if [ "$RUN_HIBENCH" = "1" ]; then
   # Map our user-facing HIBENCH_SIZE → setup-spark-hibench's HIBENCH_SCALE.

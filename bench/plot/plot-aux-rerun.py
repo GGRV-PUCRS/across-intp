@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 # Embed TrueType (type 42) rather than matplotlib's default Type 3 fonts, so
@@ -33,6 +34,19 @@ import matplotlib.pyplot as plt
 plt.rcParams["pdf.fonttype"] = 42
 plt.rcParams["ps.fonttype"] = 42
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
+
+#: Run this render belongs to, for the output filenames. Set in main() from
+#: --dataset or the run directory; see bench/plot/fig_names.py.
+DATASET: str | None = None
+
+
+def _name(stem: str) -> str:
+    """Filename for one aux figure: <what-it-shows>--<which-run>."""
+    return fig_names.name(stem, DATASET)
+
 
 METRICS = ["netp", "nets", "blk", "mbw", "llcmr", "llcocc", "cpu"]
 METRIC_LABEL = {
@@ -56,11 +70,11 @@ VARIANT_LABELS = {
     "v1":   "stap-nohelper",
     "v1.1": "stap-modern",
     "v2":   "C-ABI",
-    "v2.1": "cgroup-native",
+    "v2.1": "c-abi-cgroup",
     "v3":   "ebpf-ring",
     "v3.1": "bpftrace",
     "v3.2": "eBPF-CORE",
-    "v3.3": "ebpf-cgroup",
+    "v3.3": "ebpf-core-cgroup",
 }
 
 
@@ -247,7 +261,7 @@ def plot_noise_floor_distribution(run_dir, out_dir, label="V3"):
     )
     fig.tight_layout()
     for ext in ("png", "pdf"):
-        fig.savefig(out_dir / f"noise-floor-distribution.{ext}", dpi=200, bbox_inches="tight")
+        fig.savefig(out_dir / f"{_name('noise-floor-distribution')}.{ext}", dpi=200, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -285,7 +299,7 @@ def plot_noise_floor_timeseries(run_dir, out_dir, label="V3"):
     fig.suptitle(f"{label} noise-floor time series (rep01)", fontsize=11)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     for ext in ("png", "pdf"):
-        fig.savefig(out_dir / f"noise-floor-timeseries.{ext}", dpi=200, bbox_inches="tight")
+        fig.savefig(out_dir / f"{_name('noise-floor-timeseries')}.{ext}", dpi=200, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -394,7 +408,7 @@ def plot_noise_floor_compare(runs, out_dir):
     )
     fig.tight_layout()
     for ext in ("png", "pdf"):
-        fig.savefig(out_dir / f"noise-floor-compare.{ext}", dpi=200,
+        fig.savefig(out_dir / f"{_name('noise-floor-compare')}.{ext}", dpi=200,
                     bbox_inches="tight")
     plt.close(fig)
 
@@ -464,7 +478,7 @@ def plot_exp5_sched_switch(run_dir, out_dir, label="V3"):
     ax.legend(fontsize=8, loc="upper right")
     fig.tight_layout()
     for ext in ("png", "pdf"):
-        fig.savefig(out_dir / f"exp5-sched-switch.{ext}", dpi=200, bbox_inches="tight")
+        fig.savefig(out_dir / f"{_name('exp5-sched-switch')}.{ext}", dpi=200, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -479,7 +493,10 @@ def main():
                     metavar="RUN_DIR",
                     help="additional run dir(s) to fold into a concatenated "
                          "noise-floor-compare figure (repeatable)")
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
+    global DATASET
+    DATASET = args.dataset or fig_names.dataset_tag(args.run_dir)
 
     run_dir = args.run_dir.resolve()
     if not run_dir.is_dir():
@@ -523,7 +540,10 @@ def main():
 
     print("done.")
     for f in sorted(out_dir.iterdir()):
-        print(f"  {f.relative_to(run_dir)}")
+        # --out may point outside the run dir, so show the path relative to it
+        # only when it actually is below it.
+        rel = f.relative_to(out_dir) if out_dir != run_dir else f.relative_to(run_dir)
+        print(f"  {rel}")
 
 
 if __name__ == "__main__":

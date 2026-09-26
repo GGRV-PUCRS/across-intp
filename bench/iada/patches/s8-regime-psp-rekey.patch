@@ -1,0 +1,15 @@
+--- results/iada-tier-rda/B/kmeans.R	2026-06-17 12:06:03.180276041 -0300
++++ results/iada-tier-rda/B-psp/kmeans.R	2026-08-12 07:47:46.988931710 -0300
+@@ -98,7 +98,11 @@
+ 
+ predict_regime.kmeans <-function(object, newdata)
+ {
+-  predict.kmeans(object, newdata, 8)
++  # S8: level on psp (col 14), the graded scheduling-regime signal. The
++  # schedlat column (8) is saturated at 100 in every training centroid, so
++  # which.max/which.min tie-break and the resulting levels are cluster-ID
++  # artifacts, not severity.
++  predict.kmeans(object, newdata, 14)
+ }
+ 
+ 

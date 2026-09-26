@@ -45,6 +45,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
+
 try:
     import matplotlib
     matplotlib.use("Agg")
@@ -84,7 +87,8 @@ METRIC_LABEL = {
     "cpu":    "cpu",
 }
 
-VARIANT_ORDER = ["v0", "v0.1", "v0.2", "v1", "v1.1", "v2", "v3.1", "v3", "v3.2"]
+VARIANT_ORDER = ["v0", "v0.1", "v0.2", "v1", "v1.1", "v2", "v3.1", "v3", "v3.2",
+                 "v2.1", "v3.3"]
 VARIANT_COLORS = {
     "v0":   "#7f7f7f",
     "v0.1": "#bcbd22",
@@ -95,6 +99,14 @@ VARIANT_COLORS = {
     "v3.1": "#ff7f0e",
     "v3":   "#2ca02c",
     "v3.2": "#d62728",
+    # P2 cgroup pair. Absent from this Paper-1 map, both fell to the #333333
+    # fallback and panel B drew the two variants in one colour -- unreadable
+    # for a convergence plot. Hexes follow the pairing the P2 set already
+    # uses (F4/F11 draw these variants with the default C0/C1 cycle); the
+    # family-mate reuse (v2's blue, v3.1's orange) is safe because Paper-1
+    # and P2 variants never co-plot.
+    "v2.1": "#1f77b4",
+    "v3.3": "#ff7f0e",
 }
 
 # Descriptive, paper-facing variant names. Figures show these instead of the
@@ -108,11 +120,11 @@ VARIANT_LABELS = {
     "v1":   "stap-nohelper",
     "v1.1": "stap-modern",
     "v2":   "C-ABI",
-    "v2.1": "cgroup-native",
+    "v2.1": "c-abi-cgroup",
     "v3":   "ebpf-ring",
     "v3.1": "bpftrace",
     "v3.2": "eBPF-CORE",
-    "v3.3": "ebpf-cgroup",
+    "v3.3": "ebpf-core-cgroup",
 }
 
 
@@ -140,8 +152,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-polygons", action="store_true",
                    help="Disable per-workload convergence polygons on panel B.")
     p.add_argument("--output", type=Path, default=None,
-                   help="Output path stem. Default: <input-dir>/plots/fig_pca_correlation_circle "
-                        "(extension is taken from --formats; emitted under plots/<format>/).")
+                   help="Output directory plus figure stem, e.g. "
+                        "results/figures/p2-pca-geometry/F7-pca-correlation-circle. "
+                        "The stem selects the figure's registered description "
+                        "(bench/plot/fig_names.py); the filename on disk is "
+                        "<id>-<description>--<campaign>. Default: "
+                        "<input-dir>/plots/fig_pca_correlation_circle, emitted "
+                        "under plots/<format>/.")
+    fig_names.add_dataset_arg(p)
     p.add_argument("--formats", type=str, default="png,pdf",
                    help="Comma-separated output formats (default: png,pdf). "
                         "Each format is written under the parent dir's <format>/ subdir.")
@@ -305,7 +323,12 @@ def plot_scores(ax, centroids: pd.DataFrame, scores: np.ndarray,
         color = VARIANT_COLORS.get(variant, "#333333")
         ax.scatter(sub["pc1"], sub["pc2"],
                    s=42, color=color, edgecolor="black", lw=0.4,
-                   alpha=0.85, label=f"{variant_label(variant)}  (n={len(sub)})",
+                   # "(n=7)" read as a metric count next to panel A's
+                   # "14 metrics" suptitle; name the unit instead -- the
+                   # points are per-workload centroids, the metrics are the
+                   # space's dimensions.
+                   alpha=0.85,
+                   label=f"{variant_label(variant)}  ({len(sub)} workloads)",
                    zorder=2)
 
     ax.axhline(0, color="gray", lw=0.5, linestyle=":")
@@ -357,12 +380,12 @@ def main() -> None:
         plots_dir = args.input.parent / "plots"
         out = plots_dir / "fig_pca_correlation_circle.png"
     base_dir = out.parent
-    stem = out.stem
+    name = fig_names.name(out.stem, args.dataset or fig_names.dataset_tag(args.input))
     written = []
     for fmt in formats:
         sub = base_dir / fmt
         sub.mkdir(parents=True, exist_ok=True)
-        path = sub / f"{stem}.{fmt}"
+        path = sub / f"{name}.{fmt}"
         fig.savefig(path, bbox_inches="tight")
         written.append(str(path))
     plt.close(fig)

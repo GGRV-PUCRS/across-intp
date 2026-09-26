@@ -1,0 +1,21 @@
+arm	tier	env	rep	idi_avg	idi_sum	migrations	interference_avg	source
+psp-keyed (S3)	B	vm	1	4201.285	25207.71	27	4156.285	s3-gate-B.tsv
+psp-keyed (S3)	B	vm	2	4415.3317	26491.99	12	4395.3317	s3-gate-B.tsv
+psp-keyed (S3)	B	vm	3	4396.045	26376.27	49	4314.3783	s3-gate-B.tsv
+psp-keyed (S3)	B	vm	4	4409.2	26455.2	13	4387.5333	s3-gate-B.tsv
+psp-keyed (S3)	B	vm	5	4361.4767	26168.86	24	4321.4767	s3-gate-B.tsv
+psp-keyed (S3)	B	vm	6	4352.1233	26112.74	17	4323.79	s3-gate-B.tsv
+psp-keyed (S3)	B	vm	7	4164.1483	24984.89	38	4100.815	s3-gate-B.tsv
+psp-keyed (S3)	B	vm	8	4344.95	26069.7	14	4321.6167	s3-gate-B.tsv
+psp-keyed (S3)	B	vm	9	4748.9833	28493.9	10	4732.3167	s3-gate-B.tsv
+psp-keyed (S3)	B	vm	10	4178.1333	25068.8	38	4114.8	s3-gate-B.tsv
+schedlat-keyed (S7)	B	vm	1	5203.5817	31221.49	13	5181.915	s7-rekey-schedlat-idi.tsv (this pass)
+schedlat-keyed (S7)	B	vm	2	5108.1133	30648.68	20	5074.78	s7-rekey-schedlat-idi.tsv (this pass)
+schedlat-keyed (S7)	B	vm	3	5561.5967	33369.58	12	5541.5967	s7-rekey-schedlat-idi.tsv (this pass)
+schedlat-keyed (S7)	B	vm	4	5196.5667	31179.4	23	5158.2333	s7-rekey-schedlat-idi.tsv (this pass)
+schedlat-keyed (S7)	B	vm	5	5281.9033	31691.42	30	5231.9033	s7-rekey-schedlat-idi.tsv (this pass)
+schedlat-keyed (S7)	B	vm	6	5102.05	30612.3	27	5057.05	s7-rekey-schedlat-idi.tsv (this pass)
+schedlat-keyed (S7)	B	vm	7	5344.3283	32065.97	22	5307.6617	s7-rekey-schedlat-idi.tsv (this pass)
+schedlat-keyed (S7)	B	vm	8	5104.6017	30627.61	18	5074.6017	s7-rekey-schedlat-idi.tsv (this pass)
+schedlat-keyed (S7)	B	vm	9	5095.0883	30570.53	12	5075.0883	s7-rekey-schedlat-idi.tsv (this pass)
+schedlat-keyed (S7)	B	vm	10	5557.3817	33344.29	12	5537.3817	s7-rekey-schedlat-idi.tsv (this pass)

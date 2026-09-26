@@ -1,0 +1,23 @@
+# CloudSuite in-memory-analytics: Spark ALS over the movielens dataset.
+# Batch job looped via restart:always (continuous load for the run window;
+# the cgroup-scoped profilers keep scoping across restarts because every
+# restarted container re-joins the same parent slice/cgroup). Dataset paths
+# and Spark memory come from the installer-written .env in this directory.
+services:
+  analytics:
+    image: cloudsuite/in-memory-analytics:latest
+    restart: always
+    command:
+      - "${IMA_DATASET_DIR:?run bench/setup/setup-cloudsuite-workload.sh}"
+      - "${IMA_RATINGS_FILE:?run bench/setup/setup-cloudsuite-workload.sh}"
+      - "--driver-memory"
+      - "${SPARK_MEM:-6g}"
+      - "--executor-memory"
+      - "${SPARK_MEM:-6g}"
+    volumes:
+      - "movielens:/data"
+
+volumes:
+  movielens:
+    external: true
+    name: intp-cs-movielens

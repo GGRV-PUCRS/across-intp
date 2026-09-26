@@ -42,6 +42,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
+
+#: Campaign this run is summarising, for the heatmap filenames. Set in main()
+#: from --dataset or --campaign; see bench/plot/fig_names.py.
+DATASET: str | None = None
+
 # ----------------------------------------------------------------------------
 # Constants
 # ----------------------------------------------------------------------------
@@ -61,11 +68,11 @@ VARIANT_LABELS = {
     "v1":   "stap-nohelper",
     "v1.1": "stap-modern",
     "v2":   "C-ABI",
-    "v2.1": "cgroup-native",
+    "v2.1": "c-abi-cgroup",
     "v3":   "ebpf-ring",
     "v3.1": "bpftrace",
     "v3.2": "eBPF-CORE",
-    "v3.3": "ebpf-cgroup",
+    "v3.3": "ebpf-core-cgroup",
 }
 
 
@@ -435,6 +442,11 @@ def verify(out_dir: Path) -> int:
 # ----------------------------------------------------------------------------
 # Optional debug heatmap
 # ----------------------------------------------------------------------------
+#: The analysis envs are named after where the rows come from; "bare" is the
+#: stress-ng layer, which is not what a reader of a filename would guess.
+ENV_LABEL = {"bare": "stress-ng", "hibench": "hibench"}
+
+
 def plot_heatmaps(fourway: pd.DataFrame, variants: list[str], out_dir: Path) -> None:
     try:
         import matplotlib
@@ -467,7 +479,9 @@ def plot_heatmaps(fourway: pd.DataFrame, variants: list[str], out_dir: Path) -> 
             ax.set_title(f"{env} — {title}")
             fig.colorbar(im, ax=ax, fraction=0.046)
         fig.tight_layout()
-        out = out_dir / f"correlation-heatmap-{env}.pdf"
+        label = ENV_LABEL.get(env, env)
+        out = out_dir / (fig_names.name(f"correlation-heatmap-{label}",
+                                        DATASET) + ".pdf")
         fig.savefig(out); plt.close(fig)
         log(f"[plot] {out}")
 
@@ -489,7 +503,10 @@ def main() -> int:
     ap.add_argument("--verify", action="store_true",
                     help="check outputs against EXPECTED_VALUES; exit 1 on mismatch")
     ap.add_argument("--plot", action="store_true", help="also write debug heatmaps")
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
+    global DATASET
+    DATASET = args.dataset or fig_names.dataset_tag(args.campaign)
 
     variants = [v.strip() for v in args.variants.split(",") if v.strip()]
     envs = [e.strip() for e in args.envs.split(",") if e.strip()]

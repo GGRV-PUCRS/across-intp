@@ -4,7 +4,7 @@
 **Campaign:** `results/ub22-campaign-20260521_162957`
 **Host:** `intp-v1-baseline` — Intel Xeon Gold 5412U (Sapphire Rapids), 48 CPU,
 1 socket, 8 IMC channels, **Ubuntu 22.04.5 LTS, kernel 5.15.0-177-generic**
-**Variant:** v0.2 (legacy-intp-baseline) (legacy-bridge: paper-faithful stap-2022 SystemTap + userspace helper)
+**Variant:** v0.2 (legacy-intp-baseline) (paper-faithful stap-2022 SystemTap + userspace helper)
 **Detection snapshot:** `capabilities.env` (`INTP_NIC_SPEED_MBPS=1000`,
 `INTP_MEM_BW_MBPS=281600`, `INTP_LLC_SIZE_KB=46080`, resctrl mounted, RDT
 CQM/CAT/MBA present)

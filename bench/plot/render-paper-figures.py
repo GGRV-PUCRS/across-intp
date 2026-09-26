@@ -48,6 +48,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fig_names  # noqa: E402  (figure naming registry)
 import paper_style  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
@@ -85,6 +86,7 @@ def main() -> None:
                          "hibench/, aggregate-means.tsv)")
     ap.add_argument("--out", type=Path, required=True,
                     help="Output directory for the regenerated figures")
+    fig_names.add_dataset_arg(ap)
     args = ap.parse_args()
 
     campaign: Path = args.campaign
@@ -99,6 +101,11 @@ def main() -> None:
     out: Path = args.out
     figures = out / "figures"
     figures.mkdir(parents=True, exist_ok=True)
+
+    # Every renderer names its output after the campaign; pin the tag here so
+    # the per-subset renders and the collected names cannot disagree.
+    dataset = args.dataset or fig_names.dataset_tag(campaign)
+    print(f"campaign tag: {dataset}")
 
     # Which stems each subset must render, derived from the spec table so the
     # driver cannot drift from paper_style.PAPER_FIGURES.
@@ -116,15 +123,15 @@ def main() -> None:
 
         if stems - {PCA_STEM, HIBENCH_STEM}:
             run([sys.executable, HERE / "plot-intp-bench.py", campaign,
-                 "--variants", variants, "--out", subdir,
+                 "--variants", variants, "--out", subdir, "--dataset", dataset,
                  "--camera-ready", "--paper-subset", subset])
         if PCA_STEM in stems:
             run([sys.executable, HERE / "plot_pca_dendro.py", means, subdir,
-                 f"--variants={variants}", "--camera-ready",
-                 f"--paper-subset={subset}"])
+                 f"--variants={variants}", f"--dataset={dataset}",
+                 "--camera-ready", f"--paper-subset={subset}"])
         if HIBENCH_STEM in stems:
             run([sys.executable, HERE / "plot-hibench.py", hibench,
-                 "--variants", variants, "--out", subdir,
+                 "--variants", variants, "--out", subdir, "--dataset", dataset,
                  "--camera-ready", "--paper-subset", subset])
 
     # Collect twice, under both names the project uses for these figures:
@@ -133,24 +140,30 @@ def main() -> None:
     published = out / "published"
     print(f"\n=== collecting into {figures} and {published} ===")
     collected = 0
-    for (subset, stem), spec in sorted(paper_style.PAPER_FIGURES.items()):
-        src = out / subset / "pdf" / f"{stem}.pdf"
+    for key, spec in sorted(paper_style.PAPER_FIGURES.items()):
+        subset, stem = key
+        # The renderers name by (stem, campaign); the subset directory is what
+        # tells two cuts of one stem apart there. figures/ is flat, so the
+        # collected name carries the subset as the spec's qualifier instead.
+        rendered = fig_names.name(stem, dataset)
+        collected_name = paper_style.out_name(key, dataset)
+        src = out / subset / "pdf" / f"{rendered}.pdf"
         if not src.exists():
             sys.exit(f"expected render is missing: {src}")
         # Artifact-only specs are gated like the rest but no float includes
         # them, so they stay out of figures/ and the Overleaf drop-in holds
         # exactly what main.tex includes.
         if not spec.artifact_only:
-            shutil.copyfile(src, figures / spec.out_name)
+            shutil.copyfile(src, figures / collected_name)
         (published / subset).mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, published / subset / f"{stem}.pdf")
-        png = out / subset / "png" / f"{stem}.png"
+        shutil.copyfile(src, published / subset / f"{rendered}.pdf")
+        png = out / subset / "png" / f"{rendered}.png"
         if png.exists():
             if not spec.artifact_only:
-                shutil.copyfile(png, figures / (spec.out_name[:-4] + ".png"))
-            shutil.copyfile(png, published / subset / f"{stem}.png")
-        where = "published only" if spec.artifact_only else spec.out_name
-        print(f"  {where:46s} <- {subset}/pdf/{stem}.pdf")
+                shutil.copyfile(png, figures / (collected_name[:-4] + ".png"))
+            shutil.copyfile(png, published / subset / f"{rendered}.png")
+        where = "published only" if spec.artifact_only else collected_name
+        print(f"  {where}\n{'':6}<- {subset}/pdf/{rendered}.pdf")
         collected += 1
 
     # Addendum B.2 item 3 replaced the Pearson matrix float with nine numbers

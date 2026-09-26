@@ -100,9 +100,9 @@ The exact profiler binaries/scripts measured are pinned by sha256 in
 `variants-full.manifest` (variant → path → sha256 → mtime). That manifest
 predates the 2026-05-05 directory renaming, so its paths use the legacy
 directory names; the mapping from legacy to current `variants/v{tag}-*/`
-names is `VERSIONS.md`. The four measured versions are v0.2
-(legacy-intp-baseline), v1.1 (stap-modern), v2 (C-ABI) and v3.2
-(eBPF-CORE).
+names is `VERSIONS.md`. The three measured versions are v0.2
+(legacy-intp-baseline), v2 (C-ABI) and v3.2 (eBPF-CORE); the tree also
+carries v1.1 (stap-modern), the kernel-6.8 architectural proof.
 
 ## Published artifact
 

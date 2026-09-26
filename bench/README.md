@@ -8,12 +8,30 @@ the dissertation Phase-3 plan. Captures additional ground-truth signals
 variant on measurement fidelity, runtime overhead, and availability of
 each metric across environments.
 
+The active profiler variants for the container and cross-deployment work
+are **v2.1 (c-abi-cgroup)** (C / cgroup) and **v3.3 (ebpf-core-cgroup)** (eBPF /
+CO-RE with in-kernel aggregation); the earlier v0.x..v3.2 variants remain
+as comparison and structural evidence. All variants emit the same
+canonical 7-metric contract (`netp nets blk mbw llcmr llcocc cpu`), which
+is ABI-invariant and consumed downstream by the IADA classifier. The
+cross-deployment suite runs the same application across bare ->
+docker (`container`) -> podman (`container-podman`) -> incus
+(`container-lxc`) -> k3s (`container-k8s`) -> `vm-guest`, computing paired
+deltas vs bare with a per-run `caps_applied` parity audit (net mode and
+storage backend are the treatment variables). Under KVM the RDT/PMU
+metrics (`mbw`/`llcocc`/`llcmr`) are structurally gapped, so a separate,
+flag-gated VM-portable benchmark (`--portable-metrics`: schedlat,
+psi_mem, membw_est, psi_io, schedthr, steal) is planned as the VM path,
+keeping the canonical 7 intact.
+
 ## Files
 
 - `run-intp-bench.sh` -- single bash orchestrator. Read this first.
 - `convert-profiler-to-meyer.py` -- converts `profiler.tsv` into the semicolon CSV expected by `interference-classifier` and `CloudSimInterference`.
 - `generate-iada-tree.py` -- reorganizes converted CSV files into `source/<workload>/<pattern>.csv` and writes CloudSim `input.txt` files.
 - `plot/plot-intp-bench.py` -- reproduces the figures.
+- `analyze-faithfulness.py` -- adjudicates the canonical 7 metrics vs `groundtruth.tsv` (W4).
+- `analyze-portable.py` -- adjudicates the VM-portable metrics (the `--portable-metrics` benchmark) vs ground truth.
 - `hibench/README.md` -- Track B (HiBench Spark subset) for fidelity checks.
 - `findings/README.md` -- canonical index of benchmark findings and diagnoses.
 
@@ -40,11 +58,20 @@ sudo ./run-intp-bench.sh
 # focus on the modern variants only
 sudo ./run-intp-bench.sh --variants v1,v2,v3.1,v3
 
-# enable container env (requires docker)
+# focus on the c-abi-cgroup container/cross-deployment variants
+sudo ./run-intp-bench.sh --variants v2.1,v3.3
+
+# enable a container env (docker / podman / lxc / k8s share the same launcher)
 sudo ./run-intp-bench.sh --env bare,container
 
-# enable VM env (requires kvm + qcow2 image)
+# enable VM envs (vm = host-side profiler; vm-guest = profiler inside the guest)
 sudo ./run-intp-bench.sh --env bare,vm --vm-image /var/lib/libvirt/images/ubuntu-24.04.qcow2
+
+# VM-portable metrics benchmark (SEPARATE; canonical 7 untouched). Only v2.1/v3.3
+# implement --portable-metrics. Captures portable.tsv + aggregate-portable-means.tsv.
+sudo ./run-intp-bench.sh --portable-metrics --variants v2.1,v3.3 \
+     --env bare,container,vm-guest --stage solo,report
+python3 bench/analyze-portable.py results/intp-bench-<ts> --out portable-faithfulness.md
 
 # render every figure
 python3 bench/plot/plot-intp-bench.py results/intp-bench-<ts>
@@ -83,6 +110,10 @@ python3 bench/generate-iada-tree.py \
 | `overhead`   | reference workload with vs without each profiler              | Volpert et al. 2025           |
 | `timeseries` | 5-min mixed workload trace per variant                        | long-trace stability analysis |
 | `report`     | aggregate every profiler.tsv into one TSV; print summary      | --                            |
+
+Under `--portable-metrics`, each rep captures `portable.tsv` (instead of
+`profiler.tsv`) and `report` aggregates those, header-aware, into
+`aggregate-portable-means.tsv` (the canonical `off=n-7` path is left untouched).
 
 ## Output layout
 
@@ -144,26 +175,31 @@ side -- the plotter will merge them if you point it at a parent dir.
 
 ## Figures produced
 
-| File                                  | Source stage   | Maps to                                                          |
-| ------------------------------------- | -------------- | ---------------------------------------------------------------- |
-| `fig00_canonical_intp_fig4.png`       | solo           | IntP Fig. 4 canonical reproduction (single panel per variant)    |
-| `fig01_per_workload_bars.png`         | solo           | per-workload bars, variants compared                             |
-| `fig01b_per_variant_bars.png`         | solo           | dual view — per-(env, variant) workload x metric heatmap         |
-| `fig02_pca_kmeans.png`                | solo           | PCA + k-means clustering (joint fit, variants overlaid)          |
-| `fig03_timeseries.png`                | timeseries     | long-trace metric profile (IntP Fig. 3)                          |
-| `fig04_overhead_throughput.png`       | overhead       | Volpert et al. 2025 — stress-ng bogo-ops/s slowdown              |
-| `fig04b_overhead_cpu_jiffies.png`     | overhead       | Volpert et al. 2025 — extra system-wide CPU jiffies              |
-| `fig04c_overhead_sched_switch.png`    | overhead       | Volpert et al. 2025 — sched:sched_switch perturbation            |
-| `fig05_fidelity_matrix.png`           | solo + GT      | Pearson r vs ground truth                                        |
-| `fig06_env_heatmap.png`               | solo (envs)    | dissertation Phase 3 (cross-env ratios; >=2 envs required)       |
-| `fig07_pairwise_heatmap_<env>.png`    | pairwise       | cross-variant interference map per env                           |
-| `fig08_metric_availability.png`       | any            | which (variant, metric) pairs reported non-zero signal           |
-| `fig09_radar_fingerprint.png`         | solo           | per-workload polar fingerprint, variants overlaid                |
-| `fig10_workload_clustermap.png`       | solo           | hierarchical (Ward) workload clustermap per variant              |
-| `fig11_idi_bars.png`                  | pairwise       | IADA Fig. 6 — interference degradation by resource family        |
-| `fig12_pairwise_timeseries.png`       | timeseries     | IntP Fig. 8 — mixed-load resource-family trace                   |
-| `fig13_iada_segmented.png`            | timeseries     | IADA Fig. 5 — segmented Loess-smoothed interference trace        |
-| `fig14_variant_resource_heatmap.png`  | solo+pairwise  | variant x resource summary heatmap                               |
+Listed by their internal stem. On disk each one is named
+`<figure-id>-<what-it-shows>--<which-campaign>` — see
+[plot/fig_names.py](plot/fig_names.py) and the "How the figures are named"
+section of [plot/README.md](plot/README.md).
+
+| Figure                            | Source stage   | Maps to                                                          |
+| --------------------------------- | -------------- | ---------------------------------------------------------------- |
+| `fig00_canonical_intp_fig4`       | solo           | IntP Fig. 4 canonical reproduction (single panel per variant)    |
+| `fig01_per_workload_bars`         | solo           | per-workload bars, variants compared                             |
+| `fig01b_per_variant_bars`         | solo           | dual view — per-(env, variant) workload x metric heatmap         |
+| `fig02_pca_kmeans`                | solo           | PCA + k-means clustering (joint fit, variants overlaid)          |
+| `fig03_timeseries`                | timeseries     | long-trace metric profile (IntP Fig. 3)                          |
+| `fig04_overhead_throughput`       | overhead       | Volpert et al. 2025 — stress-ng bogo-ops/s slowdown              |
+| `fig04b_overhead_cpu_jiffies`     | overhead       | Volpert et al. 2025 — extra system-wide CPU jiffies              |
+| `fig04c_overhead_sched_switch`    | overhead       | Volpert et al. 2025 — sched:sched_switch perturbation            |
+| `fig05_fidelity_matrix`           | solo + GT      | Pearson r vs ground truth                                        |
+| `fig06_env_heatmap`               | solo (envs)    | dissertation Phase 3 (cross-env ratios; >=2 envs required)       |
+| `fig07_pairwise_heatmap_<env>`    | pairwise       | cross-variant interference map per env                           |
+| `fig08_metric_availability`       | any            | which (variant, metric) pairs reported non-zero signal           |
+| `fig09_radar_fingerprint`         | solo           | per-workload polar fingerprint, variants overlaid                |
+| `fig10_workload_clustermap`       | solo           | hierarchical (Ward) workload clustermap per variant              |
+| `fig11_idi_bars`                  | pairwise       | IADA Fig. 6 — interference degradation by resource family        |
+| `fig12_pairwise_timeseries`       | timeseries     | IntP Fig. 8 — mixed-load resource-family trace                   |
+| `fig13_iada_segmented`            | timeseries     | IADA Fig. 5 — segmented Loess-smoothed interference trace        |
+| `fig14_variant_resource_heatmap`  | solo+pairwise  | variant x resource summary heatmap                               |
 
 Companion CSVs (`overhead_summary.csv`, `fidelity_matrix.csv`,
 `env_ratio.csv`, `pairwise_means.csv`, `metric_availability.csv`,
@@ -177,7 +213,7 @@ experiment. Each figure is also emitted as a vector PDF under
 `--reps N` controls repetitions per (env, variant, workload). Default 3
 balances runtime against variance; bump to 5 for the final run reported
 in the dissertation. Standard deviation across reps is included as error
-bars in `fig04_overhead_bars.png`; the other figures plot the mean.
+bars in the `fig04` overhead panels; the other figures plot the mean.
 
 ## Estimated runtime
 

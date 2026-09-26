@@ -50,8 +50,22 @@ metric_t *metric_llcmr(void);
 metric_t *metric_llcocc(void);
 metric_t *metric_cpu(void);
 
+/* VM-portable metrics (--portable-metrics, C26) -- a SEPARATE benchmark; the
+ * canonical 7 above + intp_all_metrics() stay UNCHANGED. v2 backport (C27/F7):
+ * system-wide / per-PID backends only (v2 has no cgroup target). Order matches
+ * portable.c / intp_portable_metrics(): schedlat psi_mem membw_est psi_io
+ * schedthr steal. */
+#define INTP_N_PORTABLE 6
+metric_t *metric_schedlat(void);
+metric_t *metric_psi_mem(void);
+metric_t *metric_membw_est(void);
+metric_t *metric_psi_io(void);
+metric_t *metric_schedthr(void);
+metric_t *metric_steal(void);
+
 /* Registry helpers used by main. */
 metric_t **intp_all_metrics(int *n_out);
+metric_t **intp_portable_metrics(int *n_out);
 
 /* Probe and select active backend. Returns 0 if at least one metric bound. */
 int  metric_select_backend(metric_t *m);

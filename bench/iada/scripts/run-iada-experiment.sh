@@ -38,7 +38,8 @@ set -euo pipefail
 : "${OUT_DIR:?OUT_DIR not set}"
 : "${WORKLOAD_MIX:=all}"
 : "${JAVA_HOME:=/usr/lib/jvm/java-17-openjdk-amd64}"
-: "${R_LIBS_USER:=$HOME/R/library}"
+# rJava may live in the site library (distro R) or the user library.
+: "${R_LIBS_USER:=$(Rscript -e 'cat(dirname(find.package("rJava")))' 2>/dev/null || echo "$HOME/R/library")}"
 : "${TIMEOUT:=7200}"
 
 JRI_DIR="$R_LIBS_USER/rJava/jri"
@@ -46,16 +47,22 @@ JRI_DIR="$R_LIBS_USER/rJava/jri"
 
 VARIANT_TREE="$IADA_TREE_ROOT/$VARIANT/$ENV/source"
 [ -d "$VARIANT_TREE" ] || { echo "FATAL: missing $VARIANT_TREE" >&2; exit 2; }
+# Exported (not just a shell var) so -Diada.oracleLabels=on's Java-side
+# oracleRescore can read this tier's own trace tree via System.getenv --
+# needed for the "self, full-window" comparison point (jsa-repo-fix-brief
+# Phase 3.2).
+export VARIANT_TREE
 
 RUN_DIR="$OUT_DIR/$VARIANT/$ENV/$WORKLOAD_MIX"
 mkdir -p "$RUN_DIR"
 
 # 1) Build input.txt (declarative app list pointing at our Meyer CSVs)
-#    For now: include all *.csv from source/ and use 48 PMs (paper config).
+#    PM count defaults to the paper's 48 and is overridable via PM_COUNT,
+#    which is what the host-count sweep varies (IADA Table 3: 6/12/24/48).
 #    Future: extend with WORKLOAD_MIX filtering.
 python3 "$(dirname "$0")/generate-iada-input.py" \
     --tree "$VARIANT_TREE" \
-    --pm-count 48 --pm-cpu 100 \
+    --pm-count "${PM_COUNT:-48}" --pm-cpu "${PM_CPU:-100}" \
     --output "$RUN_DIR/input.txt"
 
 # 2) Symlink CloudSim's expected resource path to our variant's tree
@@ -76,7 +83,8 @@ ln -sfn "$VARIANT_TREE" "$RESOURCE_LINK"
 export R_HOME="${R_HOME:-$(R RHOME)}"
 export LD_LIBRARY_PATH="$JRI_DIR:$R_HOME/lib:${LD_LIBRARY_PATH:-}"
 export R_LIBS_USER
-export INTP_R_FOLDER="$CLOUDSIM_REPO/R/"
+# honor a pre-set INTP_R_FOLDER (per-tier .rda + R sources); default to the fork
+export INTP_R_FOLDER="${INTP_R_FOLDER:-$CLOUDSIM_REPO/R/}"
 export INTP_R_LIBPATHS="$R_LIBS_USER"
 
 CP="$CLOUDSIM_REPO/bin"
@@ -85,9 +93,25 @@ CP="$CP:$CLOUDSIM_REPO/lib/commons-math3-3.3.jar:$CLOUDSIM_REPO/lib/opencsv-3.7.
 
 START=$(date +%s)
 set +e
+# Datacenter sizing. CLOUDLETS defaults to however many interference traces the
+# tree actually holds: xxIntExample submits cloudletList.subList(0, containers),
+# so asking for more containers than there are traces aborts the run.
+: "${IADA_CLOUDLETS:=$(find "$VARIANT_TREE" -name '*.csv' | wc -l)}"
+: "${IADA_HOSTS:=12}"
+: "${IADA_VMS:=$IADA_HOSTS}"
+
+# JVM flags in two layers. INTP_JAVA_OPTS is the JRI-safety set that
+# setup-iada.sh already writes into ~/.iada-env -- it was being defined there
+# and then ignored here, with the same three flags hardcoded below, so sourcing
+# the env file could not actually change them. IADA_JAVA_EXTRA is the per-arm
+# experiment hook (-Diada.vmStartup, -Diada.regime, -Diada.degTable,
+# -Diada.regimeRamp, -Diada.horizon). Both default to today's behaviour.
+: "${INTP_JAVA_OPTS:=-DR_SignalHandlers=0 -XX:+UseSerialGC -Xss8m}"
+: "${IADA_JAVA_EXTRA:=}"
+
 timeout "$TIMEOUT" "$JAVA_HOME/bin/java" \
-    -Xmx6g -Xss8m -XX:+UseSerialGC \
-    -DR_SignalHandlers=0 \
+    -Xmx6g $INTP_JAVA_OPTS $IADA_JAVA_EXTRA \
+    -Diada.hosts="$IADA_HOSTS" -Diada.vms="$IADA_VMS" -Diada.cloudlets="$IADA_CLOUDLETS" \
     -Djava.library.path="$JRI_DIR" \
     -cp "$CP" \
     cloudsim.interference.aaa.xxIntExample \

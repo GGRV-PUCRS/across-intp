@@ -128,6 +128,21 @@ metric_t **intp_all_metrics(int *n_out)
     return all;
 }
 
+/* VM-portable metrics (--portable-metrics, C26) -- SEPARATE from the canonical 7
+ * above; intp_all_metrics() is unchanged. Order matches portable.c. */
+metric_t **intp_portable_metrics(int *n_out)
+{
+    static metric_t *all[INTP_N_PORTABLE];
+    all[0] = metric_schedlat();
+    all[1] = metric_psi_mem();
+    all[2] = metric_membw_est();
+    all[3] = metric_psi_io();
+    all[4] = metric_schedthr();
+    all[5] = metric_steal();
+    if (n_out) *n_out = INTP_N_PORTABLE;
+    return all;
+}
+
 int intp_parse_pid_list(const char *spec, pid_t *out, int max)
 {
     if (!spec || !out || max <= 0) return 0;

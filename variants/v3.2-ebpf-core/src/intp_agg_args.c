@@ -50,6 +50,9 @@ void intp_args_usage(const char *prog, FILE *out)
         "V3.2-specific:\n"
         "  --clip-mbw              cap mbw_pct at 99 (default: emit raw %% even if > 100)\n"
         "  --no-raw-mbw            suppress the mbw_raw_mbps trailing column\n"
+        "  --portable-metrics      emit the 6 VM-portable columns (schedlat psi_mem\n"
+        "                          membw_est psi_io schedthr steal); SYSTEM-WIDE, the\n"
+        "                          canonical 7 stay byte-identical (C26)\n"
         "  --per-pid-output PATH   stream per-TGID TSV samples to PATH (optional)\n"
         "\n"
         "Hardware overrides:\n"
@@ -78,7 +81,7 @@ int intp_args_parse(int argc, char **argv, intp_args_t *out)
         O_PIDS = 1000, O_CGROUP, O_INTERVAL, O_DURATION, O_OUTPUT,
         O_NO_HEADER, O_NO_PERF, O_NO_RES, O_LIST_CAPS,
         O_VERBOSE, O_NIC_SPEED, O_MEM_BW, O_LLC_SIZE,
-        O_CLIP_MBW, O_NO_RAW_MBW, O_PER_PID_OUT
+        O_CLIP_MBW, O_NO_RAW_MBW, O_PER_PID_OUT, O_PORTABLE_METRICS
     };
 
     static struct option long_opts[] = {
@@ -98,6 +101,7 @@ int intp_args_parse(int argc, char **argv, intp_args_t *out)
         { "clip-mbw",          no_argument,       NULL, O_CLIP_MBW },
         { "no-raw-mbw",        no_argument,       NULL, O_NO_RAW_MBW },
         { "per-pid-output",    required_argument, NULL, O_PER_PID_OUT },
+        { "portable-metrics",  no_argument,       NULL, O_PORTABLE_METRICS },
         { "help",              no_argument,       NULL, 'h' },
         { 0, 0, 0, 0 }
     };
@@ -135,6 +139,7 @@ int intp_args_parse(int argc, char **argv, intp_args_t *out)
         case O_VERBOSE:      out->verbose           = 1; break;
         case O_CLIP_MBW:     out->clip_mbw          = 1; break;
         case O_NO_RAW_MBW:   out->no_raw_mbw        = 1; break;
+        case O_PORTABLE_METRICS: out->portable_metrics = 1; break;
         case O_PER_PID_OUT:  out->per_pid_output    = optarg; break;
         case O_NIC_SPEED:    out->nic_speed_bps_override  = atol(optarg); break;
         case O_MEM_BW:       out->mem_bw_max_bps_override = atol(optarg); break;

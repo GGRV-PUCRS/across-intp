@@ -36,6 +36,7 @@ typedef struct {
     /* V3.2-only knobs. */
     int    clip_mbw;        /* 1 = legacy V3 cap-at-99 clipping (default off) */
     int    no_raw_mbw;      /* 1 = suppress mbw_raw_mbps column (default off) */
+    int    portable_metrics; /* --portable-metrics: emit the VM-portable block (C26) */
     const char *per_pid_output;  /* NULL or path to per-TGID TSV stream */
 
     long   nic_speed_bps_override;   /* 0 = autodetect */

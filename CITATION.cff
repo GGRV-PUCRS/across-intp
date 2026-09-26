@@ -2,18 +2,22 @@ cff-version: 1.2.0
 message: "If you use this software in your research, please cite it as below."
 title: "Across-IntP — Multi-Variant Comparison Harness for the intp Interference Profiler"
 abstract: >
-  Nine implementation variants of intp, an interference profiler that collects
-  seven metrics from the Linux kernel. Developed as part of a Master's
-  dissertation on kernel instrumentation for interference profiling. The
-  measured baseline (intp-baseline, v0.2) preserves the probe set of the
+  Eleven implementation variants of intp, an interference profiler that
+  collects system-level metrics from the Linux kernel. Developed as part of a
+  Master's dissertation on kernel instrumentation for interference profiling.
+  The measured baseline (intp-baseline, v0.2) preserves the probe set of the
   original SystemTap IntP (Xavier et al., 2022) verbatim and isolates the two
-  RCU-unsafe operations in a userspace helper; it serves as the legacy-faithful
-  reference contract against two modern substrates, a portable C version on
-  stable userspace ABIs and an eBPF/CO-RE version. The remaining variants
-  (stap-2022, stap-nollc, stap-nohelper, stap-modern, ebpf-ring, bpftrace)
-  document the portability and reliability cliffs and corroborate the measured
-  results. Evaluates portability, overhead, and fidelity trade-offs across
-  instrumentation ABIs.
+  RCU-unsafe operations in a userspace helper; it serves as the
+  legacy-faithful reference contract against two modern substrates, a portable
+  C version on stable userspace ABIs and an eBPF/CO-RE version. Release 0.2.0
+  adds the two cgroup-native variants behind the container and
+  virtual-machine deployment study: v2.1 in pure C over stable userspace ABIs
+  and v3.3 in eBPF/CO-RE, both attributing per cgroup and emitting a 15-metric
+  fingerprint (seven canonical, six portable, two scheduling-regime metrics).
+  The remaining variants (stap-2022, stap-nollc, stap-nohelper, stap-modern,
+  ebpf-ring, bpftrace) document the portability and reliability cliffs and
+  corroborate the measured results. Evaluates portability, overhead, and
+  fidelity trade-offs across instrumentation ABIs.
 authors:
   - family-names: "Sacilotto"
     given-names: "André"
@@ -26,13 +30,14 @@ type: software
 keywords:
   - interference profiling
   - Linux kernel
-  - SystemTap
+  - cgroups
+  - containers
+  - virtual machines
   - eBPF
-  - bpftrace
   - performance monitoring
   - cloud computing
-version: "0.1.0"
-date-released: "2026-08-15"
+version: "0.2.0"
+date-released: "2026-09-25"
 preferred-citation:
   type: conference-paper
   title: "Cross-Application Interference Profiling in Consolidated Cloud Servers: Improving Portability, Overhead and Fidelity in IntP"

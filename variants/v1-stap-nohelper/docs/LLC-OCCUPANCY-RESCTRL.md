@@ -105,9 +105,9 @@ sudo rdmsr -p 0 0xC8F  # Returns 0 if not supported
 
 | File | Description | Hardware Required |
 |------|-------------|-------------------|
-| [intp-6.8.stp](intp-6.8.stp) | Standard IntP, LLC occupancy disabled | Any Intel CPU |
-| [intp-resctrl.stp](intp-resctrl.stp) | IntP with resctrl LLC monitoring | Intel Xeon with RDT |
-| [intp-resctrl-helper.sh](intp-resctrl-helper.sh) | Helper daemon for resctrl | Intel Xeon with RDT |
+| [intp-6.8.stp](../../v0.1-stap-nollc/intp-6.8.stp) | Standard IntP, LLC occupancy disabled | Any Intel CPU |
+| [intp-resctrl.stp](../intp-resctrl.stp) | IntP with resctrl LLC monitoring | Intel Xeon with RDT |
+| [intp-resctrl-helper.sh](../../../shared/intp-resctrl-helper.sh) | Helper daemon for resctrl | Intel Xeon with RDT |
 
 ## Using intp-resctrl.stp (For Supported Hardware)
 

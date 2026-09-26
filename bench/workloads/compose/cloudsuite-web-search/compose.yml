@@ -1,0 +1,35 @@
+# CloudSuite web-search: one Solr index node (profiled) + the Faban client
+# image looping its benchmark run (load-client -> `load*` convention: outside
+# the profiled parent, pinned to the host third by the generated override).
+#
+# The index is an EXTERNAL volume (survives the harness's per-rep `down -v`),
+# populated once by bench/setup/setup-cloudsuite-workload.sh from the
+# cloudsuite/web-search:dataset image. INDEX_MOUNT and SOLR_HEAP come from the
+# installer-written .env in this directory (the mount path is discovered from
+# the dataset image rather than hard-coded against a CloudSuite release).
+services:
+  server:
+    image: cloudsuite/web-search:server
+    command: ["${SOLR_HEAP:?run bench/setup/setup-cloudsuite-workload.sh}", "1"]
+    ports:
+      - "8983:8983"
+    volumes:
+      - "websearch_index:${INDEX_MOUNT:?run bench/setup/setup-cloudsuite-workload.sh}"
+
+  load-client:
+    image: cloudsuite/web-search:client
+    depends_on:
+      - server
+    entrypoint: ["/bin/bash", "/driver/ws-load-loop.sh"]
+    environment:
+      FABAN_WORKERS: "${FABAN_WORKERS:-16}"
+      FABAN_STEADY: "${FABAN_STEADY:-600}"
+      FABAN_INTERVAL_MIN: "${FABAN_INTERVAL_MIN:-200}"
+      FABAN_INTERVAL_MAX: "${FABAN_INTERVAL_MAX:-400}"
+    volumes:
+      - ./ws-load-loop.sh:/driver/ws-load-loop.sh:ro
+
+volumes:
+  websearch_index:
+    external: true
+    name: intp-cs-websearch-index

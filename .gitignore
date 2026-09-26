@@ -4,8 +4,13 @@
 # Compiled binaries (one per implementation variant)
 variants/v1.1-stap-modern/intp-helper
 variants/v2-c-abi/intp-c-abi
+variants/v2.1-c-abi-cgroup/intp-c-abi-cgroup
 variants/v3-ebpf-ring/intp-ebpf-ring
 variants/v3.2-ebpf-core/intp-ebpf-core
+
+# v2.1 unit-test binaries (in-place build; keep the .c sources)
+variants/v2.1-c-abi-cgroup/tests/test-*
+!variants/v2.1-c-abi-cgroup/tests/test-*.c
 
 # Generic C/C++ build artifacts
 *.o
@@ -51,11 +56,36 @@ venv/
 # Local-only rename artifacts (kept around the migration window)
 /rename-preview*.diff
 
-# Local Claude Code instructions (kept out of git on purpose)
+# Local assistant instructions and settings (kept out of git on purpose)
 /CLAUDE.md
 /.claude
-# Claude local/private
 .claude/settings.local.json
 
 # Generated knowledge graph
 .understand-anything/
+# machine-local compose driver sizing (written by bench/setup/setup-cloudsuite-workload.sh)
+bench/workloads/compose/*/.env
+
+# Electron/VS Code user-data spilled into the repo root by an editor run with
+# its --user-data-dir pointed here (root-owned; see C33-era session notes).
+# Root-anchored so legitimate nested paths are unaffected. Safe to delete the
+# dirs with sudo once no editor is running from this directory.
+/Backups/
+/blob_storage/
+/Cache/
+/CachedConfigurations/
+/CachedData/
+/CachedProfilesData/
+/Code Cache/
+/Crashpad/
+/DawnGraphiteCache/
+/DawnWebGPUCache/
+/Dictionaries/
+/Dictionary/
+/GPUCache/
+/Local Storage/
+/logs/
+/Session Storage/
+/Shared Dictionary/
+/Storage/
+/User/

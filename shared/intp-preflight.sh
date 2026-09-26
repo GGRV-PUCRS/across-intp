@@ -2,7 +2,7 @@
 # -----------------------------------------------------------------------------
 # intp-preflight.sh -- Verify a host has every hardware/software interface
 # required to build and run all IntP variants (V0, V0.1, V0.2, V1, V1.1, V2,
-# V3.1, V3, V3.2) and the bench harness in bench/run-intp-bench.sh.
+# V2.1, V3.1, V3, V3.2, V3.3) and the bench harness in bench/run-intp-bench.sh.
 #
 # Output is a per-variant matrix (BUILD + RUN) with a per-metric coverage map.
 # Each check is OK / DEGRADED / MISSING with the underlying reason. The script
@@ -17,7 +17,8 @@
 #                                          # 0 unless every variant is broken)
 #   ./intp-preflight.sh --quiet            # only the final summary
 #
-# Variant selectors: v0 v0.1 v0.2 v1 v1.1 v2 v3.1 v3 v3.2 bench (harness deps).
+# Variant selectors: v0 v0.1 v0.2 v1 v1.1 v2 v2.1 v3.1 v3 v3.2 v3.3 bench
+# (harness deps). v2.1/v3.3 are the c-abi-cgroup (container/VM) endpoints.
 # -----------------------------------------------------------------------------
 
 set -u
@@ -29,7 +30,7 @@ set -u
 # CLI
 # -----------------------------------------------------------------------------
 
-ALL_VARIANTS=(v0 v0.1 v0.2 v1 v1.1 v2 v3.1 v3 v3.2 bench)
+ALL_VARIANTS=(v0 v0.1 v0.2 v1 v1.1 v2 v2.1 v3.1 v3 v3.2 v3.3 bench)
 SELECTED=()
 JSON=0
 STRICT=0
@@ -334,6 +335,118 @@ check_perf_uncore() {
 }
 
 # -----------------------------------------------------------------------------
+# D2. Container / VM / cgroup attribution (V2.1, V3.3)
+#
+# v2.1 (c-abi-cgroup hybrid-C) and v3.3 (eBPF c-abi-cgroup) attribute the
+# canonical metrics per-cgroup so a container or VM can be measured as "a
+# cgroup". That path needs: cgroup v2 unified hierarchy mounted at
+# /sys/fs/cgroup, perf_event cgroup-mode (PERF_FLAG_PID_CGROUP; kernel >= 5.8),
+# and -- for v3.3's cgroup_skb netp attach -- CAP_NET_ADMIN (plus CAP_BPF /
+# CAP_PERFMON, normally satisfied by running as root). sched_ext is an
+# informational probe for the future IADA/scheduler leg. This section is
+# READ-ONLY: it never mounts cgroup2, never loads BPF, never changes anything.
+# -----------------------------------------------------------------------------
+
+check_cgroup_v2() {
+    section "cgroup v2 unified hierarchy (V2.1, V3.3)"
+
+    # cgroup v2 unified: /sys/fs/cgroup is itself a cgroup2 mount (no /unified
+    # subdir on a pure-v2 host). Accept either a mountpoint with a cgroup2 entry
+    # in /proc/mounts, or the cgroup.controllers file that only v2 exposes.
+    local is_v2=0
+    if grep -Eq '(^| )cgroup2 /sys/fs/cgroup ' /proc/mounts 2>/dev/null \
+            || grep -Eq 'cgroup2 /sys/fs/cgroup ' /proc/self/mounts 2>/dev/null; then
+        is_v2=1
+    fi
+    if [ "$is_v2" -eq 1 ] && [ -r /sys/fs/cgroup/cgroup.controllers ]; then
+        local ctrl; ctrl=$(tr '\n' ' ' < /sys/fs/cgroup/cgroup.controllers 2>/dev/null)
+        record cgroup_v2 unified OK "cgroup2 at /sys/fs/cgroup; controllers: ${ctrl% }"
+        emit OK "cgroup v2 unified at /sys/fs/cgroup (controllers: ${ctrl% })"
+    elif [ "$is_v2" -eq 1 ]; then
+        record cgroup_v2 unified DEGRADED "cgroup2 mounted but cgroup.controllers unreadable"
+        emit DEGRADED "cgroup v2 mounted but cgroup.controllers unreadable"
+    elif [ -d /sys/fs/cgroup/unified ] || grep -q cgroup2 /proc/mounts 2>/dev/null; then
+        record cgroup_v2 unified DEGRADED "hybrid cgroup layout (v2 present but not unified at /sys/fs/cgroup)"
+        emit DEGRADED "hybrid cgroup layout -- v2.1/v3.3 need cgroup v2 UNIFIED (systemd.unified_cgroup_hierarchy=1)"
+    else
+        record cgroup_v2 unified MISSING "no cgroup2 mount (host is cgroup v1 only)"
+        emit MISSING "no cgroup v2 unified hierarchy -- v2.1/v3.3 per-cgroup attribution unavailable"
+    fi
+}
+
+check_perf_cgroup() {
+    section "perf_event cgroup-mode (V2.1, V3.3)"
+
+    # There is no direct sysfs probe for PERF_FLAG_PID_CGROUP; the kernel gate is
+    # >= 5.8 (the cgroup v2 + perf cgroup-mode baseline both v2.1 and v3.3 use).
+    # perf_event_open itself is checked in check_perf_uncore (perf:perf_events).
+    if kernel_ge 5 8; then
+        record perf_cgroup cgroup_mode OK "kernel $KREL >= 5.8 (PERF_FLAG_PID_CGROUP supported)"
+        emit OK "perf cgroup-mode (kernel $KREL >= 5.8)"
+    else
+        record perf_cgroup cgroup_mode MISSING "kernel $KREL < 5.8 -- no per-cgroup perf attribution"
+        emit MISSING "perf cgroup-mode needs kernel >= 5.8 (have $KREL)"
+    fi
+}
+
+check_capabilities() {
+    section "Capabilities (CAP_BPF / CAP_PERFMON / CAP_NET_ADMIN)"
+
+    # Soft, informational: when running as root every capability is present, so
+    # the verdicts gate on priv:root rather than these. The probe still surfaces
+    # whether an unprivileged in-container/in-guest attach (v3.3 cgroup_skb)
+    # could work. Prefer capsh --print; fall back to /proc/self/status CapEff.
+    local have_capsh=0
+    command -v capsh >/dev/null 2>&1 && have_capsh=1
+
+    _cap_present() {
+        # _cap_present <cap_name>  (e.g. cap_net_admin)
+        local name="$1"
+        if [ "$have_capsh" -eq 1 ]; then
+            capsh --print 2>/dev/null | grep -qiw "$name" && return 0
+            return 1
+        fi
+        # Without capsh: root has the full set; otherwise we cannot decode the
+        # CapEff bitmask portably, so report unknown (treated as DEGRADED).
+        [ "$(id -u 2>/dev/null)" = "0" ] && return 0
+        return 2
+    }
+
+    local cap rec
+    for cap in cap_perfmon cap_bpf cap_net_admin; do
+        case "$cap" in
+            cap_net_admin) rec=cap_net_admin ;;
+            cap_perfmon)   rec=cap_perfmon ;;
+            cap_bpf)       rec=cap_bpf ;;
+        esac
+        _cap_present "$cap"
+        case $? in
+            0) record capabilities "$rec" OK "$cap present"
+               emit OK "$cap present" ;;
+            1) record capabilities "$rec" DEGRADED "$cap not in current set (root or setcap needed for unprivileged attach)"
+               emit DEGRADED "$cap absent (root/setcap needed for in-container/in-guest attach)" ;;
+            *) record capabilities "$rec" DEGRADED "$cap unverifiable (no capsh, not root)"
+               emit DEGRADED "$cap unverifiable (install libcap2-bin for capsh, or run as root)" ;;
+        esac
+    done
+    unset -f _cap_present
+}
+
+check_sched_ext() {
+    section "sched_ext (future IADA / scheduler leg)"
+
+    # Informational only: not used in any verdict yet. The IADA leg attaches a
+    # BPF scheduler via sched_ext/scx.
+    if [ -d /sys/kernel/sched_ext ]; then
+        record sched_ext available OK "/sys/kernel/sched_ext present"
+        emit OK "/sys/kernel/sched_ext present (sched_ext/scx available)"
+    else
+        record sched_ext available MISSING "/sys/kernel/sched_ext absent (CONFIG_SCHED_CLASS_EXT=n or kernel < 6.12)"
+        emit INFO "/sys/kernel/sched_ext absent -- IADA/scx leg not runnable (informational)"
+    fi
+}
+
+# -----------------------------------------------------------------------------
 # E. BTF (V3, V3.1)
 # -----------------------------------------------------------------------------
 
@@ -453,10 +566,41 @@ check_toolchains() {
         emit MISSING "zlib1g-dev"
     fi
 
-    # Optional environment tooling for bench --env=container/vm
+    # Optional environment tooling for bench --env=container/container-lxc/vm.
+    # Either docker OR lxc satisfies a container environment; libvirt (virsh) +
+    # virt-install complement qemu for managed-VM provisioning.
     check_cmd tools docker          docker             "docker (env=container)"
+    check_cmd tools podman          podman             "podman (env=container-podman, daemonless OCI)"
+    check_cmd tools lxc             lxc                "lxc (env=container-lxc, LXD/Incus)"
     check_cmd tools qemu            qemu-system-x86_64 "qemu-system-x86_64 (env=vm)"
     check_cmd tools cloud_localds   cloud-localds     "cloud-localds (env=vm)"
+    check_cmd tools virsh           virsh              "virsh (env=vm, libvirt mgmt)"
+    check_cmd tools virt_install    virt-install       "virt-install (env=vm guest setup)"
+
+    # env=container-k8s (k3s pods). kubectl drives pod lifecycle; crictl resolves
+    # the pod container's host-PID-namespace PID for the profiler to target the
+    # deep kubepods cgroup. k3s itself is opt-in heavy (setup-host.sh --with-k8s)
+    # and is not required to run other environments.
+    check_cmd tools kubectl         kubectl            "kubectl (env=container-k8s, k3s pods)"
+    check_cmd tools crictl          crictl             "crictl (env=container-k8s, pod container PID resolution)"
+
+    # Probe k3s presence read-only: a k3s binary or unit file is enough to flag
+    # the container-k8s env as runnable. Absence is informational, not a failure.
+    local k3s_seen=0
+    if command -v k3s >/dev/null 2>&1; then
+        k3s_seen=1
+    elif [ -f /etc/systemd/system/k3s.service ] || \
+         [ -f /usr/local/lib/systemd/system/k3s.service ] || \
+         [ -f /lib/systemd/system/k3s.service ]; then
+        k3s_seen=1
+    fi
+    if [ "$k3s_seen" -eq 1 ]; then
+        record tools k3s OK "k3s present (env=container-k8s)"
+        emit OK "k3s present (env=container-k8s)"
+    else
+        record tools k3s INFO "k3s absent (env=container-k8s optional; install via setup-host.sh --with-k8s)"
+        emit INFO "k3s absent -- env=container-k8s optional (install via setup-host.sh --with-k8s)"
+    fi
 }
 
 # -----------------------------------------------------------------------------
@@ -490,6 +634,10 @@ check_kernel_and_cpu
 check_rdt
 check_nic
 check_perf_uncore
+check_cgroup_v2
+check_perf_cgroup
+check_capabilities
+check_sched_ext
 check_btf
 check_debuginfo
 check_toolchains
@@ -670,6 +818,31 @@ if want_variant v2; then
         priv:root:required
 fi
 
+# v2.1 -- C / c-abi-cgroup hybrid (intp-c-abi, same as v2) + cgroup v2 unified
+# + perf cgroup-mode for per-cgroup attribution. Kernel >= 5.8 (cgroup v2 +
+# PERF_FLAG_PID_CGROUP baseline). Same toolchain as v2 (gcc/make); 6/7 metrics
+# per-cgroup, nets stays system-wide.
+if want_variant v2.1; then
+    if kernel_ge 5 8; then
+        record kernel_v21 era OK "kernel $KREL >= 5.8 (cgroup v2 + perf cgroup-mode)"
+    else
+        record kernel_v21 era MISSING "kernel $KREL < 5.8 (cgroup v2 + perf cgroup-mode baseline)"
+    fi
+    verdict v2.1 BUILD \
+        tools:gcc:required \
+        tools:make:required
+    verdict v2.1 RUN \
+        kernel_v21:era:required \
+        kernel:tracefs:required \
+        kernel:perf_paranoid:required \
+        perf:perf_events:required \
+        cgroup_v2:unified:required \
+        perf_cgroup:cgroup_mode:required \
+        rdt:resctrl_mounted:recommended \
+        rdt:cpu_flag_cqm:recommended \
+        priv:root:required
+fi
+
 # v3.1 -- bpftrace + python orchestrator
 if want_variant v3.1; then
     if kernel_ge 5 8; then
@@ -743,6 +916,39 @@ if want_variant v3.2; then
         priv:root:required
 fi
 
+# v3.3 -- eBPF c-abi-cgroup (intp-ebpf-core-cgroup, sibling of v3.2). Same toolchain
+# as v3.2 (clang/libbpf/bpftool/BTF/libelf/zlib) PLUS cgroup v2 unified +
+# cgroup_skb attach (CAP_NET_ADMIN) + perf cgroup-mode + bio-owner blk. Kernel
+# >= 5.8 (cgroup-BPF + cgroup v2 floor). per-cgroup counter maps; nets is a
+# per-cgroup byte-share proxy.
+if want_variant v3.3; then
+    if kernel_ge 5 8; then
+        record kernel_v33 era OK "kernel $KREL >= 5.8 (cgroup-BPF + cgroup v2)"
+    else
+        record kernel_v33 era MISSING "kernel $KREL < 5.8 (cgroup-BPF + cgroup v2 baseline)"
+    fi
+    verdict v3.3 BUILD \
+        tools:clang:required \
+        tools:gcc:required \
+        tools:make:required \
+        tools:libbpf:required \
+        tools:bpftool:required \
+        tools:libelf:required \
+        tools:zlib:required \
+        btf:vmlinux:required
+    verdict v3.3 RUN \
+        kernel_v33:era:required \
+        btf:vmlinux:required \
+        kernel:tracefs:required \
+        kernel:perf_paranoid:required \
+        perf:perf_events:required \
+        cgroup_v2:unified:required \
+        perf_cgroup:cgroup_mode:required \
+        capabilities:cap_net_admin:recommended \
+        rdt:resctrl_mounted:recommended \
+        priv:root:required
+fi
+
 # bench harness -- bench/run-intp-bench.sh and helpers
 if want_variant bench; then
     verdict bench BUILD \
@@ -759,8 +965,12 @@ if want_variant bench; then
         tools:iperf3:recommended \
         tools:numactl:recommended \
         tools:docker:recommended \
+        tools:podman:recommended \
+        tools:lxc:recommended \
         tools:qemu:recommended \
         tools:cloud_localds:recommended \
+        tools:virsh:recommended \
+        tools:virt_install:recommended \
         priv:root:required
 fi
 
