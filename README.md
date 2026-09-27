@@ -1,5 +1,7 @@
 # Across-IntP: Multi-Variant Interference Profiler
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21959350.svg)](https://doi.org/10.5281/zenodo.21959350)
+
 <img src="docs/images/across-intp.png" alt="Across-IntP — Linux interference profiler with multi-variant comparison of SystemTap, procfs, bpftrace, and eBPF/CO-RE instrumentation." width="720">
 
 This repository contains eleven implementation variants of IntP, an interference
