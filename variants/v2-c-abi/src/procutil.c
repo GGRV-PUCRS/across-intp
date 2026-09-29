@@ -5,6 +5,7 @@
 #include "procutil.h"
 
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -96,6 +97,25 @@ int procutil_read_netdev(netdev_entry_t *entries, size_t max)
         e->tx_packets = tx_p;
     }
     fclose(f);
+    return (int)n;
+}
+
+int procutil_read_proc_tasks(pid_t pid, pid_t *out, size_t max)
+{
+    if (!out || max == 0) return 0;
+    char p[64];
+    snprintf(p, sizeof(p), "/proc/%d/task", (int)pid);
+    DIR *d = opendir(p);
+    if (!d) return 0;
+    size_t n = 0;
+    struct dirent *de;
+    while (n < max && (de = readdir(d)) != NULL) {
+        char *end;
+        long tid = strtol(de->d_name, &end, 10);
+        if (end == de->d_name || *end != '\0' || tid <= 0) continue;
+        out[n++] = (pid_t)tid;
+    }
+    closedir(d);
     return (int)n;
 }
 
