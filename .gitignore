@@ -11,6 +11,7 @@ variants/v3.2-ebpf-core/intp-ebpf-core
 # v2.1 unit-test binaries (in-place build; keep the .c sources)
 variants/v2.1-c-abi-cgroup/tests/test-*
 !variants/v2.1-c-abi-cgroup/tests/test-*.c
+variants/v2.1-c-abi-cgroup/tests/helpers/mt_spin
 
 # Generic C/C++ build artifacts
 *.o

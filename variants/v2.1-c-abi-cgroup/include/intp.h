@@ -20,6 +20,7 @@
 
 #define INTP_MAX_BACKENDS_PER_METRIC 4
 #define INTP_MAX_PIDS                256
+#define INTP_MAX_TIDS                16384   /* per-TID portable metrics (C38) */
 #define INTP_VERSION                 "v2.1-0.1"
 
 typedef enum {
