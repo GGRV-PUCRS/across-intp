@@ -4,7 +4,7 @@ Reference variant: **V0 (stap-2022)** (`variants/v0-stap-2022/intp.stp`) — the
 
 This document tracks how each metric is computed across the 11 variants and which divergences have been corrected.
 
-> **Scope:** this matrix covers the **canonical 7 metrics** (`netp nets blk mbw llcmr llcocc cpu`). The six VM-portable metrics (`schedlat psi_mem membw_est psi_io schedthr steal`) are a SEPARATE, opt-in `--portable-metrics` benchmark on v2.1-c-abi-cgroup/v3.3-ebpf-core-cgroup — they do not alter this alignment and are documented in [docs/reports/8th-metric-vm-portable-design.md](docs/reports/8th-metric-vm-portable-design.md) (C26/C27).
+> **Scope:** this matrix covers the **canonical 7 metrics** (`netp nets blk mbw llcmr llcocc cpu`). The eight portable and regime columns (`schedlat psi_mem membw_est psi_io schedthr steal psp idle_preempt`; `idle_preempt` is eBPF-only) are a SEPARATE, opt-in `--portable-metrics` benchmark on v2.1-c-abi-cgroup/v3.3-ebpf-core-cgroup — they do not alter this alignment and are documented in [docs/reports/8th-metric-vm-portable-design.md](docs/reports/8th-metric-vm-portable-design.md) (C26/C27).
 
 ## Variant index
 

@@ -164,7 +164,8 @@ SKIP_BUILD=0
 ALLOW_V0_ON_NEW_KERNEL=0
 OUTPUT_DIR=""
 # --portable-metrics (C26 / DESIGN §10): a SEPARATE benchmark that captures the
-# 6 VM-portable metrics (schedlat psi_mem membw_est psi_io schedthr steal) into
+# 8 portable and regime metrics (schedlat psi_mem membw_est psi_io schedthr steal
+# psp idle_preempt) into
 # portable.tsv (instead of profiler.tsv) and aggregates them, header-aware, into
 # aggregate-portable-means.tsv. The canonical 7-metric capture is untouched;
 # only v2.1 and v3.3 implement --portable-metrics, so pair this with
@@ -3540,7 +3541,7 @@ run_profiler_v2_1() {
         return 0
     fi
     local args=( --interval "$INTERVAL" --duration "$duration" --output tsv )
-    # Portable benchmark (C26): append the 6 VM-portable columns. Canonical 7
+    # Portable benchmark (C26): append the 8 portable and regime columns. Canonical 7
     # stay byte-identical; the capture lands in portable.tsv (run_one).
     [ "$PORTABLE_METRICS" = "1" ] && args+=( --portable-metrics )
     local scope="system-wide"
@@ -3752,9 +3753,9 @@ run_profiler_v3_3() {
     # --no-diag-cols (C13): captured TSV stays leading-ts + exactly 7 metrics.
     local args=( --interval "$INTERVAL" --duration "$duration"
                  --output tsv --no-diag-cols )
-    # Portable benchmark (C26): append the 6 VM-portable columns AFTER the 7
-    # canonical (--no-diag-cols still suppresses the 4 diag cols, so the row is
-    # leading-ts + 7 canonical + 6 portable = 14 fields). Capture -> portable.tsv.
+    # Portable benchmark (C26): append the 8 portable and regime columns AFTER
+    # the 7 canonical (--no-diag-cols still suppresses the 4 diag cols, so the row
+    # is leading-ts + 7 canonical + 8 portable = 16 fields). Capture -> portable.tsv.
     [ "$PORTABLE_METRICS" = "1" ] && args+=( --portable-metrics )
     local scope="system-wide"
     if [ -n "$cgroup_path" ]; then
@@ -3798,7 +3799,7 @@ _inguest_profiler_cmd() {
     # stress-ng supervisor misses the worker children (cpu/llcmr ~0). T1.
     local variant="$1" pid="$2" duration="$3" interval="$4" prefix="$5" cgroup="${6:-}"
     # Portable benchmark (C26): the in-guest v2.1/v3.3 invocations also append
-    # the 6 VM-portable columns. This is the path that recovers the
+    # the 8 portable and regime columns. This is the path that recovers the
     # memory/scheduling dimensions in-guest where mbw/llcocc/llcmr are gapped.
     local pm=""
     [ "$PORTABLE_METRICS" = "1" ] && pm=" --portable-metrics"

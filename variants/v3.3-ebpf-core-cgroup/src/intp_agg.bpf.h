@@ -119,15 +119,19 @@ struct intp_counters {
     __u64 llc_refs;
     __u64 llc_misses;
     __u64 schedlat_wait_ns_sum;  /* run-queue wait ns charged to the incoming
-                                  * task's cgroup (schedlat / Volpert PSL, C26). */
+                                  * task's cgroup (schedlat: run-queue wait, as
+                                  * Volpert's PSL; normalized by interval x CPUs
+                                  * instead of per process, C26). */
     __u64 psp_count;             /* involuntary preemptions of target tasks
                                   * (prev still RUNNABLE at sched_switch) --
-                                  * Volpert PSP, scheduling-regime sub-family.
+                                  * scheduling-regime sub-family. NOT Volpert's
+                                  * PSP (switches to PID 0 as a throttling
+                                  * indicator; throttling is schedthr).
                                   * Always counted; emitted only --portable-metrics
                                   * (canonical 7 untouched, like schedlat). */
-    __u64 idle_preempt_count;    /* target task taking over a previously-idle CPU
-                                  * (prev = swapper/pid0) -- idle-task preemption
-                                  * rate, scheduling-regime; emitted --portable-metrics. */
+    __u64 idle_preempt_count;    /* idle-CPU takeover rate (prev = swapper,
+                                  * next = target task), scheduling-regime;
+                                  * emitted --portable-metrics. */
     /* Cache-line pad. 17 fields * 8 = 136 bytes; +7*8 = 192 bytes (a 64-byte
      * cache-line multiple on x86_64). Keep the struct a 64-byte multiple so two
      * adjacent per-CPU slots never share a line; recheck false-sharing if the

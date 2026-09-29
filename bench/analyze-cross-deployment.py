@@ -5,7 +5,7 @@ The fused Track-A+B headline (DECISIONS C25/C26/C27): operationalizes the adviso
 frame "measure the same application on bare metal, then on container/VM" as paired
 per-(workload, metric, variant) deltas against the BARE baseline, across the full
 deployment axis (bare -> docker -> podman -> incus -> k3s -> vm-guest), over the
-13-metric superset (7 canonical + 6 VM-portable) captured by one --portable-metrics
+15-metric superset (7 canonical + 8 portable and regime) captured by one --portable-metrics
 campaign. This is the cross-deployment analogue of Volpert et al.'s relative
 degradation D = C_i / C_bare.
 

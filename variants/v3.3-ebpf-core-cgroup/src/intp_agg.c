@@ -188,8 +188,11 @@ static int read_psi_some_total_us(const char *path, unsigned long long *out)
     return rc;
 }
 
-/* CFS-bandwidth throttled time (microseconds) from a cgroup cpu.stat. Absent
- * when no cpu.max quota is set (no throttled_usec line) -> returns -1. */
+/* CFS-bandwidth throttled time (microseconds) from a cgroup cpu.stat. The
+ * throttled_usec line exists whenever the cpu controller is enabled and reads 0
+ * without a cpu.max limit; returns -1 only when the line is absent (controller
+ * not enabled). Non-hierarchical: counts only this cgroup's own limit
+ * (Documentation/admin-guide/cgroup-v2.rst, cpu.stat). */
 static int read_cpu_stat_throttled_us(const char *path, unsigned long long *out)
 {
     FILE *f = fopen(path, "r");
@@ -519,7 +522,9 @@ typedef struct {
      * (e.g. CONFIG_PSI=n, or no cgroup target for schedthr) -> emitted "--",
      * never a fake 0. schedlat moved here from the diag block. */
     double schedlat;     /* run-queue (scheduling) latency %, eBPF           */
-                         /* sched_wakeup->sched_switch (Volpert PSL)         */
+                         /* sched_wakeup->sched_switch (run-queue wait, as   */
+                         /* Volpert's PSL; normalized by interval x CPUs     */
+                         /* instead of per process)                          */
     double psi_mem;      /* PSI memory.pressure 'some', %-of-interval        */
     double membw_est;    /* DRAM-bandwidth estimate, MB/s: llc_misses*64B    */
                          /* /interval (mbw complement; in-guest portable)    */
@@ -528,8 +533,9 @@ typedef struct {
                          /* (confound guard, not a contention signal)        */
     double steal;        /* hypervisor-stolen vCPU %, /proc/stat field 8     */
                          /* (VM-global; 0 on bare/container)                 */
-    double psp;          /* involuntary preemption rate, events/s (Volpert   */
-                         /* PSP) -- scheduling-regime sub-family             */
+    double psp;          /* involuntary preemption rate of the target's      */
+                         /* tasks, events/s -- scheduling-regime sub-family; */
+                         /* not Volpert's PSP (throttling guard: schedthr)   */
     double idle_preempt; /* idle-CPU takeover rate, events/s                 */
 } intp_sample_t;
 
@@ -1143,7 +1149,8 @@ int main(int argc, char **argv)
             sample.membw_est = (membw_ok && interval_real > 0.0)
                 ? ((double)miss * 64.0 / interval_real) / 1e6 : NAN;
 
-            /* scheduling-regime rates (PSP + idle-preempt): per-cgroup (or host-
+            /* scheduling-regime rates (psp + idle_preempt; psp is not Volpert's
+             * PSP, which counts switches to PID 0): per-cgroup (or host-
              * wide) counts / interval -> events/s. Counted unconditionally in the
              * tp_btf/sched_switch handler; surfaced only here under the flag. */
             sample.psp = sample.idle_preempt = NAN;

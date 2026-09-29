@@ -155,19 +155,27 @@ x = supported, ~ = polling approximation, - = disabled in this build
 
 A stock KVM guest cannot measure `mbw`/`llcocc` (resctrl is host-only) or a
 comparable `llcmr` (the LL-read PMU events are not virtualized). `v2.1` and `v3.3`
-therefore offer six additional metrics computed by the **guest's own kernel** as a
-SEPARATE, flag-gated benchmark (`--portable-metrics`) — the canonical 7-metric
+therefore offer eight additional columns -- six portable metrics computed by the
+**guest's own kernel** plus a scheduling-regime pair -- as a SEPARATE, flag-gated
+benchmark (`--portable-metrics`) — the canonical 7-metric
 fingerprint above and its on-disk schema are left untouched. Design + status:
 [docs/reports/8th-metric-vm-portable-design.md](docs/reports/8th-metric-vm-portable-design.md).
 
-- **schedlat** -- run-queue / scheduling latency (eBPF `sched_wakeup`→`sched_switch`
-  in v3.3; PSI `cpu.pressure` / `schedstat` in v2.1) — *directional*
+- **schedlat** -- run-queue wait of the target's threads, % of interval × CPUs
+  (eBPF `sched_wakeup`→`sched_switch` in v3.3; per-thread `/proc/<tid>/schedstat`
+  in v2.1, PSI `cpu.pressure` as fallback) — *directional*
 - **psi_mem** -- PSI `memory.pressure` (memory-capacity contention) — *descriptive*
 - **membw_est** -- DRAM-bandwidth estimate (LLC misses × 64 B / interval, MB/s; the
   bandwidth complement `psi_mem` is blind to, and the metric that survives in-guest) — *descriptive*
 - **psi_io** -- PSI `io.pressure` (`blk`'s contention companion) — *descriptive*
-- **schedthr** -- CFS throttling (`cpu.stat`, a confound guard) — *descriptive*
-- **steal** -- hypervisor-stolen vCPU time (`/proc/stat`; VM-global) — *descriptive*
+- **schedthr** -- CFS throttling (`cpu.stat` `throttled_usec`, a confound guard;
+  reads 0 without a `cpu.max` limit and counts only the cgroup's own limit) — *descriptive*
+- **steal** -- hypervisor-stolen vCPU time (`/proc/stat`; VM-global, reflects host
+  CPU contention only) — *descriptive*
+- **psp** -- involuntary preemptions/s of the target's threads (scheduling regime;
+  not Volpert's PSP, whose throttling role `schedthr` plays)
+- **idle_preempt** -- idle-CPU takeovers/s: the target's tasks dispatched onto a
+  previously idle CPU (scheduling regime; eBPF-only, `--` in v2.1)
 
 ## Directory Layout
 
@@ -445,7 +453,8 @@ The `vm-guest` leg yields valid per-cgroup `cpu`, but the RDT/PMU metrics
 host-only and last-level-cache perf events are not virtualized. The VM
 path therefore uses a separate, flag-gated benchmark
 (`--portable-metrics`: `schedlat`, `psi_mem`, `membw_est`, `psi_io`,
-`schedthr`, `steal`) so the canonical 7-metric contract (netp nets blk mbw
+`schedthr`, `steal`, plus the scheduling-regime pair `psp` and
+`idle_preempt`) so the canonical 7-metric contract (netp nets blk mbw
 llcmr llcocc cpu) stays intact. See
 [docs/CROSS-ENV-CAMPAIGN.md](docs/CROSS-ENV-CAMPAIGN.md),
 [docs/DECISIONS-container.md](docs/DECISIONS-container.md), and

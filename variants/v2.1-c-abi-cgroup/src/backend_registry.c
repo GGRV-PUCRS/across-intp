@@ -128,8 +128,8 @@ metric_t **intp_all_metrics(int *n_out)
     return all;
 }
 
-/* The 6 VM-portable metrics in canonical order (schedlat psi_mem membw_est
- * psi_io schedthr steal). A SEPARATE list from intp_all_metrics() so the
+/* The 8 portable and regime metrics in canonical order (schedlat psi_mem
+ * membw_est psi_io schedthr steal psp idle_preempt). A SEPARATE list from intp_all_metrics() so the
  * canonical-7 path is byte-identical whether or not --portable-metrics is set
  * (DESIGN §10 / C26). */
 metric_t **intp_portable_metrics(int *n_out)

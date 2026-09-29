@@ -79,7 +79,7 @@ METRIC_FULLNAME = {
     "schedthr": "CFS throttling (guard)",
     "steal": "hypervisor steal (guard)",
     "psp": "preemptions per second",
-    "idle_preempt": "idle-task preemptions (eBPF)",
+    "idle_preempt": "idle-CPU takeovers (eBPF-only)",
 }
 
 ENV_COLOR = {
