@@ -407,7 +407,9 @@ so every commit hash cited in this log resolves in the public repository.
      the per-task `llcmr` backend then fell back to system-wide counting. intp
      now reads the subtree recursively, as v3.3 does (`read_cgroup_pids_rec`).
      v2.1 keeps its non-recursive read (C25); campaign results are unaffected
-     because the harness targets leaf cgroups.
+     because the harness targets leaf cgroups. *Superseded for the compose
+     suites by D16:* those target a parent slice, and v2.1 RDT enrollment is
+     recursive since v0.2.1 (C38).
    - intp records where the `mbw` ceiling came from and flags the DDR4
      fallback that produced the 42 656 MB/s campaign ceiling (C34). The
      derivation itself (IMC channels x configured MT/s x 8 B) is the same as
@@ -416,3 +418,24 @@ so every commit hash cited in this log resolves in the public repository.
    `system.portable.*` behind `--experimental` until the JSA verdicts are
    final: PSI was falsified as a bandwidth signal and `membw_est` carries the
    C31 net-path caveat.
+
+## D16 — v0.2.1: v2.1 per-thread scheduler metrics and recursive RDT enrollment (2026-09-28, in progress)
+
+**Status: code fixed on `fix/v2.1-thread-scope-v0.2.1`; testbed tests, re-run and
+release pending.** Fill in the fix commits, the gate outcomes and the version
+DOI when they exist.
+
+1. **What was wrong** (C38). v2.1 `schedlat` and `psp` read one thread per
+   process (the TGID's own `/proc` counters), so multi-threaded real
+   applications read ~0; and v2.1 RDT enrollment read `cgroup.procs` of the
+   target only, so a compose suite's parent slice enrolled no task and `mbw` and
+   `llcocc` read 0.
+2. **Fix.** Per-TID accounting with per-TID baselines for `schedlat` and `psp`;
+   recursive resctrl enrollment with an immediate first enrollment (C38).
+3. **Re-run scope.** v2.1 Tier B (`app18`–`app21`) and Tier C (`app22`) × `bare`,
+   `container`, `vm-guest` × 12 reps × 120 s = 180 cells; gates (a)–(d) in C38.
+   v3.3 and all spine results are unchanged; the spine sanity check in C38
+   decides whether that statement needs a re-run behind it.
+4. **Provenance.** The v0.2.0 Tier B and Tier C trees stay in the v0.2.1 release
+   under `provenance/v0.2.0/`. `v0.2.0` is superseded, not edited or re-tagged.
+

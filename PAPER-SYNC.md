@@ -51,6 +51,27 @@ quotes directly; get explicit sign-off before editing those.**
 | `sec:results` cadence paragraph | "rises by 40 to 45%" / "5.5% at 0.1 s to 68% at 5 s" | unchanged, now tool-backed | new `docs/reports/p2-cadence-sweep-by-env.md` (psp +40%/+45%; v3.3 cpu 6→69) | The by-env report is the citable artifact for both guest-specific effects |
 | `sec:w5` direction sentence | "16 of 17 … 16 of 19" | unchanged, now tool-backed | `docs/reports/w5-victim-delta.md` direction summary | Sentence stays host-scoped; the guest's 4 rising llcocc cells (v2.1 proxy reads) are now visible in the same table |
 
+## v0.2.1 (C38 / D16): v2.1 scheduler metrics and RDT enrollment
+
+Already changed in the manuscript. Keep these in sync, and do not reintroduce
+claims about v2.1 `schedlat`/`psp` on real applications:
+
+| Section | Current manuscript text | Source |
+|---|---|---|
+| §4.3 | `idle_preempt` = rate at which the target's tasks are dispatched onto a previously idle CPU; `psp` = involuntary preemptions of the target's tasks | `intp_agg.bpf.h` `psp_count`/`idle_preempt_count`; C38 |
+| §7 | `psp` grading sentence uses v3.3 values only (≈7 Redis and data-caching, ≈850 in-memory-analytics, ≈7400 web-search, ≈9900 DeathStarBench, bare metal) | `docs/reports/p2-tier{b,c}-15metric.md` |
+| §7.2 | class counts stated "as measured by v3.3" | same |
+| §3.2 Related Work | `psp` explicitly distinguished from Volpert's PSP; `schedthr` is the throttling guard | `docs/reports/8th-metric-vm-portable-design.md` §2 |
+| Data availability | cites release v0.2.1 and the concept DOI; a `% TODO(v0.2.1)` comment in `main.tex` asks for the version DOI | D16 |
+
+To do after the v2.1 re-run (C38) and the release:
+
+- [ ] Replace `figs/fig_fingerprint_v21.pdf` (and `fig_fingerprint_v33.pdf` if the plot script's labels changed) in the paper assets.
+- [ ] Re-check the §7.2 statement that names v2.1 ("DeathStarBench … 5 in the guest under v2.1, where MongoDB adds a disk class"); update it if the re-run changes it.
+- [ ] Re-check the fingerprint-figure caption (class counts per application).
+- [ ] Insert the v0.2.1 version DOI in Data availability and remove the `% TODO(v0.2.1)` comment.
+- [ ] Rebuild the PDF and the latexdiff against the reviewed snapshot (Version 1336).
+
 ## Not requiring any `.tex` change
 
 - CV-leakage fix (Phase 2.1): implemented, verified, does not move any number the paper currently cites — no text change forced, though a methods-section footnote noting the grouped-CV check would strengthen the reproducibility claim.
