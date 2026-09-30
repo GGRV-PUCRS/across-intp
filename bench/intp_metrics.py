@@ -24,10 +24,11 @@ from collections import OrderedDict
 
 # Canonical 7-metric IntP fingerprint (ABI-invariant; Paper 1).
 METRICS_CANON = ["netp", "nets", "blk", "mbw", "llcmr", "llcocc", "cpu"]
-# 6 VM-portable metrics (--portable-metrics; canonical order shared with
-# portable.c / intp_portable_metrics() / the v3.3 emitter).
+# 8 portable and regime columns (--portable-metrics; canonical order shared with
+# portable.c / intp_portable_metrics() / the v3.3 emitter): 6 VM-portable
+# metrics + the scheduling-regime pair.
 METRICS_PORTABLE = ["schedlat", "psi_mem", "membw_est", "psi_io", "schedthr", "steal",
-                    # scheduling-regime sub-family (events/s) -- PSP + idle-preempt,
+                    # scheduling-regime sub-family (events/s) -- psp + idle_preempt,
                     # always counted on the already-attached sched_switch, emitted
                     # only under --portable-metrics (canonical 7 byte-identical).
                     "psp", "idle_preempt"]

@@ -379,7 +379,9 @@ paragraphs.
 - Head-to-head with iprof (Volpert workflows, nf-core).
 - Cross-kernel validation (Ubuntu 22 5.15 vs 24 6.x, isolating
   CFS→EEVDF drift).
-- Two additional Volpert-inspired metrics (PSL, PSP).
+- PSL adopted as `schedlat`; PSP replaced by `schedthr` as throttling guard
+  (IntP's `psp` column is a different quantity: involuntary preemptions of the
+  target's threads).
 - Volpert's 8-scenario adversarial benchmark (Underutilized /
   Self-preempting / Subharmony / Harmony / Steal / Starving /
   Competing / Baseline) → first published interference-profiler

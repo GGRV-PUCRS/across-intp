@@ -30,7 +30,7 @@ static int is_partition(const char *name)
     if (len == 0) return 0;
     if (name[len-1] < '0' || name[len-1] > '9') return 0;
     if (strncmp(name, "nvme", 4) == 0 || strncmp(name, "mmcblk", 6) == 0) {
-        char *p = strrchr(name, 'p');
+        const char *p = strrchr(name, 'p');
         return p && p > name && p[-1] >= '0' && p[-1] <= '9';
     }
     return 1;

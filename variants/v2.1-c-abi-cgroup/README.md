@@ -52,14 +52,28 @@ banner declares which backend each column came from.
 `--output prometheus` writes the standard text exposition format with
 labels `metric`, `backend`, `status`.
 
-`--portable-metrics` appends six VM-portable columns
-(`schedlat psi_mem membw_est psi_io schedthr steal`) AFTER the canonical 7 — a
-SEPARATE benchmark for KVM guests, where `mbw`/`llcocc`/`llcmr` are structurally
-unavailable. The canonical 7-column output is byte-identical when the flag is off,
-so the IADA pipeline is unaffected. schedlat/psi_*/schedthr/steal are percentages;
-`membw_est` is a DRAM-bandwidth estimate in MB/s; a source that is absent
-(`CONFIG_PSI=n`, no `cpu.max` quota, no perf, no cgroup) reports `--`, never a fake
-0. See [DESIGN.md](DESIGN.md) and `docs/reports/8th-metric-vm-portable-design.md`;
+`--portable-metrics` appends eight portable and regime columns
+(`schedlat psi_mem membw_est psi_io schedthr steal psp idle_preempt`) AFTER the
+canonical 7 — a SEPARATE benchmark for KVM guests, where `mbw`/`llcocc`/`llcmr`
+are structurally unavailable. The canonical 7-column output is byte-identical
+when the flag is off, so the IADA pipeline is unaffected.
+
+- `schedlat` — run-queue wait of the target's threads (per-thread
+  `/proc/<tid>/schedstat`, PSI `cpu.pressure` as fallback), % of interval × CPUs.
+- `psi_mem`, `psi_io` — PSI `memory.pressure` / `io.pressure` 'some', % of interval.
+- `membw_est` — LLC misses × 64 B / interval, MB/s (a DRAM-bandwidth estimate).
+- `schedthr` — `cpu.stat` `throttled_usec`, % of interval; a confound guard. It
+  reads 0 without a `cpu.max` limit and counts only this cgroup's own limit.
+- `steal` — `/proc/stat` steal, % of total; VM-global, host CPU contention only.
+- `psp` — involuntary preemptions/s summed over the target's threads (not
+  Volpert's PSP).
+- `idle_preempt` — idle-CPU takeovers/s; eBPF-only, always `--` here.
+
+`schedlat` and `psp` are read per thread (TID), not per process: the procfs
+counters describe one task, so reading only the process leader missed every
+worker thread of a multi-threaded workload (C38). A source that is absent
+(`CONFIG_PSI=n`, cpu controller not enabled, no perf, no cgroup) reports `--`,
+never a fake 0. See [DESIGN.md](DESIGN.md) and `docs/reports/8th-metric-vm-portable-design.md`;
 adjudicate with `bench/analyze-portable.py`.
 
 ## Privileges

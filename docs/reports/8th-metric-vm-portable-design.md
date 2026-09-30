@@ -36,11 +36,13 @@ equivalent-mechanism**.
 |---|---|---|---|---|---|
 | 1 | **`schedlat`** | run-queue / scheduling latency (`sched_wakeup`→`sched_switch` wait) | eBPF sched tracepoints; or `/proc/<pid>/schedstat` run-delay; or `cpu.pressure` | sched/CPU contention (direct); cache/mem (indirect, via slowdown) | **yes** |
 | 2 | **`psi_mem`** | PSI memory pressure (reclaim/refault/swap stalls) | `/sys/fs/cgroup/<cg>/memory.pressure` (pure file read) | memory-**capacity** contention (mbw/llcocc *intent*, not bandwidth) | **yes** |
-| 3 | `schedthr` | CFS throttling (own-quota) | `cpu.stat` `nr_throttled`/`throttled_usec` | **confound guard** for `schedlat` (not a contention signal) | yes |
-| 4 | `steal` | hypervisor-stolen vCPU time | `/proc/stat` field 8 | host-level cross-VM CPU contention | **no** (whole-vCPU) |
+| 3 | `schedthr` | CFS throttling (own-quota) | `cpu.stat` `nr_throttled`/`throttled_usec` | **confound guard** for `schedlat` (not a contention signal); reads 0 without a `cpu.max` limit; non-hierarchical (this cgroup's own limit only) | yes |
+| 4 | `steal` | hypervisor-stolen vCPU time | `/proc/stat` field 8 | host-level cross-VM CPU contention only (not memory or IO) | **no** (whole-vCPU) |
 
 **Why `schedlat` is primary.** It is the exact metric Paper 1's future work names;
-Volpert ICPE'25 formalises it as *Average Process Scheduling Latency* (PSL);
+Volpert ICPE'25 formalises the same quantity (run-queue wait) as *Average Process
+Scheduling Latency* (PSL), normalised per process where IntP normalises by
+interval × CPUs;
 PRISM exposes it as `rq_time`; the Netflix production eBPF detector and `bcc
 runqlat` use the same `sched_wakeup`/`sched_switch` site that IntP's `cpu` metric
 already attaches. It is **RDT-free and PMU-free**, **cgroup-scopable** (matching
@@ -61,7 +63,8 @@ proxies `mbw` only under memory-pressure regimes and must be validated before an
 equivalence claim (§6, Step 3).
 
 `schedthr` is a **guard column** (separates an external noisy neighbour from a
-tenant hitting its own CPU quota — Volpert's PSL×PSP matrix; Netflix's documented
+tenant hitting its own CPU quota — `schedthr` (cpu.stat) plays the role of Volpert's
+PSP as throttling guard; Netflix's documented
 failure mode), not an interference metric. `steal` is the only true cross-VM
 signal but is **whole-vCPU (not cgroup-attributable)** and 0 on bare/container, so
 it violates IntP's per-tenant contract — at most a VM-global side-channel.
@@ -84,8 +87,10 @@ per task:  wait = t(sched_switch onto CPU) − t(sched_wakeup)
 schedlat   = Σ(per-task runqueue-wait ns over interval) / (interval_ns × num_cores) × 100,  capped at 99 (like blk)
 ```
 
-This is Volpert's PSL / PRISM's `rq_time` / `runqlat`, normalised so it shares the
-`cpu`/`blk` scale.
+This is the quantity of Volpert's PSL / PRISM's `rq_time` / `runqlat` (run-queue
+wait), with a different normalisation: by interval × CPUs, so it shares the
+`cpu`/`blk` scale, instead of per process. v2.1 reads it per thread from
+`/proc/<tid>/schedstat` (C38).
 
 ## 5. Implementation sketches
 

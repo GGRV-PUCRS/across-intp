@@ -33,7 +33,7 @@ TEST_SRCS = tests/test-detect.c tests/test-procutil.c \
             tests/test-backend-registry.c tests/test-target.c
 TEST_BINS = $(TEST_SRCS:.c=)
 
-.PHONY: all clean tests run-tests deb help
+.PHONY: all clean tests run-tests integration-tests deb help
 
 all: $(TARGET)
 
@@ -67,16 +67,33 @@ tests/test-target: tests/test-target.c $(TEST_DEPS_FULL)
 run-tests: tests
 	@for t in $(TEST_BINS); do echo "==> $$t"; ./$$t || exit 1; done
 
+# C38 integration tests (T1-T3): live multi-threaded / churning / nested-slice
+# targets. T1 and T2 run unprivileged (systemd --user scope); T3 needs root,
+# resctrl and stress-ng and is skipped otherwise. INTP_OLD_BIN / INTP_V33_BIN
+# enable the regression and v3.3-agreement checks (see each script's header).
+MT_SPIN = tests/helpers/mt_spin
+
+$(MT_SPIN): tests/helpers/mt_spin.c
+	$(CC) -O2 -Wall -Wextra -o $@ $< -lpthread
+
+integration-tests: $(TARGET) $(MT_SPIN)
+	tests/t1-multithreaded-target.sh
+	tests/t2-thread-churn.sh
+	@if [ "$$(id -u)" = 0 ] && [ -d /sys/fs/resctrl/info/L3_MON ]; then \
+		tests/t3-nested-slice.sh; \
+	else echo "==> T3 skipped (needs root + resctrl L3 monitoring)"; fi
+
 deb: $(TARGET)
 	@scripts/build-deb.sh
 
 clean:
-	rm -f $(TARGET) $(OBJS) $(TEST_BINS)
+	rm -f $(TARGET) $(OBJS) $(TEST_BINS) $(MT_SPIN)
 
 help:
 	@echo "Targets:"
 	@echo "  all           build $(TARGET) (default)"
 	@echo "  tests         build unit tests"
 	@echo "  run-tests     build and execute unit tests"
+	@echo "  integration-tests  C38 T1-T3 live-target tests (T3: root + resctrl)"
 	@echo "  deb           build Debian package via scripts/build-deb.sh"
 	@echo "  clean         remove build artifacts"

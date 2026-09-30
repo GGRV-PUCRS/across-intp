@@ -1,0 +1,8 @@
+==> tests/test-detect
+test-detect: OK (vendor=0 cores=20 kernel=7.0)
+==> tests/test-procutil
+test-procutil: OK (disks=15 ifaces=6 total_jiffies=52285817, cgroup-recursion, threads, tasks)
+==> tests/test-backend-registry
+test-backend-registry: OK (7 metrics, 21 backends in spec order)
+==> tests/test-target
+test-target: OK (pid-list, comm match, nic-speed override)

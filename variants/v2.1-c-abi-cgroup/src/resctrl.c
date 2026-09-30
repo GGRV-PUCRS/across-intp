@@ -301,7 +301,10 @@ int resctrl_rescan_cgroup(const char *name, const char *cgroup_path, int sample_
     if (!name || !cgroup_path) return 0;
     if (sample_idx >= RESCAN_EAGER && (sample_idx % RESCAN_EVERY) != 0) return 0;
     pid_t pids[RESCAN_MAX_PIDS];
-    int n = procutil_read_cgroup_procs(cgroup_path, pids, RESCAN_MAX_PIDS);
+    /* Recursive (C38): a compose suite targets a parent systemd slice whose own
+     * cgroup.procs is empty under the cgroup v2 no-internal-processes rule, so
+     * a non-recursive read enrolled nothing and mbw/llcocc read 0. */
+    int n = procutil_read_cgroup_procs_rec(cgroup_path, pids, RESCAN_MAX_PIDS);
     if (n <= 0) return 0;
     /* resctrl_assign_pids skips the root group and re-expands descendants;
      * re-assigning already-tracked PIDs is a harmless no-op. */
@@ -338,7 +341,11 @@ int resctrl_target_group_acquire(const pid_t *pids, size_t n_pids,
                  RDT_GROUP_PREFIX, (int)getpid());
         if (resctrl_create_mongroup(g_tgt.name) != 0) return -1;
         if (n_pids > 0) resctrl_assign_pids(g_tgt.name, pids, n_pids);
-        /* cgroup live members are kept current by rescan(). */
+        else resctrl_rescan_cgroup(g_tgt.name, cgroup_path, 0);
+        /* cgroup live members are kept current by rescan(). The immediate
+         * recursive enrollment above covers a target whose startup PID list is
+         * empty (a parent slice), so the first samples do not read an empty
+         * group (C38). */
         g_tgt.is_root = 0;
     } else {
         snprintf(g_tgt.name, sizeof(g_tgt.name), "%s", RESCTRL_ROOT_SENTINEL_);

@@ -4,6 +4,7 @@
 
 #include "procutil.h"
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -71,6 +72,82 @@ static int test_cgroup_procs_recursion(void)
     return 0;
 }
 
+static void write_file(const char *dir, const char *name, const char *body)
+{
+    char p[512];
+    snprintf(p, sizeof(p), "%s/%s", dir, name);
+    FILE *f = fopen(p, "w");
+    if (f) { fputs(body, f); fclose(f); }
+}
+
+/* cgroup.threads recursion (C38): the parent slice lists no threads, the TIDs
+ * live in two child cgroups; cgroup.procs is deliberately different (leaders
+ * only) to prove the threads reader reads the right file. */
+static int test_cgroup_threads_recursion(void)
+{
+    char top[] = "/tmp/intp-cgthr-XXXXXX";
+    if (!mkdtemp(top)) return 1;
+    char a[64], b[64];
+    snprintf(a, sizeof(a), "%s/a", top);
+    snprintf(b, sizeof(b), "%s/b", top);
+    ASSERT(mkdir(a, 0755) == 0);
+    ASSERT(mkdir(b, 0755) == 0);
+    write_file(top, "cgroup.threads", "");
+    write_file(a, "cgroup.procs",   "2001\n");
+    write_file(a, "cgroup.threads", "2001\n2002\n2003\n");
+    write_file(b, "cgroup.procs",   "3001\n");
+    write_file(b, "cgroup.threads", "3001\n3002\n");
+
+    pid_t tids[16];
+    int n = procutil_read_cgroup_threads_rec(top, tids, 16);
+    ASSERT(n == 5);
+    int got2003 = 0, got3002 = 0;
+    for (int i = 0; i < n; i++) {
+        if (tids[i] == 2003) got2003 = 1;
+        if (tids[i] == 3002) got3002 = 1;
+    }
+    ASSERT(got2003 && got3002);
+    ASSERT(procutil_read_cgroup_threads_rec(top, tids, 3) == 3);   /* capped */
+
+    char rm[128];
+    const char *files[] = { "cgroup.procs", "cgroup.threads" };
+    for (int i = 0; i < 2; i++) {
+        snprintf(rm, sizeof(rm), "%s/%s", a, files[i]); unlink(rm);
+        snprintf(rm, sizeof(rm), "%s/%s", b, files[i]); unlink(rm);
+    }
+    snprintf(rm, sizeof(rm), "%s/cgroup.threads", top); unlink(rm);
+    rmdir(a); rmdir(b); rmdir(top);
+    return 0;
+}
+
+static volatile int thr_stop;
+static void *idle_thread(void *arg)
+{
+    (void)arg;
+    while (!thr_stop) usleep(1000);
+    return NULL;
+}
+
+/* /proc/<pid>/task expansion lists the leader AND its worker threads. */
+static int test_proc_tasks(void)
+{
+    pthread_t th[3];
+    for (int i = 0; i < 3; i++)
+        ASSERT(pthread_create(&th[i], NULL, idle_thread, NULL) == 0);
+    pid_t tids[16];
+    int n = procutil_read_proc_tasks(getpid(), tids, 16);
+    int leader = 0;
+    for (int i = 0; i < n; i++) if (tids[i] == getpid()) leader = 1;
+    int capped = procutil_read_proc_tasks(getpid(), tids, 2);
+    thr_stop = 1;
+    for (int i = 0; i < 3; i++) pthread_join(th[i], NULL);
+    ASSERT(n == 4);
+    ASSERT(leader);
+    ASSERT(capped == 2);
+    ASSERT(procutil_read_proc_tasks(0x7ffffff0, tids, 16) == 0);   /* no such pid */
+    return 0;
+}
+
 int main(void)
 {
     char buf[128];
@@ -101,8 +178,10 @@ int main(void)
     /* utime+stime can legitimately be 0 for very fresh processes. */
 
     ASSERT(test_cgroup_procs_recursion() == 0);
+    ASSERT(test_cgroup_threads_recursion() == 0);
+    ASSERT(test_proc_tasks() == 0);
 
-    printf("test-procutil: OK (disks=%d ifaces=%d total_jiffies=%lu, cgroup-recursion)\n",
+    printf("test-procutil: OK (disks=%d ifaces=%d total_jiffies=%lu, cgroup-recursion, threads, tasks)\n",
            nd, nn, total);
     return 0;
 }

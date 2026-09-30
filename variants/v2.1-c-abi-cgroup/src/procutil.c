@@ -120,15 +120,16 @@ int procutil_read_cgroup_procs(const char *cgroup_path, pid_t *out, size_t max)
     return (int)n;
 }
 
-/* Recursive worker: append this cgroup's cgroup.procs, then descend into every
- * child cgroup, carrying the running count `n`. Returns the new count. */
-static size_t read_cgroup_procs_rec(const char *cgroup_path, pid_t *out,
-                                    size_t max, size_t n, int depth)
+/* Recursive worker: append this cgroup's `file` (cgroup.procs or
+ * cgroup.threads), then descend into every child cgroup, carrying the running
+ * count `n`. Returns the new count. */
+static size_t read_cgroup_ids_rec(const char *cgroup_path, const char *file,
+                                  pid_t *out, size_t max, size_t n, int depth)
 {
     if (n >= max || depth > 16) return n;
 
     char p[512];
-    snprintf(p, sizeof(p), "%s/cgroup.procs", cgroup_path);
+    snprintf(p, sizeof(p), "%s/%s", cgroup_path, file);
     FILE *f = fopen(p, "r");
     if (f) {
         int pid;
@@ -150,7 +151,7 @@ static size_t read_cgroup_procs_rec(const char *cgroup_path, pid_t *out,
             snprintf(child, sizeof(child), "%s/%s", cgroup_path, de->d_name);
             struct stat st;
             if (stat(child, &st) == 0 && S_ISDIR(st.st_mode))
-                n = read_cgroup_procs_rec(child, out, max, n, depth + 1);
+                n = read_cgroup_ids_rec(child, file, out, max, n, depth + 1);
         }
         closedir(d);
     }
@@ -160,7 +161,32 @@ static size_t read_cgroup_procs_rec(const char *cgroup_path, pid_t *out,
 int procutil_read_cgroup_procs_rec(const char *cgroup_path, pid_t *out, size_t max)
 {
     if (!cgroup_path || !out || max == 0) return 0;
-    return (int)read_cgroup_procs_rec(cgroup_path, out, max, 0, 0);
+    return (int)read_cgroup_ids_rec(cgroup_path, "cgroup.procs", out, max, 0, 0);
+}
+
+int procutil_read_cgroup_threads_rec(const char *cgroup_path, pid_t *out, size_t max)
+{
+    if (!cgroup_path || !out || max == 0) return 0;
+    return (int)read_cgroup_ids_rec(cgroup_path, "cgroup.threads", out, max, 0, 0);
+}
+
+int procutil_read_proc_tasks(pid_t pid, pid_t *out, size_t max)
+{
+    if (!out || max == 0) return 0;
+    char p[64];
+    snprintf(p, sizeof(p), "/proc/%d/task", (int)pid);
+    DIR *d = opendir(p);
+    if (!d) return 0;
+    size_t n = 0;
+    struct dirent *de;
+    while (n < max && (de = readdir(d)) != NULL) {
+        char *end;
+        long tid = strtol(de->d_name, &end, 10);
+        if (end == de->d_name || *end != '\0' || tid <= 0) continue;
+        out[n++] = (pid_t)tid;
+    }
+    closedir(d);
+    return (int)n;
 }
 
 int procutil_read_net_softirqs(unsigned long *net_tx, unsigned long *net_rx)

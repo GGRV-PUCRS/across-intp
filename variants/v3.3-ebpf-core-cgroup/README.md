@@ -25,11 +25,17 @@ Prometheus label `intp_v3_3`) builds and runs. The eBPF object implements:
 - **Per-cgroup `cpu` and `llcmr`** (cgroup-mode `perf_event` counters).
 - **`nets`** as a per-cgroup byte-share estimate over the system-wide softirq
   numerator (`nets_sys` diagnostic retained).
-- **6 VM-portable metrics** (`schedlat psi_mem membw_est psi_io schedthr steal`)
-  emitted as a SEPARATE block under `--portable-metrics` (C26/C27). `schedlat` is
-  the eBPF `sched_wakeup`→`sched_switch` run-queue wait; `membw_est` reuses the
-  `llc_misses` counter (× 64 B / interval → MB/s) so it survives the in-guest vPMU
-  gap; the rest are guest-kernel file reads (PSI, `cpu.stat`, `/proc/stat`).
+- **8 portable and regime columns** (`schedlat psi_mem membw_est psi_io schedthr
+  steal psp idle_preempt`) emitted as a SEPARATE block under `--portable-metrics`
+  (C26/C27). `schedlat` is the eBPF `sched_wakeup`→`sched_switch` run-queue wait;
+  `membw_est` reuses the `llc_misses` counter (× 64 B / interval → MB/s) so it
+  survives the in-guest vPMU gap; `psi_mem`/`psi_io`/`schedthr`/`steal` are
+  guest-kernel file reads (PSI, `cpu.stat`, `/proc/stat`). `schedthr` reads 0
+  without a `cpu.max` limit and counts only the cgroup's own limit; `steal` is
+  VM-global and reflects host CPU contention only. The scheduling-regime pair
+  comes from `sched_switch`: `psp` counts involuntary preemptions of the target's
+  tasks (not Volpert's PSP) and `idle_preempt` counts idle-CPU takeovers
+  (prev = swapper, next = target task; eBPF-only).
 
 mbw/llcocc remain the userspace resctrl hybrid (RDT hardware, not eBPF).
 
@@ -40,8 +46,8 @@ The 7 canonical IntP metrics in fixed order — `netp nets blk mbw llcmr llcocc 
 `mbw_raw_mbps`, `blk_MBps`) suppressed by `--no-diag-cols`. See C1/C2/C4/C5 in
 `docs/DECISIONS-container.md`.
 
-`--portable-metrics` appends the 6 VM-portable columns
-(`schedlat psi_mem membw_est psi_io schedthr steal`) AFTER the canonical/diagnostic
+`--portable-metrics` appends the 8 portable and regime columns
+(`schedlat psi_mem membw_est psi_io schedthr steal psp idle_preempt`) AFTER the canonical/diagnostic
 columns — a SEPARATE benchmark that never alters the canonical 7 (C27). Run it via
 `run-intp-bench.sh --portable-metrics --variants v2.1,v3.3` and adjudicate with
 `bench/analyze-portable.py`.

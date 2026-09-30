@@ -53,7 +53,8 @@ int  resctrl_enumerate_domains(const char *group_name,
                                int max_domains);
 long resctrl_sum_paths(char paths[][RESCTRL_PATH_MAX], int n_paths);
 
-/* Re-read <cgroup_path>/cgroup.procs and re-assign the live member set to the
+/* Re-read cgroup.procs of <cgroup_path> AND its descendant cgroups (recursive
+ * since C38: a parent slice has no processes of its own) and re-assign the live member set to the
  * mon_group <name>, on a cadence keyed by <sample_idx> (tight for the first
  * few samples to catch an app's initial fork storm, then periodic). Picks up
  * tasks that joined the cgroup after init (late-launched workers, cgroup

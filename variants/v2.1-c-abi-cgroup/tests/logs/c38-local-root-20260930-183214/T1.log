@@ -1,0 +1,10 @@
+--- mt_spin pid=94860 threads=8 cpus=0-1 cgroup=/sys/fs/cgroup/intp-c38/t1
+new  cg  schedlat median=30.0
+new  pid  schedlat median=30.0
+old  cg   schedlat median=0.0 (expected ~0: leader-only)
+v3.3 cg   schedlat median=30.0  v2.1/v3.3 ratio=1.000
+new  cg  psp median=701.0
+new  pid  psp median=701.0
+old  cg   psp median=0.0 (expected ~0: leader-only)
+v3.3 cg   psp median=701.0  v2.1/v3.3 ratio=1.000
+T1: OK

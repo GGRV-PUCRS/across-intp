@@ -1,0 +1,8 @@
+--- mt_spin pid=34010 threads=8 cpus=0-1 cgroup=/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice/intp-c38-t1-34002.scope
+new  cg  schedlat median=30.0
+new  pid  schedlat median=30.0
+old  cg   schedlat median=0.0 (expected ~0: leader-only)
+new  cg  psp median=701.0
+new  pid  psp median=701.0
+old  cg   psp median=0.0 (expected ~0: leader-only)
+T1: OK

@@ -301,7 +301,9 @@ The canonical 7-metric contract is held intact across every environment. The
 dimensions RDT cannot fill in the guest are instead covered by a separate,
 flag-gated VM-portable benchmark (`--portable-metrics`): `schedlat` (run-queue
 latency, §4), `psi_mem`, `membw_est`, `psi_io`, `schedthr`, and `steal` -- all
-RDT/PMU-free. This is a distinct measurement block, not a substitution into the
+RDT/PMU-free -- plus the scheduling-regime pair `psp` (involuntary preemptions of
+the target's tasks; not Volpert's PSP) and `idle_preempt` (idle-CPU takeovers),
+both counted on the already-attached `sched_switch`. This is a distinct measurement block, not a substitution into the
 canonical columns, so the ABI the IADA classifier consumes is unchanged.
 
 ## 11. Acceptance gate and validation

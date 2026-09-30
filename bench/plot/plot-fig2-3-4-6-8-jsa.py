@@ -64,7 +64,7 @@ METRIC_FULL = {
     "schedthr": "CFS throttling (confound guard)",
     "steal": "hypervisor steal time (confound guard)",
     "psp": "involuntary preemptions/s",
-    "idle_preempt": "idle-task preemption rate (eBPF-only)",
+    "idle_preempt": "idle-CPU takeovers (eBPF-only)",
     "mbw": "memory bandwidth (RDT)",
     "llcocc": "LLC occupancy (RDT)",
     "llcmr": "LLC miss ratio",

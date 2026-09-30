@@ -1,0 +1,4 @@
+src/blk.c: In function ‘is_partition’:
+src/blk.c:150:19: warning: initialization discards ‘const’ qualifier from pointer target type [-Wdiscarded-qualifiers]
+  150 |         char *p = strrchr(name, 'p');
+      |                   ^~~~~~~

@@ -1368,3 +1368,185 @@ but this is disclosed, not asserted.
 proven for every cell. Goes to `PAPER-SYNC.md` as a caveat sentence
 regardless of the residual 3 cells — per the brief, the paper needs to
 disclose the hypothesis and what was checked either way.
+
+### C38 — v2.1 scheduler metrics read one thread per process; v2.1 RDT enrollment skipped nested cgroups (2026-09-28)
+
+**Status: fixed in release `v0.2.1`, not re-measured** (D16).
+
+Two v2.1 defects found while grading the v0.2.0 real-application tiers
+(`docs/reports/p2-tierb-15metric.md`, `p2-tierc-15metric.md`). Both only affect
+**v2.1 on the compose-based suites** (Tier B `app18`–`app21`, Tier C `app22`);
+v3.3 and the stress-ng spine are unaffected.
+
+**F1 — `schedlat` and `psp` counted only the thread-group leader.**
+`portable.c` summed field 2 of `/proc/<pid>/schedstat` and
+`nonvoluntary_ctxt_switches` of `/proc/<pid>/status` over the TGIDs in
+`cgroup.procs`. Both files describe one `task_struct`, not the thread group
+(`fs/proc/base.c` `proc_pid_schedstat()` prints `task->sched_info.run_delay`;
+`fs/proc/array.c` `task_context_switch_counts()` prints `p->nvcsw`/`p->nivcsw`),
+so the worker threads of a multi-threaded server were never counted. Bare-metal
+medians in v0.2.0:
+
+| Workload | Metric | v2.1 | v3.3 |
+|---|---|---|---|
+| web-search | `schedlat` | 0 | 97.5 |
+| web-search | `psp` | 0 | 7425 |
+| in-memory-analytics | `psp` | 0 | 849 |
+| DeathStarBench | `psp` | 166 | 9901 |
+| Redis (single-threaded) | `psp` | 7 | 7 |
+
+The spine is unaffected: stress-ng workers are separate processes, and the
+v2.1/v3.3 cadence rows agree. A second defect sat in the same functions: the
+interval delta was `cur >= prev ? cur - prev : 0` over a SUM of per-task
+counters, so one exiting task made the sum drop and zeroed the whole interval.
+
+**F2 — v2.1 resctrl enrollment did not descend into child cgroups.**
+`resctrl_rescan_cgroup()` read `cgroup.procs` non-recursively. The compose
+suites target a parent systemd slice (`bench/run-intp-bench.sh`, C33) whose own
+`cgroup.procs` is empty under the cgroup v2 no-internal-processes rule, so the
+shared mon_group (D12) never received a task. v2.1 `mbw` and `llcocc` read 0 on
+bare metal and in containers for data-caching, web-search, in-memory-analytics
+and DeathStarBench, where v3.3 (recursive since C24) reads 4–7 (`mbw`) and
+51–92 (`llcocc`). Redis, a single container, was non-zero under both. D15 item 3
+stated that the harness targets leaf cgroups; that holds for the spine only.
+
+**Fix.**
+- `schedlat` (schedstat backend) and `psp` enumerate TIDs: `cgroup.threads`
+  over the cgroup subtree (`procutil_read_cgroup_threads_rec()`, same traversal
+  and dot-dir handling as `procutil_read_cgroup_procs_rec()`), or
+  `/proc/<pid>/task` for a `--pids` target. Each thread is read at
+  `/proc/<tid>/task/<tid>/{schedstat,status}`.
+- A per-TID baseline map replaces the delta over a sum: a known TID contributes
+  `cur - prev` (clamped at 0 per TID, for TID reuse); a TID new in this interval
+  contributes `cur`, since it was born inside the interval. The map is seeded
+  at `init()`, so this only applies to threads born mid-run. An exited TID drops
+  out, and its last partial interval is lost. A thread born and exited between
+  two samples is never seen, which a `/proc` sampler cannot avoid; v3.3 sees it
+  through `sched_switch`.
+- Normalization is unchanged: `schedlat` = Σ per-thread wait ÷ (interval ×
+  online CPUs) × 100, the v3.3 scale; `psp` = Σ per-thread involuntary switches
+  ÷ interval.
+- The TID set is capped at `INTP_MAX_TIDS` (16384). When the cap is hit, both
+  metrics report status `degraded` with note `tid_cap` instead of silently
+  truncating.
+- `resctrl_rescan_cgroup()` reads the subtree recursively, and
+  `resctrl_target_group_acquire()` enrolls immediately when a cgroup target
+  starts with no PIDs, so the first samples do not read an empty group. Every
+  TID is still written (the existing `/proc/<pid>/task` walk).
+- `v2-c-abi` gets the same per-TID `schedlat` for `--pids` targets (it has no
+  cgroup target and no `psp`). No published data depends on v2.
+
+**Tests** (`variants/v2.1-c-abi-cgroup/tests/`, `make integration-tests`):
+- unit: `test-procutil` covers the `cgroup.threads` recursion and the
+  `/proc/<pid>/task` expansion;
+- T1 `t1-multithreaded-target.sh`: `tests/helpers/mt_spin` (sleeping leader,
+  spinning workers pinned to fewer CPUs). On a 20-CPU development host
+  (kernel 7.0, unprivileged, systemd user scope), 8 threads on 2 CPUs: fixed
+  v2.1 `schedlat` 30.0 and `psp` ≈ 699/s on both the cgroup and the `--pids`
+  target; the v0.2.0 binary reads 0 and 0. 30.0 is the expected value: 6
+  threads always waiting out of 20 CPUs. The v2.1/v3.3 agreement leg (ratio 0.5 to 2)
+  needs root and runs on the testbed.
+- T2 `t2-thread-churn.sh`: every worker is replaced every 100 ms. No interval
+  collapses to 0 (`psp` 15–43/s, `schedlat` 0.50–1.10 % on the development
+  host) and none shows an underflow spike. The level is low because threads
+  that live less than one interval are mostly unseen (see above).
+- T3 `t3-nested-slice.sh`: parent cgroup with no processes, cache-heavy
+  stress-ng in two children, `llcocc`/`mbw` must be non-zero and within the W4
+  band (0.8–1.25) of v3.3. Needs root, resctrl and stress-ng, and is run on the
+  testbed against the v0.2.0 binary first: if that binary is NOT 0 there, F2 is
+  not the cause and the re-run below shrinks to F1.
+
+**Cost.** Per-TID reads add syscalls on thread-heavy targets. On the
+development host, profiling a 501-thread `mt_spin` for 10 s with
+`--portable-metrics` cost 0.07 s CPU (0.01 user + 0.06 sys, ≈0.7 % of one
+core), against ≈0 for the leader-only reader. The published ≤2.5 % budget was
+measured on the spine and is not re-claimed for thread-heavy targets; the
+testbed measurement on the CPU reference is still to be done.
+
+**Re-run scope (pending on the testbed).** v2.1 only, Tier B (`app18`–`app21`)
+and Tier C (`app22`), environments `bare`, `container`, `vm-guest`, 12 reps ×
+120 s, same configuration as v0.2.0: 180 cells. v3.3 cells are reused. Fresh
+result dirs `04-tier-b-realapps-v021`, `05-tier-c-dsb-v021`; the v0.2.0 trees
+are kept as provenance. Gates:
+- (a) v2.1 `schedlat`/`psp` on web-search, in-memory-analytics and DeathStarBench
+  are of the same order as v3.3;
+- (b) v2.1 `mbw`/`llcocc` on the compose suites are non-zero on the host
+  environments;
+- (c) canonical `cpu`, `llcmr`, `blk`, `netp`, `nets` medians move by less than
+  the run-to-run IQR relative to v0.2.0;
+- (d) the F12 class-activation table for v2.1, before and after.
+
+Spine sanity check: 1 cell per environment for `app01` and `app16` with the
+fixed v2.1; `schedlat`/`psp` must stay within the cadence-sweep tolerance of
+v0.2.0. Before/after numbers: **not re-measured** (v0.2.1 ships the v0.2.0
+data; the pre-fix cells are listed in `provenance/v0.2.0/README.md` and hatched
+in `fig_fingerprint_v21_prefix.pdf`, D18). Test outcomes for the fix, all run
+with `tests/run-c38-all.sh`, logs under `variants/v2.1-c-abi-cgroup/tests/logs/`:
+
+- `c38-local-20260930-171526` (development host, i7-13650HX, 20 CPUs, kernel
+  7.0, unprivileged): unit tests 4/4 OK (`test-detect`, `test-procutil`,
+  `test-backend-registry`, `test-target`); T1 OK: fixed v2.1 `schedlat` 30.0
+  and `psp` 701/s on both the cgroup and the `--pids` target, the v0.2.0
+  binary 0.0 and 0.0; T2 OK: `schedlat` 0.076 to 1.426 %, `psp` 5 to 36/s over
+  19 intervals, no interval at 0 and no underflow spike. The T1 v3.3 agreement
+  leg was skipped (needs root) and T3 was skipped (needs root, resctrl L3
+  monitoring, which this CPU does not have, and stress-ng).
+- `c38-local-root-20260930-172435` (same host, root): unit tests OK; T1 OK
+  including the v3.3 agreement leg: `schedlat` v2.1 30.0 vs v3.3 30.0 (ratio
+  1.000), `psp` 699 vs 698/s (ratio 1.001), v0.2.0 binary 0.0 and 0.0. **T2
+  FAILED once**: `schedlat` read 0.0 (status `ok`, not missing) in sample 5 on
+  both the cgroup and the `--pids` target, while `psp` read 3/s there (14 to
+  28/s in the neighbouring intervals); raw JSON in `T2-outputs/`. The two
+  targets enumerate threads by different paths (`cgroup.threads`,
+  `/proc/<pid>/task`) and read identical values, and `psp` stayed non-zero, so
+  the accounting was live.
+  **Mechanism (checked):** the sampler limitation stated under Fix, not either
+  C38 defect. `mt_spin`'s 4 slots start together and each worker lives 100 ms
+  of wall time, so the workers turn over nearly in lockstep. A v2.1 interval
+  counts the wait of the threads alive at the sample instant plus the deltas of
+  the known ones; workers that lived and exited inside the interval take their
+  wait with them. A sample taken just after a turnover therefore sees only
+  newborn workers. A dense probe of the helper (9,349 instants, 2 ms apart,
+  unprivileged) found the visible workers' total wait under 100 us at 0.71 % of
+  instants, and the count is the same under 1 ms (the distribution is
+  bimodal). An earlier 100-sample probe had found none and was too small to see
+  this; the statement that lockstep churn does not explain the zero was wrong
+  and is withdrawn. "The workload did not contend" is also wrong: v3.3 reads a
+  steady 15.2 to 15.4 on this workload (below).
+  T2 therefore has a small false-failure rate on this helper. Its "no interval
+  at 0" check still separates the fixed binary from the delta-over-sum
+  defect, which zeroes intervals whenever a thread exits. Staggering the slot
+  start times in `mt_spin` would remove the artifact; not done for v0.2.1.
+- `c38-local-root-20260930-182836` to `-183214` (same host, root, 5 runs, the
+  T2 v3.3 leg active): all PASS on the original criterion (no interval
+  relabelled QUIET). T1 v2.1/v3.3 ratio 0.999 to 1.000 for both `schedlat`
+  (30.0 vs 30.0) and `psp` (699 to 701/s). T2 v2.1 `schedlat` 0.001 to 1.456 %,
+  `psp` 4 to 54/s; v3.3 `schedlat` median 15.2 to 15.4 on the same cgroup.
+  **Under churn faster than the sampling interval, v2.1 `schedlat` reads about
+  a tenth or less of v3.3** (worker threads living 100 ms, 1 s interval): the
+  per-TID fix counts only threads alive at a sample instant. This does not
+  apply to the thread-pool servers of Tier B/C, whose workers are long-lived,
+  but it bounds what v2.1 can report for short-lived threads.
+  The QUIET rule of the T2 v3.3 leg does not match this mechanism (v3.3 does
+  not dip), so a lockstep zero still fails T2; the leg is kept as the v3.3
+  level reference under churn.
+- T2 tally for v0.2.1: 20 of 21 runs pass (10 unprivileged, 11 as root, 5 of
+  them with the v3.3 leg); the one failure is the lockstep zero above. Five
+  further root runs crashed in the harness on the v3.3 `nan` and judged
+  nothing; they are not counted. Only the runs made through
+  `tests/run-c38-all.sh` have logs in `tests/logs/`. Its first
+  five root runs crashed in the test harness before judging v2.1: v3.3
+  `--output json` prints the canonical fields with `%.2f`, so an unavailable
+  `mbw` (no RDT on this host) is written as a bare `nan`, which is not JSON.
+  Only the portable fields go through `json_num()` and become `null`. The T2
+  parser now maps a bare `nan` to `null`; v3.3 itself is left unchanged in
+  v0.2.1 (the campaigns used TSV output), recorded here as an observation.
+- T3: **not run**. It needs resctrl L3 monitoring, which the development host
+  lacks, and no testbed with RDT is available (author, 2026-09-30). F2 (recursive RDT enrollment) is therefore covered by the unit test of
+  the `cgroup.threads`/`cgroup.procs` recursion only, not by a measurement.
+
+Also corrected in the same change (comments and docs): `psp` is not Volpert's
+PSP, which counts switches to PID 0 as a throttling indicator (that role is
+`schedthr`'s); `schedthr` reads 0, not `--`, without a `cpu.max` limit and is
+non-hierarchical; `idle_preempt` is an idle-CPU takeover rate; the docs now
+list all 8 portable and regime columns.

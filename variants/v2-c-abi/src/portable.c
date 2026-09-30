@@ -12,9 +12,12 @@
  * back llcmr are <not supported> by the vPMU. The six metrics here are computed
  * by the GUEST'S OWN kernel and therefore survive in-guest:
  *
- *   schedlat   run-queue / scheduling latency  -- PSI cpu.pressure 'some' (or
- *              per-PID /proc/<pid>/schedstat run-delay), %-of-interval. The
- *              direct VM-portable scheduling-contention signal (Volpert PSL).
+ *   schedlat   run-queue / scheduling latency  -- per-thread
+ *              /proc/<tid>/schedstat run-delay (preferred backend), with PSI
+ *              cpu.pressure 'some' as the fallback, %-of-interval. The direct
+ *              VM-portable scheduling-contention signal (run-queue wait, as
+ *              Volpert's PSL; normalized by interval x CPUs instead of per
+ *              process).
  *   psi_mem    PSI memory.pressure 'some'       -- %-of-interval. Memory-CAPACITY
  *              contention proxy (capacity, NOT bandwidth -- see membw_est).
  *   membw_est  DRAM-bandwidth estimate          -- LLC misses * 64B cacheline /
@@ -26,9 +29,16 @@
  *   schedthr   CFS throttling                   -- cpu.stat throttled_usec,
  *              %-of-interval. Confound GUARD (separates an external noisy
  *              neighbour from a tenant hitting its own quota), not a contention
- *              signal. cgroup-only (no system analogue).
+ *              signal; it plays the throttling-indicator role of Volpert's PSP.
+ *              cgroup-only (no system analogue). throttled_usec exists whenever
+ *              the cpu controller is enabled and reads 0 without a cpu.max
+ *              limit; it is NOT hierarchical -- it counts only throttling by
+ *              this cgroup's own limit, not an ancestor's
+ *              (Documentation/admin-guide/cgroup-v2.rst, cpu.stat).
  *   steal      hypervisor-stolen vCPU time      -- /proc/stat field 8,
- *              %-of-total. VM-global (NOT cgroup-scoped); 0 on bare/container.
+ *              %-of-total. VM-global (NOT cgroup-scoped); reflects host CPU
+ *              contention only (not memory or IO); 0 on bare/container
+ *              (Documentation/virt/kvm/x86/msr.rst, MSR_KVM_STEAL_TIME).
  *
  * Claim classes: schedlat=directional; psi_mem/psi_io/membw_est=descriptive;
  * schedthr=descriptive (guard); steal=descriptive, VM-only.
@@ -36,7 +46,8 @@
  * Each metric uses the same probe/init/read/cleanup backend chain as the
  * canonical metrics (cpu.c is the file-read template, llcmr.c the perf one).
  * A read returns METRIC_STATUS_UNAVAILABLE (-> "--") where the source is absent
- * (CONFIG_PSI=n, no cpu.max quota, no cgroup target) rather than a fake 0.
+ * (CONFIG_PSI=n, cpu controller not enabled for the cgroup, no cgroup target)
+ * rather than a fake 0. schedthr without a cpu.max limit reads 0, not "--".
  */
 
 #include "backend.h"
@@ -111,40 +122,150 @@ static int proc_stat_steal(unsigned long long *steal, unsigned long long *total)
     return rc;
 }
 
-/* Collect the target's current PIDs: re-scan cgroup.procs each call when a
- * cgroup is targeted (child-inclusive -- catches workers forked after start,
- * like the resctrl mon_group rescan), else the static --pids set. */
-static int collect_target_pids(pid_t *out, int max)
+/* ------------------------------------------------------------------ per-TID accounting */
+
+/* /proc/<pid>/schedstat and the *_ctxt_switches lines of /proc/<pid>/status
+ * describe ONE task_struct, not the thread group (fs/proc/base.c
+ * proc_pid_schedstat prints task->sched_info.run_delay; fs/proc/array.c
+ * task_context_switch_counts prints p->nvcsw/p->nivcsw). Reading them per TGID
+ * counts only each process's leader thread, so a multi-threaded workload whose
+ * leader sleeps (JVM, memcached, nginx workers) read ~0 (C38). schedlat
+ * therefore enumerates every TID of the target and keeps a per-TID baseline:
+ *
+ *   - known TID:  delta = cur - prev, clamped at 0 per TID (TID reuse);
+ *   - new TID:    delta = cur. The thread was born inside the interval, so its
+ *                 whole counter belongs to it. The map is seeded at init(), so
+ *                 this only applies to threads born mid-run; a thread that
+ *                 existed before attach but was missed at seed time would
+ *                 over-attribute its pre-attach history once, at its first
+ *                 sample;
+ *   - exited TID: drops out of the map; its last partial interval is lost.
+ *
+ * Per-TID baselines replace the old delta over a SUM of counters, where one
+ * exiting task made the sum drop and the whole interval read 0. */
+
+#define TIDMAP_SLOTS 32768u   /* power of two, >= 2 x INTP_MAX_TIDS */
+
+typedef struct {
+    pid_t              tid;   /* 0 = empty slot */
+    unsigned long long val;
+} tid_ent_t;
+
+typedef int (*tid_reader_fn)(pid_t tid, unsigned long long *out);
+
+typedef struct {
+    tid_ent_t *prev;          /* last interval's baselines */
+    tid_ent_t *cur;           /* scratch, swapped with prev after each sample */
+    int        valid;
+    int        capped;        /* last collection hit INTP_MAX_TIDS */
+} tidacc_t;
+
+static pid_t tid_buf[INTP_MAX_TIDS];
+
+/* Collect the target's current TIDs: /proc/<pid>/task of each static --pids
+ * PID (v2 has no cgroup target). *capped is set when the INTP_MAX_TIDS cap was
+ * reached. */
+static int collect_target_tids(pid_t *out, int max, int *capped)
 {
     const intp_target_t *t = intp_target_get();
+    *capped = 0;
     if (!t) return 0;
-    int n = t->n_pids < max ? t->n_pids : max;
-    for (int i = 0; i < n; i++) out[i] = t->pids[i];
+    int n = 0;
+    for (int i = 0; i < t->n_pids && n < max; i++)
+        n += procutil_read_proc_tasks(t->pids[i], out + n, (size_t)(max - n));
+    if (n >= max) *capped = 1;
     return n;
 }
 
-/* Sum field-2 (run-queue wait ns) of /proc/<pid>/schedstat across the target's
- * current PIDs. This is Σ per-task run-queue wait over the interval; the caller
- * normalizes by (interval_ns × ncpus), matching the v3.3 eBPF schedlat scale. */
-static int sum_runqdelay_ns(unsigned long long *out)
+static unsigned tid_hash(pid_t tid)
 {
-    pid_t pids[INTP_MAX_PIDS];
-    int n = collect_target_pids(pids, INTP_MAX_PIDS);
+    return ((unsigned)tid * 2654435761u) & (TIDMAP_SLOTS - 1u);
+}
+
+static tid_ent_t *tidmap_find(tid_ent_t *map, pid_t tid)
+{
+    for (unsigned h = tid_hash(tid), i = 0; i < TIDMAP_SLOTS;
+         i++, h = (h + 1u) & (TIDMAP_SLOTS - 1u)) {
+        if (map[h].tid == tid) return &map[h];
+        if (map[h].tid == 0)   return NULL;
+    }
+    return NULL;
+}
+
+static void tidmap_put(tid_ent_t *map, pid_t tid, unsigned long long val)
+{
+    for (unsigned h = tid_hash(tid), i = 0; i < TIDMAP_SLOTS;
+         i++, h = (h + 1u) & (TIDMAP_SLOTS - 1u)) {
+        if (map[h].tid == 0 || map[h].tid == tid) {
+            map[h].tid = tid;
+            map[h].val = val;
+            return;
+        }
+    }
+}
+
+/* Read every target TID into a->cur and, when `delta` is non-NULL, sum the
+ * per-TID deltas against a->prev. Returns -1 when no TID was readable. */
+static int tidacc_scan(tidacc_t *a, tid_reader_fn rd, unsigned long long *delta)
+{
+    int n = collect_target_tids(tid_buf, INTP_MAX_TIDS, &a->capped);
     if (n <= 0) return -1;
+    memset(a->cur, 0, TIDMAP_SLOTS * sizeof(tid_ent_t));
     unsigned long long sum = 0;
     int any = 0;
     for (int i = 0; i < n; i++) {
-        char path[64];
-        snprintf(path, sizeof(path), "/proc/%d/schedstat", (int)pids[i]);
-        FILE *f = fopen(path, "r");
-        if (!f) continue;
-        unsigned long long run = 0, wait = 0;
-        if (fscanf(f, "%llu %llu", &run, &wait) == 2) { sum += wait; any = 1; }
-        fclose(f);
+        unsigned long long v;
+        if (rd(tid_buf[i], &v) != 0) continue;   /* exited mid-scan */
+        any = 1;
+        tidmap_put(a->cur, tid_buf[i], v);
+        if (!delta) continue;
+        const tid_ent_t *p = tidmap_find(a->prev, tid_buf[i]);
+        if (!p)              sum += v;           /* born this interval */
+        else if (v >= p->val) sum += v - p->val;
     }
     if (!any) return -1;
-    *out = sum;
+    tid_ent_t *tmp = a->prev;
+    a->prev = a->cur;
+    a->cur  = tmp;
+    if (delta) *delta = sum;
     return 0;
+}
+
+static void tidacc_free(tidacc_t *a)
+{
+    free(a->prev);
+    free(a->cur);
+    memset(a, 0, sizeof(*a));
+}
+
+/* Allocate the maps and seed the baselines with the TIDs present at init. */
+static int tidacc_init(tidacc_t *a, tid_reader_fn rd)
+{
+    tidacc_free(a);
+    a->prev = calloc(TIDMAP_SLOTS, sizeof(tid_ent_t));
+    a->cur  = calloc(TIDMAP_SLOTS, sizeof(tid_ent_t));
+    if (!a->prev || !a->cur || tidacc_scan(a, rd, NULL) != 0) {
+        tidacc_free(a);
+        return -1;
+    }
+    a->valid = 1;
+    return 0;
+}
+
+/* Field 2 of /proc/<tid>/task/<tid>/schedstat: this thread's cumulative
+ * run-queue wait (ns). The /proc/<tid>/task/<tid> form resolves for any TID,
+ * leader or not, without knowing its TGID. */
+static int read_tid_runqdelay(pid_t tid, unsigned long long *out)
+{
+    char path[80];
+    snprintf(path, sizeof(path), "/proc/%d/task/%d/schedstat", (int)tid, (int)tid);
+    FILE *f = fopen(path, "r");
+    if (!f) return -1;
+    unsigned long long run = 0, wait = 0;
+    int rc = (fscanf(f, "%llu %llu", &run, &wait) == 2) ? 0 : -1;
+    fclose(f);
+    if (rc == 0) *out = wait;
+    return rc;
 }
 
 static double clamp_pct(double v)
@@ -224,50 +345,43 @@ static int schedlat_cg_read(metric_sample_t *out, double iv)
 }
 static void schedlat_cg_cleanup(void) { schedlat_st.valid = 0; }
 
-/* schedstat run-delay over the target's cgroup/PIDs (no PSI dependency). This is
+/* schedstat run-delay over the target's threads (no PSI dependency). This is
  * the PREFERRED schedlat backend because its scale matches the v3.3 eBPF
- * schedlat: Σ per-task run-queue wait ÷ (interval × ncpus). The PSI cpu.pressure
- * backend below is a fallback only -- PSI 'some' is a core-count-independent
- * wall-clock stall FRACTION, a different (non-cored) quantity that must not be
- * mixed with this series in a cross-variant/cross-env comparison. */
-static struct {
-    int                valid;
-    unsigned long long prev_wait_ns;
-    long               ncpus;
-} schedstat_st;
+ * schedlat: Σ per-thread run-queue wait ÷ (interval × ncpus). The PSI
+ * cpu.pressure backend below is a fallback only -- PSI 'some' is a
+ * core-count-independent wall-clock stall FRACTION, a different (non-cored)
+ * quantity that must not be mixed with this series in a cross-variant/cross-env
+ * comparison. Per-TID, not per-TGID (C38; see the per-TID accounting block). */
+static tidacc_t schedstat_acc;
+static long     schedstat_ncpus;
 
 static int schedlat_pid_probe(void)
 {
-    pid_t pids[INTP_MAX_PIDS];
-    int n = collect_target_pids(pids, INTP_MAX_PIDS);
+    int capped;
+    int n = collect_target_tids(tid_buf, INTP_MAX_TIDS, &capped);
     if (n <= 0) return -1;
-    char p[64];
-    snprintf(p, sizeof(p), "/proc/%d/schedstat", (int)pids[0]);
-    return access(p, R_OK) == 0 ? 0 : -1;   /* CONFIG_SCHEDSTATS present? */
+    unsigned long long v;
+    return read_tid_runqdelay(tid_buf[0], &v);   /* CONFIG_SCHEDSTATS present? */
 }
 static int schedlat_pid_init(void)
 {
-    if (sum_runqdelay_ns(&schedstat_st.prev_wait_ns) != 0) return -1;
-    schedstat_st.ncpus = online_cpus();
-    schedstat_st.valid = 1;
+    if (tidacc_init(&schedstat_acc, read_tid_runqdelay) != 0) return -1;
+    schedstat_ncpus = online_cpus();
     return 0;
 }
 static int schedlat_pid_read(metric_sample_t *out, double iv)
 {
-    if (!schedstat_st.valid) return -1;
-    unsigned long long cur = 0;
-    if (sum_runqdelay_ns(&cur) != 0) return -1;
-    double d = (cur >= schedstat_st.prev_wait_ns)
-             ? (double)(cur - schedstat_st.prev_wait_ns) : 0.0;
-    schedstat_st.prev_wait_ns = cur;
-    double avail_ns = iv * 1.0e9 * (double)schedstat_st.ncpus;
-    out->value      = (avail_ns > 0.0) ? clamp_pct(d / avail_ns * 100.0) : 0.0;
-    out->status     = METRIC_STATUS_OK;
+    if (!schedstat_acc.valid) return -1;
+    unsigned long long d = 0;
+    if (tidacc_scan(&schedstat_acc, read_tid_runqdelay, &d) != 0) return -1;
+    double avail_ns = iv * 1.0e9 * (double)schedstat_ncpus;
+    out->value      = (avail_ns > 0.0) ? clamp_pct((double)d / avail_ns * 100.0) : 0.0;
+    out->status     = schedstat_acc.capped ? METRIC_STATUS_DEGRADED : METRIC_STATUS_OK;
     out->backend_id = "schedstat_pid";
-    out->note       = NULL;
+    out->note       = schedstat_acc.capped ? "tid_cap" : NULL;
     return 0;
 }
-static void schedlat_pid_cleanup(void) { schedstat_st.valid = 0; }
+static void schedlat_pid_cleanup(void) { tidacc_free(&schedstat_acc); }
 
 static int schedlat_sys_probe(void)
 {
@@ -290,7 +404,7 @@ static backend_t schedlat_cg = {
 };
 static backend_t schedlat_pid = {
     .backend_id = "schedstat_pid",
-    .description = "per-PID /proc/<pid>/schedstat run-queue wait",
+    .description = "per-thread /proc/<tid>/schedstat run-queue wait",
     .probe = schedlat_pid_probe, .init = schedlat_pid_init,
     .read = schedlat_pid_read, .cleanup = schedlat_pid_cleanup,
 };

@@ -73,9 +73,11 @@ static void usage(const char *p)
         "  --force-backend M:ID    force a backend, e.g. mbw:perf_uncore_imc\n"
         "  --disable-metric M      skip metric M entirely\n"
         "  --list-backends         print capabilities and exit\n"
-        "  --portable-metrics      append the 6 VM-portable columns (schedlat\n"
-        "                          psi_mem membw_est psi_io schedthr steal) --\n"
-        "                          a SEPARATE benchmark; canonical 7 untouched (C26)\n"
+        "  --portable-metrics      append the 8 portable and regime columns\n"
+        "                          (schedlat psi_mem membw_est psi_io schedthr steal\n"
+        "                          psp idle_preempt; idle_preempt is eBPF-only, '--'\n"
+        "                          here) -- a SEPARATE benchmark; canonical 7\n"
+        "                          untouched (C26)\n"
         "\n"
         "Hardware overrides:\n"
         "  --nic-speed-bps N\n"
@@ -435,7 +437,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* Probe + init the 6 VM-portable metrics (--portable-metrics, C26). A
+    /* Probe + init the 8 portable and regime metrics (--portable-metrics, C26). A
      * SEPARATE list from the canonical 7 so the fingerprint path is unchanged
      * when the flag is off. A metric that probes/inits to nothing reads "--". */
     int n_port = 0;

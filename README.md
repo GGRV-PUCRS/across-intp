@@ -88,6 +88,10 @@ They ship as **release assets** attached to
 [`v0.1.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.1.0) — about
 350 MB of measurement output that would swamp a source tree. Download them from
 the release page; cloning the repository will not produce them.
+The JSA campaign data is attached the same way to
+[`v0.2.1`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.1) (and
+`v0.2.0`): `across-intp-jsa-results-v0.2.0.tar.gz`,
+`IntP-JSA-complete-data-20260918.tar.xz` and their `SHA256SUMS`.
 
 | Release asset | What it holds |
 | --- | --- |
@@ -111,7 +115,8 @@ In [docs/READER-MAP.md](docs/READER-MAP.md) every row is tagged **repo:** or
 | Release | What it is |
 | --- | --- |
 | [`v0.1.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.1.0) | The SBAC-PAD 2026 artifact, with the data assets above. The `release/v0.1.0` branch holds the same tree for browsing without downloading. |
-| [`v0.2.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.0) | The JSA artifact: the container-based interference work (v2.1 and v3.3 per-cgroup profilers, the cross-deployment suite, the IADA simulator campaigns). Campaign results and the frozen campaign archive are attached as release assets. See `docs/DECISIONS-container.md` and DECISIONS.md D15. |
+| [`v0.2.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.0) | Superseded by v0.2.1 (code fix; same data). The JSA campaigns ran with this release: the container-based interference work (v2.1 and v3.3 per-cgroup profilers, the cross-deployment suite, the IADA simulator campaigns). Campaign results and the frozen campaign archive are attached as release assets. See `docs/DECISIONS-container.md` and DECISIONS.md D15. |
+| [`v0.2.1`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.1) | The JSA artifact as cited. Fixes v2.1 per-thread scheduler metrics (`schedlat`, `psp`) and recursive RDT enrollment (C38); the affected cells are not re-measured. The data assets are the v0.2.0 ones, unchanged; see [provenance/v0.2.0/](provenance/v0.2.0/README.md) and DECISIONS.md D16 to D18. |
 
 The production profiler built from V2.1 and V3.3 is `intp`, packaged for
 Ubuntu in [`ppa:norohim/intp`](https://launchpad.net/~norohim/+archive/ubuntu/intp);
@@ -155,19 +160,27 @@ x = supported, ~ = polling approximation, - = disabled in this build
 
 A stock KVM guest cannot measure `mbw`/`llcocc` (resctrl is host-only) or a
 comparable `llcmr` (the LL-read PMU events are not virtualized). `v2.1` and `v3.3`
-therefore offer six additional metrics computed by the **guest's own kernel** as a
-SEPARATE, flag-gated benchmark (`--portable-metrics`) — the canonical 7-metric
+therefore offer eight additional columns -- six portable metrics computed by the
+**guest's own kernel** plus a scheduling-regime pair -- as a SEPARATE, flag-gated
+benchmark (`--portable-metrics`) — the canonical 7-metric
 fingerprint above and its on-disk schema are left untouched. Design + status:
 [docs/reports/8th-metric-vm-portable-design.md](docs/reports/8th-metric-vm-portable-design.md).
 
-- **schedlat** -- run-queue / scheduling latency (eBPF `sched_wakeup`→`sched_switch`
-  in v3.3; PSI `cpu.pressure` / `schedstat` in v2.1) — *directional*
+- **schedlat** -- run-queue wait of the target's threads, % of interval × CPUs
+  (eBPF `sched_wakeup`→`sched_switch` in v3.3; per-thread `/proc/<tid>/schedstat`
+  in v2.1, PSI `cpu.pressure` as fallback) — *directional*
 - **psi_mem** -- PSI `memory.pressure` (memory-capacity contention) — *descriptive*
 - **membw_est** -- DRAM-bandwidth estimate (LLC misses × 64 B / interval, MB/s; the
   bandwidth complement `psi_mem` is blind to, and the metric that survives in-guest) — *descriptive*
 - **psi_io** -- PSI `io.pressure` (`blk`'s contention companion) — *descriptive*
-- **schedthr** -- CFS throttling (`cpu.stat`, a confound guard) — *descriptive*
-- **steal** -- hypervisor-stolen vCPU time (`/proc/stat`; VM-global) — *descriptive*
+- **schedthr** -- CFS throttling (`cpu.stat` `throttled_usec`, a confound guard;
+  reads 0 without a `cpu.max` limit and counts only the cgroup's own limit) — *descriptive*
+- **steal** -- hypervisor-stolen vCPU time (`/proc/stat`; VM-global, reflects host
+  CPU contention only) — *descriptive*
+- **psp** -- involuntary preemptions/s of the target's threads (scheduling regime;
+  not Volpert's PSP, whose throttling role `schedthr` plays)
+- **idle_preempt** -- idle-CPU takeovers/s: the target's tasks dispatched onto a
+  previously idle CPU (scheduling regime; eBPF-only, `--` in v2.1)
 
 ## Directory Layout
 
@@ -445,7 +458,8 @@ The `vm-guest` leg yields valid per-cgroup `cpu`, but the RDT/PMU metrics
 host-only and last-level-cache perf events are not virtualized. The VM
 path therefore uses a separate, flag-gated benchmark
 (`--portable-metrics`: `schedlat`, `psi_mem`, `membw_est`, `psi_io`,
-`schedthr`, `steal`) so the canonical 7-metric contract (netp nets blk mbw
+`schedthr`, `steal`, plus the scheduling-regime pair `psp` and
+`idle_preempt`) so the canonical 7-metric contract (netp nets blk mbw
 llcmr llcocc cpu) stays intact. See
 [docs/CROSS-ENV-CAMPAIGN.md](docs/CROSS-ENV-CAMPAIGN.md),
 [docs/DECISIONS-container.md](docs/DECISIONS-container.md), and

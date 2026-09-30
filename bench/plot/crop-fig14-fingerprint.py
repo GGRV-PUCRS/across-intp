@@ -3,6 +3,10 @@
 per-variant halves the JSA paper includes as fig:fingerprint (v2.1 left,
 v3.3 right).
 
+OBSOLETE since v0.2.1 (DECISIONS.md D17): use
+plot-tierb-fingerprint.py --variants v3.3 --pdf ... (and --variants v2.1
+--mask c38-prefix for the appendix). Kept to reproduce the v0.2.0 figures.
+
 The combined F12-fingerprint PDF (plot-tierb-fingerprint.py, ~1278 x 386 pt)
 places the v2.1 panel at x in [0, 655.5] and the v3.3 panel at x in
 [657.6, 1275.7]; the banked paper PDFs carry exactly these cropboxes (and a

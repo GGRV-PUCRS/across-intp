@@ -54,4 +54,10 @@ int procutil_read_proc_io(pid_t pid,
                           unsigned long long *read_bytes,
                           unsigned long long *write_bytes);
 
+/* List the TIDs of process `pid` from /proc/<pid>/task into out[] (up to max).
+ * Returns the count; 0 if the process is gone. /proc/<pid>/schedstat describes
+ * ONE task_struct (fs/proc/base.c proc_pid_schedstat), so per-task scheduler
+ * metrics must be read per TID (C38). */
+int procutil_read_proc_tasks(pid_t pid, pid_t *out, size_t max);
+
 #endif /* INTP_PROCUTIL_H */
