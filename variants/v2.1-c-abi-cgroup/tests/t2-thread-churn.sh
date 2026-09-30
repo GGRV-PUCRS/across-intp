@@ -10,11 +10,15 @@
 #
 #   tests/t2-thread-churn.sh        T2_SECS=20 T2_THREADS=4 T2_CPUS=0 T2_CHURN_MS=100
 #   INTP_V33_BIN=/path/intp-ebpf-core-cgroup   (root) -> v3.3 samples the same
-#       cgroup concurrently. A v2.1 schedlat interval at 0 then passes as QUIET
-#       only when v3.3 also reads < 10 % of its own median in that interval,
-#       i.e. the workload itself did not contend; otherwise it stays a FAIL.
-#       Added after one root run read schedlat 0.0 (psp 3/s) in one interval on
-#       both targets (C38, logs/c38-local-root-20260930-172435).
+#       cgroup concurrently and its schedlat median is printed as the level
+#       reference. A v2.1 schedlat interval at 0 passes as QUIET only when
+#       v3.3 also reads < 10 % of its own median in that interval; otherwise
+#       it stays a FAIL.
+#
+# Known false failure (C38, logs/c38-local-root-20260930-172435): the slots
+# churn nearly in lockstep, so a sample taken just after a worker turnover sees
+# only newborn threads and can read schedlat 0 (about 0.7 % of instants). v3.3
+# does not dip then, so such a zero still fails.
 set -euo pipefail
 . "$(dirname "$0")/lib-portable.sh"
 

@@ -1,0 +1,7 @@
+--- mt_spin pid=93785 threads=4 churn=100ms cgroup=/sys/fs/cgroup/intp-c38/t2
+v33 schedlat median=15.330 n=19
+cg  schedlat min=0.030 max=1.410 n=19
+cg  psp      min=4.000 max=33.000 n=19
+pid schedlat min=0.105 max=1.365 n=19
+pid psp      min=4.000 max=36.000 n=19
+T2: OK

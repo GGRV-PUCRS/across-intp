@@ -1496,17 +1496,40 @@ with `tests/run-c38-all.sh`, logs under `variants/v2.1-c-abi-cgroup/tests/logs/`
   1.000), `psp` 699 vs 698/s (ratio 1.001), v0.2.0 binary 0.0 and 0.0. **T2
   FAILED once**: `schedlat` read 0.0 (status `ok`, not missing) in sample 5 on
   both the cgroup and the `--pids` target, while `psp` read 3/s there (14 to
-  28/s in the neighbouring intervals); raw JSON in `T2-outputs/`. Five further
-  root runs and seven unprivileged runs of T2 passed (`schedlat` minimum 0.076
-  to 0.277 %). The two targets enumerate threads by different paths
-  (`cgroup.threads`, `/proc/<pid>/task`) and read identical values, and `psp`
-  stayed non-zero, so the accounting was live; the leading reading is an
-  interval in which the workload itself did not contend, but no independent
-  reference was recorded for that run. A random-instant probe of the helper
-  found no instant with under 100 us of worker run-queue wait in 100 samples,
-  so the lockstep-churn explanation was checked and does not hold. T2 now
-  accepts an optional concurrent v3.3 leg (root) that labels a v2.1 zero QUIET
-  only when v3.3 also reads under 10 % of its median in that interval. Its first
+  28/s in the neighbouring intervals); raw JSON in `T2-outputs/`. The two
+  targets enumerate threads by different paths (`cgroup.threads`,
+  `/proc/<pid>/task`) and read identical values, and `psp` stayed non-zero, so
+  the accounting was live.
+  **Mechanism (checked):** the sampler limitation stated under Fix, not either
+  C38 defect. `mt_spin`'s 4 slots start together and each worker lives 100 ms
+  of wall time, so the workers turn over nearly in lockstep. A v2.1 interval
+  counts the wait of the threads alive at the sample instant plus the deltas of
+  the known ones; workers that lived and exited inside the interval take their
+  wait with them. A sample taken just after a turnover therefore sees only
+  newborn workers. A dense probe of the helper (9,349 instants, 2 ms apart,
+  unprivileged) found the visible workers' total wait under 100 us at 0.71 % of
+  instants, and the count is the same under 1 ms (the distribution is
+  bimodal). An earlier 100-sample probe had found none and was too small to see
+  this; the statement that lockstep churn does not explain the zero was wrong
+  and is withdrawn. "The workload did not contend" is also wrong: v3.3 reads a
+  steady 15.2 to 15.4 on this workload (below).
+  T2 therefore has a small false-failure rate on this helper. Its "no interval
+  at 0" check still separates the fixed binary from the delta-over-sum
+  defect, which zeroes intervals whenever a thread exits. Staggering the slot
+  start times in `mt_spin` would remove the artifact; not done for v0.2.1.
+- `c38-local-root-20260930-182836` to `-183214` (same host, root, 5 runs, the
+  T2 v3.3 leg active): all PASS on the original criterion (no interval
+  relabelled QUIET). T1 v2.1/v3.3 ratio 0.999 to 1.000 for both `schedlat`
+  (30.0 vs 30.0) and `psp` (699 to 701/s). T2 v2.1 `schedlat` 0.001 to 1.456 %,
+  `psp` 4 to 54/s; v3.3 `schedlat` median 15.2 to 15.4 on the same cgroup.
+  **Under churn faster than the sampling interval, v2.1 `schedlat` reads about
+  a tenth or less of v3.3** (worker threads living 100 ms, 1 s interval): the
+  per-TID fix counts only threads alive at a sample instant. This does not
+  apply to the thread-pool servers of Tier B/C, whose workers are long-lived,
+  but it bounds what v2.1 can report for short-lived threads.
+  The QUIET rule of the T2 v3.3 leg does not match this mechanism (v3.3 does
+  not dip), so a lockstep zero still fails T2; the leg is kept as the v3.3
+  level reference under churn. Its first
   five root runs crashed in the test harness before judging v2.1: v3.3
   `--output json` prints the canonical fields with `%.2f`, so an unavailable
   `mbw` (no RDT on this host) is written as a bare `nan`, which is not JSON.
