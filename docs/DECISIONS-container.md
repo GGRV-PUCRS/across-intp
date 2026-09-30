@@ -1529,7 +1529,12 @@ with `tests/run-c38-all.sh`, logs under `variants/v2.1-c-abi-cgroup/tests/logs/`
   but it bounds what v2.1 can report for short-lived threads.
   The QUIET rule of the T2 v3.3 leg does not match this mechanism (v3.3 does
   not dip), so a lockstep zero still fails T2; the leg is kept as the v3.3
-  level reference under churn. Its first
+  level reference under churn.
+- T2 tally for v0.2.1: 20 of 21 runs pass (10 unprivileged, 11 as root, 5 of
+  them with the v3.3 leg); the one failure is the lockstep zero above. Five
+  further root runs crashed in the harness on the v3.3 `nan` and judged
+  nothing; they are not counted. Only the runs made through
+  `tests/run-c38-all.sh` have logs in `tests/logs/`. Its first
   five root runs crashed in the test harness before judging v2.1: v3.3
   `--output json` prints the canonical fields with `%.2f`, so an unavailable
   `mbw` (no RDT on this host) is written as a bare `nan`, which is not JSON.
