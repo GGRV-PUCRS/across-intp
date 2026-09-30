@@ -1491,7 +1491,25 @@ with `tests/run-c38-all.sh`, logs under `variants/v2.1-c-abi-cgroup/tests/logs/`
   19 intervals, no interval at 0 and no underflow spike. The T1 v3.3 agreement
   leg was skipped (needs root) and T3 was skipped (needs root, resctrl L3
   monitoring, which this CPU does not have, and stress-ng).
-- T1 v3.3 agreement leg and T3: _pending, see the root and testbed runs_.
+- `c38-local-root-20260930-172435` (same host, root): unit tests OK; T1 OK
+  including the v3.3 agreement leg: `schedlat` v2.1 30.0 vs v3.3 30.0 (ratio
+  1.000), `psp` 699 vs 698/s (ratio 1.001), v0.2.0 binary 0.0 and 0.0. **T2
+  FAILED once**: `schedlat` read 0.0 (status `ok`, not missing) in sample 5 on
+  both the cgroup and the `--pids` target, while `psp` read 3/s there (14 to
+  28/s in the neighbouring intervals); raw JSON in `T2-outputs/`. Five further
+  root runs and seven unprivileged runs of T2 passed (`schedlat` minimum 0.076
+  to 0.277 %). The two targets enumerate threads by different paths
+  (`cgroup.threads`, `/proc/<pid>/task`) and read identical values, and `psp`
+  stayed non-zero, so the accounting was live; the leading reading is an
+  interval in which the workload itself did not contend, but no independent
+  reference was recorded for that run. A random-instant probe of the helper
+  found no instant with under 100 us of worker run-queue wait in 100 samples,
+  so the lockstep-churn explanation was checked and does not hold. T2 now
+  accepts an optional concurrent v3.3 leg (root) that labels a v2.1 zero QUIET
+  only when v3.3 also reads under 10 % of its median in that interval.
+- T3: **not run**. It needs resctrl L3 monitoring, which the development host
+  lacks, and no testbed with RDT is available (author, 2026-09-30). F2 (recursive RDT enrollment) is therefore covered by the unit test of
+  the `cgroup.threads`/`cgroup.procs` recursion only, not by a measurement.
 
 Also corrected in the same change (comments and docs): `psp` is not Volpert's
 PSP, which counts switches to PID 0 as a throttling indicator (that role is

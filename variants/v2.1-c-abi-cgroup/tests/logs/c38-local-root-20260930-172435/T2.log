@@ -1,0 +1,9 @@
+--- mt_spin pid=41593 threads=4 churn=100ms cgroup=/sys/fs/cgroup/intp-c38/t2
+cg  schedlat min=0.000 max=1.410 n=19
+FAIL: cg schedlat collapsed to 0 at samples [5]
+cg  psp      min=3.000 max=36.000 n=19
+pid schedlat min=0.000 max=1.410 n=19
+FAIL: pid schedlat collapsed to 0 at samples [5]
+pid psp      min=3.000 max=36.000 n=19
+T2: FAILED
+outputs kept in /tmp/intp-c38-KFKheC

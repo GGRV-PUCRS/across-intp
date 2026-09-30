@@ -445,7 +445,11 @@ the Zenodo record exists_.
    under `provenance/v0.2.0/`. `v0.2.0` is superseded, not edited or re-tagged.
    `provenance/v0.2.0/README.md` records which cells of the (unchanged) v0.2.0
    assets are pre-fix, where the v2.1 Tier B/C trees live in both archives, and
-   their checksums.
+   their checksums. One release and one DOI must hold everything the paper
+   cites, so the v0.2.1 release re-attaches the v0.2.0 data assets unchanged
+   (both tarballs and `SHA256SUMS`); the Zenodo snapshot of v0.2.1 then carries
+   code, data and the pre-fix trees together. The trees are not copied into the
+   git tree as well: that would duplicate 18 MB the same DOI already archives.
 5. **Tag policy.** See D17.
 
 ## D17 - v0.2.1 tag is cut once and never re-cut (2026-09-30)

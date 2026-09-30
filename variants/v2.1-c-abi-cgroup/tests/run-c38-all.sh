@@ -78,7 +78,11 @@ else
     record T1-v33 SKIPPED "$([ $IS_ROOT = 1 ] && echo "no v3.3 binary" || echo "needs root")"
 fi
 
-run_test T2 tests/t2-thread-churn.sh
+if [ $IS_ROOT = 1 ] && [ -n "$V33_BIN" ]; then
+    run_test T2 env INTP_V33_BIN="$V33_BIN" tests/t2-thread-churn.sh
+else
+    run_test T2 tests/t2-thread-churn.sh
+fi
 
 # T3: resctrl monitoring, root and stress-ng; old binary first (exit 3 = F2
 # is not the cause, see the script header).
