@@ -1,0 +1,5 @@
+unit     PASS    
+T1       PASS    
+T1-v33   SKIPPED needs root
+T2       PASS    
+T3       SKIPPED needs root;no resctrl L3 monitoring on this CPU/kernel;stress-ng not installed
