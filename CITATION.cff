@@ -17,7 +17,10 @@ abstract: >
   The remaining variants (stap-2022, stap-nollc, stap-nohelper, stap-modern,
   ebpf-ring, bpftrace) document the portability and reliability cliffs and
   corroborate the measured results. Evaluates portability, overhead, and
-  fidelity trade-offs across instrumentation ABIs.
+  fidelity trade-offs across instrumentation ABIs. Release 0.2.1 fixes two
+  v2.1 defects on multi-threaded and nested-cgroup targets (scheduler metrics
+  now read every thread, and RDT enrollment descends into child cgroups); the
+  measurement data is unchanged from 0.2.0.
 authors:
   - family-names: "Sacilotto"
     given-names: "André"
@@ -36,8 +39,8 @@ keywords:
   - eBPF
   - performance monitoring
   - cloud computing
-version: "0.2.0"
-date-released: "2026-09-25"
+version: "0.2.1"
+date-released: "2026-09-30"
 preferred-citation:
   type: conference-paper
   title: "Cross-Application Interference Profiling in Consolidated Cloud Servers: Improving Portability, Overhead and Fidelity in IntP"

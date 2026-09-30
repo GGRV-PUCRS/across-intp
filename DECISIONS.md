@@ -419,11 +419,13 @@ so every commit hash cited in this log resolves in the public repository.
    final: PSI was falsified as a bandwidth signal and `membw_est` carries the
    C31 net-path caveat.
 
-## D16 — v0.2.1: v2.1 per-thread scheduler metrics and recursive RDT enrollment (2026-09-28, in progress)
+## D16 — v0.2.1: v2.1 per-thread scheduler metrics and recursive RDT enrollment (2026-09-28)
 
-**Status: code fixed on `fix/v2.1-thread-scope-v0.2.1`; testbed tests, re-run and
-release pending.** Fill in the fix commits, the gate outcomes and the version
-DOI when they exist.
+**Status: fixed, not re-measured.** Fix commits `3067a0a` (v2.1) and `68f3007`
+(v2) on `fix/v2.1-thread-scope-v0.2.1`; T1 and T2 pass on the development host
+(C38). T3, the v2.1/v3.3 agreement leg and the re-run below are still pending on
+the testbed. The release ships the v0.2.0 data unchanged. Version DOI: _to be
+filled after the Zenodo record exists_.
 
 1. **What was wrong** (C38). v2.1 `schedlat` and `psp` read one thread per
    process (the TGID's own `/proc` counters), so multi-threaded real
@@ -438,4 +440,10 @@ DOI when they exist.
    decides whether that statement needs a re-run behind it.
 4. **Provenance.** The v0.2.0 Tier B and Tier C trees stay in the v0.2.1 release
    under `provenance/v0.2.0/`. `v0.2.0` is superseded, not edited or re-tagged.
+   Since nothing is re-measured yet, `provenance/v0.2.0/README.md` records which
+   cells of the (unchanged) v0.2.0 assets are pre-fix and their checksums; the
+   assets themselves stay attached, not copied into the tree.
+5. **Tag policy.** `v0.2.1` is an annotated tag on the merge commit and is never
+   moved or re-cut: the D13 re-cut practice does not apply once a release has a
+   DOI, because the Zenodo snapshot would then differ from the tag.
 

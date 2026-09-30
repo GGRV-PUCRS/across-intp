@@ -1371,6 +1371,10 @@ disclose the hypothesis and what was checked either way.
 
 ### C38 — v2.1 scheduler metrics read one thread per process; v2.1 RDT enrollment skipped nested cgroups (2026-09-28)
 
+**Status: fixed, not re-measured** (release `v0.2.1`, D16). T1 and T2 pass on
+the development host; T3, the v2.1/v3.3 agreement leg and the re-run below are
+pending on the testbed.
+
 Two v2.1 defects found while grading the v0.2.0 real-application tiers
 (`docs/reports/p2-tierb-15metric.md`, `p2-tierc-15metric.md`). Both only affect
 **v2.1 on the compose-based suites** (Tier B `app18`–`app21`, Tier C `app22`);
