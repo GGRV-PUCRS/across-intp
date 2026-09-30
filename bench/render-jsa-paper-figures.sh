@@ -155,10 +155,11 @@ python3 bench/plot/plot-fig11-fig12-jsa.py \
 cp "$WORK/fig11/Figure_11.pdf" "$WORK/fig_victim.pdf"
 cp "$WORK/fig11/Figure_12.pdf" "$WORK/fig_vmproxy.pdf"
 
-# Fig 14 (paper) per-variant fingerprint split -- scripted here for the first
-# time: regenerate both real-app fingerprint TSVs, concatenate in the
-# p2-realapps-combined order (tier-b rows then tier-c rows), render the
-# combined F12 PDF, then crop per variant with the banked cropboxes.
+# Fig 14 (paper) per-variant fingerprints: regenerate both real-app
+# fingerprint TSVs, concatenate in the p2-realapps-combined order (tier-b rows
+# then tier-c rows), render the combined F12 PDF, then one self-contained
+# figure per variant (v0.2.1, D17): v3.3 for the main text, v2.1 with the C38
+# pre-fix cells hatched for the appendix. crop-fig14-fingerprint.py is obsolete.
 python3 bench/analyze-tierb.py "$DATA/final/04-tier-b-realapps" --tag-status \
     --tsv "$WORK/fingerprints-tierb-tagged.tsv" --out "$WORK/tierb-report.md" >/dev/null
 python3 bench/analyze-tierb.py "$DATA/final/05-tier-c-dsb" --tag-status \
@@ -174,14 +175,17 @@ python3 bench/plot/plot-tierb-fingerprint.py "$WORK/fingerprints-tagged.tsv" \
 F12_PDF="$(echo "$WORK"/f12/pdf/F12-real-applications-stress-several-resource-classes--*.pdf)"
 cp "$F12_PDF" "$WORK/fig_fingerprint.pdf"   # banked fig_fingerprint.pdf is
                                             # exactly this uncropped render
-python3 bench/plot/crop-fig14-fingerprint.py "$F12_PDF" "$WORK"
+python3 bench/plot/plot-tierb-fingerprint.py "$WORK/fingerprints-tagged.tsv" \
+    --variants v3.3 --pdf "$WORK/fig_fingerprint_v33.pdf"
+python3 bench/plot/plot-tierb-fingerprint.py "$WORK/fingerprints-tagged.tsv" \
+    --variants v2.1 --mask c38-prefix --pdf "$WORK/fig_fingerprint_v21_prefix.pdf"
 
 echo "== install into $OUT"
 FIGS=(
     fig_availability fig_claimclass fig_psi fig_membwproxy fig_preempt
     fig_arch fig_cadence fig_overhead fig_pipeline fig_faithfulness
     fig_anomaly figA_anomaly_v33 fig_victim fig_vmproxy
-    fig_fingerprint fig_fingerprint_v21 fig_fingerprint_v33
+    fig_fingerprint fig_fingerprint_v33 fig_fingerprint_v21_prefix
     fig_truthscore fig_idi_decomp
     fig_oracle fig_oracle_matrix
 )
@@ -221,14 +225,11 @@ print(f"  fig_truthscore Y5/Y6 IASA means + EVEN lines: {'OK' if ok else 'MISSIN
 t = pymupdf.open(f"{out}/fig_idi_decomp.pdf")[0].get_text()
 ok = all(s in t for s in ("8371", "3348", "6074", "4957", "3378", "3466"))
 print(f"  fig_idi_decomp closed-form + final-interval values: {'OK' if ok else 'MISSING -- CHECK'}")
-for name, want in (("fig_fingerprint_v21", "v2.1"), ("fig_fingerprint_v33", "v3.3")):
-    d = pymupdf.open(f"{out}/{name}.pdf")
-    p = d[0]
-    # pymupdf text extraction is relative to the cropbox already; passing
-    # clip=p.cropbox would double-apply the offset and match nothing.
-    t = p.get_text()
-    print(f"  {name} cropbox={tuple(round(v,1) for v in p.cropbox)} "
-          f"contains '{want}': {'OK' if want in t else 'MISSING -- CHECK'}")
+for name, want in (("fig_fingerprint_v33", ("v3.3", "unavailable")),
+                   ("fig_fingerprint_v21_prefix", ("v2.1", "pre-fix, not interpreted"))):
+    t = pymupdf.open(f"{out}/{name}.pdf")[0].get_text()
+    ok = all(s in t for s in want)
+    print(f"  {name} contains {want}: {'OK' if ok else 'MISSING -- CHECK'}")
 EOF
 
 echo

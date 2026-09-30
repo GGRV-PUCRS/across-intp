@@ -34,11 +34,13 @@ under `/tmp`), invokes the JSA renderers below (`plot-fig2-3-4-6-8-jsa.py`,
 `analyze-cadence-overhead.py --jsa-style`, `plot-fig-pipeline.py`,
 `plot-fig6-v2-jsa.py`, `plot-fig9-a3-jsa.py`, `plot-fig11-fig12-jsa.py`,
 `plot-tierb-fingerprint.py`), renames the `Figure_N.pdf` outputs to the
-paper's `fig_*.pdf` names, and splits the combined F12 fingerprint into the
-per-variant `fig_fingerprint_v21/v33.pdf` halves via
-[`crop-fig14-fingerprint.py`](crop-fig14-fingerprint.py) (PyMuPDF cropboxes
-matching the banked PDFs; the paper's `fig_fingerprint.pdf` is the uncropped
-F12 render). It validates each regenerated TSV against the old-name
+paper's `fig_*.pdf` names, and renders the per-variant fingerprints
+`fig_fingerprint_v33.pdf` (main text) and `fig_fingerprint_v21_prefix.pdf`
+(appendix, C38 pre-fix cells hatched) with `plot-tierb-fingerprint.py
+--variants ... --pdf ...` (the paper's `fig_fingerprint.pdf` is still the
+combined F12 render). **`crop-fig14-fingerprint.py` is obsolete since v0.2.1**
+(DECISIONS.md D17): it cut the combined render into halves, and the v3.3 half
+carried no workload labels. It is kept for the v0.2.0 figures only. It validates each regenerated TSV against the old-name
 reference tree under `~/results/` (reference is never pipeline input) and
 prints a per-figure checklist. Every other script — the P2 cadence / W5 /
 IADA figures, the seminar figure, and the utilities — is run standalone.
@@ -101,7 +103,8 @@ each figure to its claim, data source, and script is
 | `plot-w5-victim-delta.py`   | `w5-victim-delta.tsv` from `bench/analyze-cross-deployment.py --w5` | `results/figures/p2-w5-victim-delta/{png,pdf}/F10-*, F11-*` | the W5 colocation forest plot and the vm-guest portable-vs-canonical panel |
 | `plot-iada-sim.py`          | `tier-sim-reps.tsv` from `run-tier-sim-reps.sh` | `results/figures/p2-iada-tiers/{png,pdf}/F13-tier-scheduling-idi.*` | the per-tier closed-loop scheduling outcome (degradation index + migrations, rep-level CIs) |
 | `plot-iada-tier-table.py`   | `tier-eval.tsv` from `bench/iada/scripts/eval-tiers.R` | same dir, `F13-tier-{portability,transfer}-table.*` | the screenshot-ready tier portability / host→VM transfer tables (`--transfer` for the latter) |
-| `plot-tierb-fingerprint.py` | `fingerprints.tsv` from `bench/analyze-tierb.py` | `results/figures/p2-tierb-realapps/{png,pdf}/F12-{fingerprint,class-activation}.*` | the real-app mixed-class fingerprint figures (`--envs` to pick the row bands) |
+| `plot-tierb-fingerprint.py` | `fingerprints.tsv` (or `fingerprints-tagged.tsv`, for the proxy markers) from `bench/analyze-tierb.py` | `results/figures/p2-tierb-realapps/{png,pdf}/F12-{fingerprint,class-activation}.*`; with `--pdf PATH` only that one fingerprint PDF | the real-app mixed-class fingerprint figures (`--envs` picks the row bands, `--variants` the columns; `--mask c38-prefix` hatches the v2.1 cells of `C38_PREFIX_MASK` as "pre-fix, not interpreted"; `--pdf` writes the self-contained paper cut with a legend instead of the suptitle) |
+| `crop-fig14-fingerprint.py` | the combined F12 fingerprint PDF | `fig_fingerprint_v{21,33}.pdf` halves | **obsolete since v0.2.1** (D17); superseded by `plot-tierb-fingerprint.py --variants --pdf`. Kept only to reproduce the v0.2.0 figures |
 | `plot-meyer-validation.py`  | `kmeans-centers.tsv` from the IADA validation tree + in-script degradation tables | `results/figures/p2-meyer-validation/{png,pdf}/F14-*, F15-*` | re-rendering the Meyer-2021 / IADA-2022 validation figures |
 | `plot-sim-experiments.py`   | `--exp-dir` with `gate-default.tsv` + per-arm TSVs from `run-sim-experiments.sh` | `results/figures/p2-sim-experiments/` + `summary.tsv` | the E1–E5 / S8 simulator-sensitivity panels (missing arms are skipped, not fatal) |
 | `plot-jdk-ab.py`            | `--ab-dir` with `reps-java8.tsv` + `reps-jdk17.tsv` | `results/figures/p2-jdk-ab/` + `{summary,delta}.tsv` | the JDK 8-vs-17 CloudSim rebuild equivalence check |
