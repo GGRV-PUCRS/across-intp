@@ -419,13 +419,16 @@ so every commit hash cited in this log resolves in the public repository.
    final: PSI was falsified as a bandwidth signal and `membw_est` carries the
    C31 net-path caveat.
 
-## D16 — v0.2.1: v2.1 per-thread scheduler metrics and recursive RDT enrollment (2026-09-28)
+## D16 - v0.2.1: v2.1 per-thread scheduler metrics and recursive RDT enrollment (2026-09-28)
 
-**Status: fixed, not re-measured.** Fix commits `3067a0a` (v2.1) and `68f3007`
-(v2) on `fix/v2.1-thread-scope-v0.2.1`; T1 and T2 pass on the development host
-(C38). T3, the v2.1/v3.3 agreement leg and the re-run below are still pending on
-the testbed. The release ships the v0.2.0 data unchanged. Version DOI: _to be
-filled after the Zenodo record exists_.
+**Status: code fixed and released in v0.2.1; affected cells not re-measured;
+manuscript discloses the defect (Discussion, threats) and takes real-application
+class counts from v3.3.** Fix commits: `3067a0a` (v2.1 per-thread
+`schedlat`/`psp`, recursive RDT enrollment), `68f3007` (v2 per-thread
+`schedlat` for `--pids`), `fd1ab9e` (metric docs, C38 F3); `2ab09e1` is the
+build fix both variants need on current compilers. Test outcomes are in C38.
+The release ships the v0.2.0 data unchanged. Version DOI: _to be filled after
+the Zenodo record exists_.
 
 1. **What was wrong** (C38). v2.1 `schedlat` and `psp` read one thread per
    process (the TGID's own `/proc` counters), so multi-threaded real
@@ -440,10 +443,52 @@ filled after the Zenodo record exists_.
    decides whether that statement needs a re-run behind it.
 4. **Provenance.** The v0.2.0 Tier B and Tier C trees stay in the v0.2.1 release
    under `provenance/v0.2.0/`. `v0.2.0` is superseded, not edited or re-tagged.
-   Since nothing is re-measured yet, `provenance/v0.2.0/README.md` records which
-   cells of the (unchanged) v0.2.0 assets are pre-fix and their checksums; the
-   assets themselves stay attached, not copied into the tree.
-5. **Tag policy.** `v0.2.1` is an annotated tag on the merge commit and is never
-   moved or re-cut: the D13 re-cut practice does not apply once a release has a
-   DOI, because the Zenodo snapshot would then differ from the tag.
+   `provenance/v0.2.0/README.md` records which cells of the (unchanged) v0.2.0
+   assets are pre-fix, where the v2.1 Tier B/C trees live in both archives, and
+   their checksums.
+5. **Tag policy.** See D17.
 
+## D17 - v0.2.1 tag is cut once and never re-cut (2026-09-30)
+
+`v0.2.1` is an annotated tag on the merge commit of
+`fix/v2.1-thread-scope-v0.2.1` into `main`, pushed once and never moved,
+deleted or re-created. The D13 re-cut practice (delete `v0.1.0` and re-tag at
+the final commit) does not apply to Zenodo-archived releases: the Zenodo
+GitHub integration takes its snapshot (source zipball plus the release
+assets present at that moment) when the release is published, and the
+version DOI then names that snapshot for good. A re-cut tag would make the
+DOI's archive disagree with the tag of the same name. A later correction is a
+new patch release (`v0.2.2`), never a re-cut. The same holds for `v0.2.0`,
+which has a DOI (10.5281/zenodo.22970881): it is superseded by v0.2.1, and
+only its release notes are edited (a notes edit does not create a Zenodo
+version). `v0.1.0` has no Zenodo record; its tag also stays where it is.
+
+## D18 - fingerprint figure split for v0.2.1 (2026-09-30)
+
+The JSA `fig:fingerprint` was two halves cropped from the combined F12 render
+(`crop-fig14-fingerprint.py`); the v3.3 half had no workload labels, and the
+v2.1 half showed C38 pre-fix readings as if they were measurements.
+`plot-tierb-fingerprint.py` now renders one self-contained figure per variant
+(`--variants`, `--pdf`) and can hatch the pre-fix cells (`--mask c38-prefix`,
+rule in `C38_PREFIX_MASK`). Choices:
+
+1. **Input.** `results/p2-realapps-combined/` is not in the tree. The figure
+   needs the status column (proxy markers), so `fingerprints-tagged.tsv` is
+   regenerated from the frozen archive (`final/04-tier-b-realapps`,
+   `final/05-tier-c-dsb`) with `bench/analyze-tierb.py --tag-status`, as
+   `bench/render-jsa-paper-figures.sh` does. Its untagged twin is
+   byte-identical to `derived/p2-realapps-combined/fingerprints.tsv` in the
+   archive, so no value moved.
+2. **Normalization.** Color is normalized per (environment, metric) over the
+   variant shown, with masked cells left out, so a pre-fix 0 or a stale value
+   never sets the scale. Colors therefore differ from the combined render;
+   annotated values do not.
+3. **Under-driven marker.** Judged over all variants in the TSV, not the one
+   shown, so both figures flag the same apps as the combined render. No app is
+   flagged on the v0.2.0 data (web-search and DSB were re-driven), so the
+   marker and its legend entry do not appear; the code path is kept.
+4. **Pre-fix fill.** Light grey with a dark cross-hatch and no value, legend
+   "pre-fix, not interpreted"; distinct from "unavailable" (blank cell with a
+   grey dash).
+5. `crop-fig14-fingerprint.py` is marked obsolete, not deleted: it still
+   reproduces the v0.2.0 figures.

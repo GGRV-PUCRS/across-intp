@@ -1371,9 +1371,7 @@ disclose the hypothesis and what was checked either way.
 
 ### C38 — v2.1 scheduler metrics read one thread per process; v2.1 RDT enrollment skipped nested cgroups (2026-09-28)
 
-**Status: fixed, not re-measured** (release `v0.2.1`, D16). T1 and T2 pass on
-the development host; T3, the v2.1/v3.3 agreement leg and the re-run below are
-pending on the testbed.
+**Status: fixed in release `v0.2.1`, not re-measured** (D16).
 
 Two v2.1 defects found while grading the v0.2.0 real-application tiers
 (`docs/reports/p2-tierb-15metric.md`, `p2-tierc-15metric.md`). Both only affect
@@ -1480,7 +1478,20 @@ are kept as provenance. Gates:
 
 Spine sanity check: 1 cell per environment for `app01` and `app16` with the
 fixed v2.1; `schedlat`/`psp` must stay within the cadence-sweep tolerance of
-v0.2.0. Before/after numbers: _to be filled after the re-run_.
+v0.2.0. Before/after numbers: **not re-measured** (v0.2.1 ships the v0.2.0
+data; the pre-fix cells are listed in `provenance/v0.2.0/README.md` and hatched
+in `fig_fingerprint_v21_prefix.pdf`, D18). Test outcomes for the fix, all run
+with `tests/run-c38-all.sh`, logs under `variants/v2.1-c-abi-cgroup/tests/logs/`:
+
+- `c38-local-20260930-171526` (development host, i7-13650HX, 20 CPUs, kernel
+  7.0, unprivileged): unit tests 4/4 OK (`test-detect`, `test-procutil`,
+  `test-backend-registry`, `test-target`); T1 OK: fixed v2.1 `schedlat` 30.0
+  and `psp` 701/s on both the cgroup and the `--pids` target, the v0.2.0
+  binary 0.0 and 0.0; T2 OK: `schedlat` 0.076 to 1.426 %, `psp` 5 to 36/s over
+  19 intervals, no interval at 0 and no underflow spike. The T1 v3.3 agreement
+  leg was skipped (needs root) and T3 was skipped (needs root, resctrl L3
+  monitoring, which this CPU does not have, and stress-ng).
+- T1 v3.3 agreement leg and T3: _pending, see the root and testbed runs_.
 
 Also corrected in the same change (comments and docs): `psp` is not Volpert's
 PSP, which counts switches to PID 0 as a throttling indicator (that role is

@@ -115,8 +115,8 @@ In [docs/READER-MAP.md](docs/READER-MAP.md) every row is tagged **repo:** or
 | Release | What it is |
 | --- | --- |
 | [`v0.1.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.1.0) | The SBAC-PAD 2026 artifact, with the data assets above. The `release/v0.1.0` branch holds the same tree for browsing without downloading. |
-| [`v0.2.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.0) | *Superseded by `v0.2.1`.* The JSA campaigns ran with this release: the container-based interference work (v2.1 and v3.3 per-cgroup profilers, the cross-deployment suite, the IADA simulator campaigns). Campaign results and the frozen campaign archive are attached as release assets. See `docs/DECISIONS-container.md` and DECISIONS.md D15. |
-| [`v0.2.1`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.1) | The JSA artifact as cited. Fixes v2.1 `schedlat`/`psp` on multi-threaded targets and v2.1 RDT enrollment on nested cgroups (C38); fixed, not re-measured. The data assets are the v0.2.0 ones, unchanged; see [provenance/v0.2.0/](provenance/v0.2.0/README.md) and DECISIONS.md D16. |
+| [`v0.2.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.0) | Superseded by v0.2.1 (code fix; same data). The JSA campaigns ran with this release: the container-based interference work (v2.1 and v3.3 per-cgroup profilers, the cross-deployment suite, the IADA simulator campaigns). Campaign results and the frozen campaign archive are attached as release assets. See `docs/DECISIONS-container.md` and DECISIONS.md D15. |
+| [`v0.2.1`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.1) | The JSA artifact as cited. Fixes v2.1 per-thread scheduler metrics (`schedlat`, `psp`) and recursive RDT enrollment (C38); the affected cells are not re-measured. The data assets are the v0.2.0 ones, unchanged; see [provenance/v0.2.0/](provenance/v0.2.0/README.md) and DECISIONS.md D16 to D18. |
 
 The production profiler built from V2.1 and V3.3 is `intp`, packaged for
 Ubuntu in [`ppa:norohim/intp`](https://launchpad.net/~norohim/+archive/ubuntu/intp);
