@@ -427,8 +427,9 @@ class counts from v3.3.** Fix commits: `3067a0a` (v2.1 per-thread
 `schedlat`/`psp`, recursive RDT enrollment), `68f3007` (v2 per-thread
 `schedlat` for `--pids`), `fd1ab9e` (metric docs, C38 F3); `2ab09e1` is the
 build fix both variants need on current compilers. Test outcomes are in C38.
-The release ships the v0.2.0 data unchanged. Version DOI: _to be filled after
-the Zenodo record exists_.
+The release ships the v0.2.0 data unchanged. Version DOI:
+[10.5281/zenodo.23071202](https://doi.org/10.5281/zenodo.23071202) (concept
+10.5281/zenodo.21959350), published 2026-09-30.
 
 1. **What was wrong** (C38). v2.1 `schedlat` and `psp` read one thread per
    process (the TGID's own `/proc` counters), so multi-threaded real
@@ -496,3 +497,16 @@ rule in `C38_PREFIX_MASK`). Choices:
    grey dash).
 5. `crop-fig14-fingerprint.py` is marked obsolete, not deleted: it still
    reproduces the v0.2.0 figures.
+
+## D19 - v0.2.1 Zenodo record: data files added by hand (2026-09-30)
+
+Publishing the `v0.2.1` release (assets: the two v0.2.0 data tarballs and
+`SHA256SUMS`) produced Zenodo record 23071202 with the source zipball only;
+the GitHub integration does not archive release assets. Both the deposit API
+and the records draft API refused to add files to the published record
+("Bucket is locked for modifications"), so the three files were uploaded by
+hand through the Zenodo web interface (Edit, then Publish; the DOI is
+unchanged). The record now holds the zip, the two tarballs and `SHA256SUMS`,
+and their MD5 sums match the release assets. The v0.2.0 record (22970881)
+holds the same data files and is untouched. For any later release: expect to
+add data assets to the Zenodo record by hand, and do it in the web interface.
