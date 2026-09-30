@@ -82,7 +82,7 @@ To do after the release (the v2.1 re-run of C38 is not part of v0.2.1):
 - [x] Replace `figs/fig_fingerprint_v21.pdf` and `fig_fingerprint_v33.pdf` in the paper assets (new renders above; upload to Overleaf).
 - [x] §7.2 class-count sentence takes the real-application counts from v3.3 (DeathStarBench 4 classes on host and guest; the v2.1 MongoDB disk class is stated as a variant difference).
 - [x] Fingerprint-figure caption: class counts per application from v3.3; the v2.1 pre-fix cells are declared.
-- [ ] Insert the v0.2.1 version DOI in Data availability and remove the `% TODO(v0.2.1)` comment.
+- [ ] Insert the v0.2.1 version DOI, `10.5281/zenodo.23071202`, in Data availability and in the `sacilotto2026acrossintp` entry of `references.bib`, and remove the `% TODO(v0.2.1)` comment. The record holds the source zip, both data tarballs and `SHA256SUMS`. Any citation of the SBAC-PAD artifact (v0.1.0, no Zenodo record) must use the tag, never the concept DOI.
 - [ ] Rebuild the PDF and the latexdiff against the reviewed snapshot (Version 1336).
 
 ## Not requiring any `.tex` change

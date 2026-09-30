@@ -10,7 +10,9 @@ data attached to `v0.2.1` is byte-identical to the `v0.2.0` assets:
 | `IntP-JSA-complete-data-20260918.tar.xz` | `63e94d2e1d8f4dcb117213c0535085f8f9ece7b099bb0b999b118e0b148190c4` |
 
 Both are also archived in the `v0.2.0` Zenodo record,
-[10.5281/zenodo.22970881](https://doi.org/10.5281/zenodo.22970881).
+[10.5281/zenodo.22970881](https://doi.org/10.5281/zenodo.22970881), and in the
+`v0.2.1` record, [10.5281/zenodo.23071202](https://doi.org/10.5281/zenodo.23071202)
+(concept 10.5281/zenodo.21959350).
 
 ## Where the v0.2.0 v2.1 Tier B/C trees live
 
