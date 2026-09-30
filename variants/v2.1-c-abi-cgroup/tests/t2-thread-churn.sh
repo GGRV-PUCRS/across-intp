@@ -39,8 +39,13 @@ fi
 wait
 
 python3 - "$WORK" <<'EOF'
-import json, os, statistics, sys
+import json, os, re, statistics, sys
 work = sys.argv[1]
+
+# v3.3 emits its canonical fields with %.2f, so an unavailable one (mbw
+# without RDT) prints as a bare nan, which is not JSON (C38 observation).
+def loads33(line):
+    return json.loads(re.sub(r'(?<=:)-?nan\b', 'null', line))
 rc = 0
 
 def val(x):
@@ -48,7 +53,7 @@ def val(x):
 
 v33 = None
 if os.path.exists(f"{work}/v33-cg.json"):
-    rows33 = [json.loads(l) for l in open(f"{work}/v33-cg.json") if l.startswith("{")]
+    rows33 = [loads33(l) for l in open(f"{work}/v33-cg.json") if l.startswith("{")]
     v33 = [val(r.get("schedlat")) for r in rows33]
     ok33 = [v for v in v33[1:] if v is not None]
     med33 = statistics.median(ok33) if ok33 else float("nan")

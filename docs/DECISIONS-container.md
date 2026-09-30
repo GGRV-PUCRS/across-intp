@@ -1506,7 +1506,13 @@ with `tests/run-c38-all.sh`, logs under `variants/v2.1-c-abi-cgroup/tests/logs/`
   found no instant with under 100 us of worker run-queue wait in 100 samples,
   so the lockstep-churn explanation was checked and does not hold. T2 now
   accepts an optional concurrent v3.3 leg (root) that labels a v2.1 zero QUIET
-  only when v3.3 also reads under 10 % of its median in that interval.
+  only when v3.3 also reads under 10 % of its median in that interval. Its first
+  five root runs crashed in the test harness before judging v2.1: v3.3
+  `--output json` prints the canonical fields with `%.2f`, so an unavailable
+  `mbw` (no RDT on this host) is written as a bare `nan`, which is not JSON.
+  Only the portable fields go through `json_num()` and become `null`. The T2
+  parser now maps a bare `nan` to `null`; v3.3 itself is left unchanged in
+  v0.2.1 (the campaigns used TSV output), recorded here as an observation.
 - T3: **not run**. It needs resctrl L3 monitoring, which the development host
   lacks, and no testbed with RDT is available (author, 2026-09-30). F2 (recursive RDT enrollment) is therefore covered by the unit test of
   the `cgroup.threads`/`cgroup.procs` recursion only, not by a measurement.
