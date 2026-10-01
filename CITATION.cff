@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If you use this software in your research, please cite it as below."
-title: "Across-IntP — Multi-Variant Comparison Harness for the intp Interference Profiler"
+title: "Across-IntP: Multi-Variant Comparison Harness for the intp Interference Profiler"
 abstract: >
   Eleven implementation variants of intp, an interference profiler that
   collects system-level metrics from the Linux kernel. Developed as part of a
@@ -27,6 +27,14 @@ authors:
     email: "andre.santos01@edu.pucrs.br"
     orcid: "https://orcid.org/0000-0002-1639-3238"
 repository-code: "https://github.com/ggrv-intp/across-intp"
+doi: "10.5281/zenodo.23071202"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.23071202"
+    description: "Version DOI of release v0.2.1, the JSA artifact (code and data)"
+  - type: doi
+    value: "10.5281/zenodo.21959350"
+    description: "Concept DOI, resolves to the latest release"
 license: MIT
 type: software
 keywords:

@@ -2,7 +2,161 @@
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21959350.svg)](https://doi.org/10.5281/zenodo.21959350)
 
-<img src="docs/images/across-intp.png" alt="Across-IntP — Linux interference profiler with multi-variant comparison of SystemTap, procfs, bpftrace, and eBPF/CO-RE instrumentation." width="720">
+## JSA artifact (release v0.2.1)
+
+This repository is the artifact of the JSA article *Interference Profiling in
+Containers and Virtual Machines with IntP*. Everything a reader needs to check
+the article's figures is below; the rest of this README describes the
+repository as a whole.
+
+### What to cite
+
+| You are citing | Identifier |
+| --- | --- |
+| The JSA article's code and data | **Version DOI [10.5281/zenodo.23071202](https://doi.org/10.5281/zenodo.23071202)** (release [`v0.2.1`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.1)) |
+| The latest release, whatever it is | Concept DOI [10.5281/zenodo.21959350](https://doi.org/10.5281/zenodo.21959350) (the badge above); it moves with every release, so do not use it to cite the JSA results |
+| The SBAC-PAD 2026 artifact | Release [`v0.1.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.1.0). It predates the Zenodo integration and has no version DOI; cite it by its tag, never by the concept DOI |
+
+The campaigns ran with release v0.2.0. Release v0.2.1 adds a post-campaign fix
+to the v2.1 profiler (thread and subtree enumeration, DECISIONS.md D16) and
+does not re-measure anything: its data files are the v0.2.0 ones, unchanged.
+
+### Where the data are
+
+Zenodo record [23071202](https://zenodo.org/records/23071202) holds the source
+snapshot of v0.2.1 and the three data files below. The same three files are
+attached to the GitHub releases
+[`v0.2.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.0) and
+[`v0.2.1`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.1).
+
+| File | Size | What it holds |
+| --- | ---: | --- |
+| `IntP-JSA-complete-data-20260918.tar.xz` | 121 MB | The frozen campaign archive `IntP-JSA-consolidated-data/`: `final/` holds the six campaigns behind every figure (2394 cells, `final/MANIFEST.md`); `superseded/`, `superseded-prerun-originals/` and `dev-runs/` keep the audit trail; `derived/` holds the IADA train sets. `00-README.md` explains the layout |
+| `across-intp-jsa-results-v0.2.0.tar.gz` | 88 MB | The v0.2.0 results payload: campaigns 01 to 05 with their reports and rendered figures. The figure sequence below uses the complete archive, which also carries campaign 06 (overhead) |
+| `SHA256SUMS` | | Checksums of both tarballs |
+
+The data tarballs are released under CC BY 4.0; the code is under MIT (see
+[LICENSE](LICENSE)).
+
+### Figure and table map
+
+Scripts live under `bench/`; inputs are paths inside
+`IntP-JSA-complete-data-20260918.tar.xz`, relative to
+`IntP-JSA-consolidated-data/final/`. "Output" names the file the script
+writes when it differs from the manuscript's file name.
+
+| Manuscript | File | Script | Input | Output |
+| --- | --- | --- | --- | --- |
+| Fig. 1, availability | `fig_availability.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_2.pdf` |
+| Fig. 2, architecture | `fig_arch.pdf` | `plot/plot-fig-arch.py` | none (schematic) | |
+| Fig. 3, claim class | `fig_claimclass.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_8.pdf` |
+| Fig. 4, PSI | `fig_psi.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_3.pdf` |
+| Fig. 5, cadence | `fig_cadence.pdf` | `plot/plot-cadence-curves.py --jsa-merged` | `03-cadence-sweep/cadence-fidelity.tsv` | |
+| Fig. 6, overhead | `fig_overhead.pdf` | `analyze-cadence-overhead.py --jsa-style` | `06-cadence-overhead-F9/` | |
+| Fig. 7, pipeline | `fig_pipeline.pdf` | `plot/plot-fig-pipeline.py` | none (schematic) | |
+| Fig. 8, faithfulness | `fig_faithfulness.pdf` | `plot/plot-fig6-v2-jsa.py` | `01-tier-a-cross-deployment/cross-deployment.tsv` (regenerated, see below) and `docs/reports/W4-faithfulness-r2.md` (repository) | `Figure_6_v2.pdf` |
+| Fig. 9, `membw_est` proxy | `fig_membwproxy.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_4.pdf` |
+| Fig. 10, preemption | `fig_preempt.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_14.pdf` |
+| Fig. 11, anomaly (v2.1) | `fig_anomaly.pdf` | `plot/plot-fig9-a3-jsa.py` | `01-tier-a-cross-deployment/aggregate-means.tsv` (from `plot/make-aggregate-means.py`) | `Figure_9.pdf` |
+| Fig. 12, in-guest proxy | `fig_vmproxy.pdf` | `plot/plot-fig11-fig12-jsa.py` | `02-w5-colocation/w5-victim-delta-tagged.tsv` | `Figure_12.pdf` |
+| Fig. 13, victim delta | `fig_victim.pdf` | `plot/plot-fig11-fig12-jsa.py` | `02-w5-colocation/w5-victim-delta-tagged.tsv` | `Figure_11.pdf` |
+| Fig. 14, fingerprint (v3.3) | `fig_fingerprint_v33.pdf` | `plot/plot-tierb-fingerprint.py --variants v3.3` | `04-tier-b-realapps/` and `05-tier-c-dsb/` via `analyze-tierb.py --tag-status` | |
+| Fig. 15, decision procedure | | none: TikZ in the manuscript | none | |
+| Fig. A.1, anomaly (v3.3) | `figA_anomaly_v33.pdf` | `plot/plot-fig9-a3-jsa.py` | as Fig. 11 | `Figure_A3.pdf` |
+| Fig. A.2, fingerprint (v2.1, masked) | `fig_fingerprint_v21_prefix.pdf` | `plot/plot-tierb-fingerprint.py --variants v2.1 --mask c38-prefix` | as Fig. 14 | |
+
+| Manuscript | Source |
+| --- | --- |
+| Table 2, deployment environments | `final/*/metadata.txt`, `capabilities.env`, `variants.manifest` in the archive; host build in [bench/setup/REPRODUCTION.md](bench/setup/REPRODUCTION.md) |
+| Table 3, workload set | `bench/run-intp-bench.sh` (synthetic layer), `bench/workloads/compose/` and `bench/setup/stage-next-campaigns.sh` (real applications and DeathStarBench) |
+| Table 4, campaign inventory | `final/MANIFEST.md` in the archive (cell counts per campaign) |
+| Table 5, faithfulness verdicts | [docs/reports/W4-faithfulness-r2.md](docs/reports/W4-faithfulness-r2.md), [docs/reports/portable-faithfulness.md](docs/reports/portable-faithfulness.md) |
+| Table 6, findings summary | Summarizes Figs. 1, 4, 8, 9, 10, 12 and 14; each row's numbers come from the figure's input above and from [docs/reports/p2-cross-deployment-15metric.md](docs/reports/p2-cross-deployment-15metric.md), [docs/reports/w5-victim-delta.md](docs/reports/w5-victim-delta.md) and [docs/reports/p2-tierb-15metric.md](docs/reports/p2-tierb-15metric.md) |
+| Table 7, corrections and open findings | [docs/DECISIONS-container.md](docs/DECISIONS-container.md) (mid-campaign corrections, C-entries) and [DECISIONS.md](DECISIONS.md) D16 to D18 (the v0.2.1 fix) |
+
+Table 1 (comparison with prior systems) is drawn from the literature and has no
+data source here. [PAPER-SYNC.md](PAPER-SYNC.md) records how each figure and
+number reached the manuscript.
+
+### Regenerate the figures without a testbed
+
+Needs Python 3 with `pip install -r bench/plot/requirements.txt`; no root, no
+RDT hardware. From an empty directory:
+
+```bash
+git clone --branch v0.2.1 https://github.com/ggrv-intp/across-intp.git
+mkdir jsa-data && cd jsa-data
+for f in IntP-JSA-complete-data-20260918.tar.xz SHA256SUMS; do
+  curl -LO "https://zenodo.org/records/23071202/files/$f"
+done
+grep IntP-JSA-complete SHA256SUMS | sha256sum -c -
+tar xJf IntP-JSA-complete-data-20260918.tar.xz
+cd ../across-intp
+D=../jsa-data/IntP-JSA-consolidated-data/final
+OUT=../jsa-figs; mkdir -p "$OUT"
+
+# Derived tables. The first call rewrites the archive's cross-deployment.tsv,
+# which predates the app16/app17 rows (710 rows; regenerated: 994).
+python3 bench/analyze-cross-deployment.py $D/01-tier-a-cross-deployment --out $OUT/xdeploy.md
+python3 bench/analyze-cross-deployment.py $D/01-tier-a-cross-deployment --tag-status --out $OUT/xdeploy-tagged.md
+python3 bench/analyze-cross-deployment.py $D/02-w5-colocation --w5 --tag-status --out $OUT/w5.md
+python3 bench/plot/make-aggregate-means.py $D/01-tier-a-cross-deployment \
+    --out $D/01-tier-a-cross-deployment/aggregate-means.tsv
+python3 bench/analyze-tierb.py $D/04-tier-b-realapps --tag-status --tsv $OUT/fp-tierb.tsv --out $OUT/tierb.md
+python3 bench/analyze-tierb.py $D/05-tier-c-dsb --tag-status --tsv $OUT/fp-tierc.tsv --out $OUT/tierc.md
+{ cat $OUT/fp-tierb.tsv; tail -n +2 $OUT/fp-tierc.tsv; } > $OUT/fingerprints-tagged.tsv
+
+# Figures (file names per the map above)
+python3 bench/plot/plot-fig2-3-4-6-8-jsa.py $D/01-tier-a-cross-deployment --tag-status --out $OUT/set1
+python3 bench/plot/plot-fig-arch.py --out $OUT/fig_arch.pdf
+python3 bench/plot/plot-cadence-curves.py $D/03-cadence-sweep/cadence-fidelity.tsv \
+    --out $OUT/cadence --jsa-merged $OUT/fig_cadence.pdf
+python3 bench/analyze-cadence-overhead.py $D/06-cadence-overhead-F9 --tsv $OUT/overhead.tsv \
+    --out $OUT/overhead.md --fig $OUT/overhead --jsa-style $OUT/fig_overhead.pdf
+python3 bench/plot/plot-fig-pipeline.py --out $OUT/fig_pipeline.pdf
+python3 bench/plot/plot-fig6-v2-jsa.py $D/01-tier-a-cross-deployment \
+    --report docs/reports/W4-faithfulness-r2.md --out $OUT/faith
+python3 bench/plot/plot-fig9-a3-jsa.py $D/01-tier-a-cross-deployment --out $OUT/anomaly
+python3 bench/plot/plot-fig11-fig12-jsa.py $D/02-w5-colocation/w5-victim-delta-tagged.tsv --out $OUT/w5
+python3 bench/plot/plot-tierb-fingerprint.py $OUT/fingerprints-tagged.tsv \
+    --variants v3.3 --pdf $OUT/fig_fingerprint_v33.pdf
+python3 bench/plot/plot-tierb-fingerprint.py $OUT/fingerprints-tagged.tsv \
+    --variants v2.1 --mask c38-prefix --pdf $OUT/fig_fingerprint_v21_prefix.pdf
+```
+
+Checked on 2026-10-01 from a clean clone and the release tarball (Python 3.14,
+Matplotlib 3.11.2) against the manuscript's figure files, rasterized at
+150 dpi:
+
+- **Identical pixels and text**: Figs. 1, 3 to 13 and A.1. Fig. 2 matched
+  as well before the context marking described in DECISIONS.md D20.
+- **Visually identical, same values**: Figs. 14 and A.2. The page is about
+  0.4% wider because the manuscript files were rendered with Matplotlib
+  3.10.7.
+- **Byte-identical**: none. Matplotlib embeds a creation date in every PDF.
+
+Two traps, both avoided by the sequence above:
+
+- `bench/render-jsa-paper-figures.sh` reads `cross-deployment.tsv` as
+  shipped, so Fig. 8 loses its app16/app17 rows.
+- The same script passes `--by-env-tsv`, which adds a third row to Fig. 5 that
+  the manuscript does not have.
+
+### Requirements to re-run the campaigns
+
+Re-measuring, as opposed to re-plotting, needs:
+
+- an Intel CPU with RDT exposed through `resctrl` (the testbed is a Xeon Gold
+  5412U, Sapphire Rapids);
+- cgroup v2;
+- root;
+- the kernel the campaigns ran on, 6.17.0-35-generic (Ubuntu 24.04.4 LTS).
+
+The VM leg also needs KVM with PMU pass-through. Host provisioning, calibration
+and the step-by-step checklist are in
+[bench/setup/REPRODUCTION.md](bench/setup/REPRODUCTION.md).
+
+<img src="docs/images/across-intp.png" alt="Across-IntP: Linux interference profiler with multi-variant comparison of SystemTap, procfs, bpftrace, and eBPF/CO-RE instrumentation." width="720">
 
 This repository contains eleven implementation variants of IntP, an interference
 profiler that collects 7 metrics from the Linux kernel. The variants are
@@ -19,10 +173,10 @@ userspace ABIs; and **V3.2 (eBPF-CORE)**, eBPF/CO-RE with in-kernel
 aggregation. Six more (stap-2022, stap-nollc, stap-nohelper, stap-modern,
 ebpf-ring, bpftrace) are structural evidence: they document the portability and
 reliability cliffs, prove out an architecture, or corroborate the measured
-results. The remaining two per-cgroup variants — **V2.1 (c-abi-cgroup)** (pure
+results. The remaining two per-cgroup variants, **V2.1 (c-abi-cgroup)** (pure
 C, per-cgroup attribution) and **V3.3 (ebpf-core-cgroup)** (eBPF/CO-RE,
-per-cgroup, in-kernel aggregation) — are the active profilers for the
-cross-deployment work (Paper 2). The comparison axes are **portability,
+per-cgroup, in-kernel aggregation), are the active profilers for the
+cross-deployment work of the JSA article. The comparison axes are **portability,
 overhead, and fidelity**.
 
 ## About
@@ -49,27 +203,27 @@ the original SystemTap approach across kernel versions and hardware architecture
 1. Reproduce the original IntP baseline (stap-2022) and document breakage on kernel 6.8+.
 2. Develop minimal patches to restore functionality on current kernels (stap-nollc, stap-nohelper) and stap+helper hybrids that recover full metric coverage without RCU-unsafe operations: legacy-intp-baseline on kernel 5.15 GA (Ubuntu 22.04, paper-faithful stap-2022 semantics) and stap-modern on kernel 6.8+.
 3. Implement kernel-module-free alternatives using procfs/perf_event (C-ABI), bpftrace, and eBPF/CO-RE (ebpf-ring).
-4. Compare all eleven variants across the paper's three axes — portability, overhead, and fidelity — plus deployment complexity and safety.
+4. Compare all eleven variants across the paper's three axes (portability, overhead, and fidelity) plus deployment complexity and safety.
 
 ### Status
 
 Role names follow the paper's Table I. **Measured** marks the three versions the
 paper's results are computed from; the rest are structural evidence, except the
-two per-cgroup variants, which are the Paper 2 cross-deployment profilers.
+two per-cgroup variants, which are the cross-deployment profilers of the JSA article.
 
 | Variant | Role (paper Table I) | Status |
 | --------- | -------- | -------- |
-| V0 (stap-2022) -- Original (SystemTap, needs `intel_cqm` driver — mainline removed it in 4.14) | Cliff (portability) | Reference only; in practice runs only on a pre-4.14 mainline kernel, an enterprise kernel still carrying the `intel_cqm` backport, or a custom build with the driver restored |
+| V0 (stap-2022) -- Original (SystemTap, needs `intel_cqm` driver; mainline removed it in 4.14) | Cliff (portability) | Reference only; in practice runs only on a pre-4.14 mainline kernel, an enterprise kernel still carrying the `intel_cqm` backport, or a custom build with the driver restored |
 | V0.1 (stap-nollc) -- Updated (SystemTap, LLC disabled) | Cliff (portability, partial) | Complete; recovers compilation at the cost of `llcocc` (6/7 metrics) |
 | V0.2 (legacy-intp-baseline) -- Stap + userspace helper (SystemTap, 5.15 GA, stap-2022-faithful, RCU-safe) | **Measured** (`intp-baseline`) | Complete; the campaign's UB22 leg (kernel 5.15.0-177) |
-| V1 (stap-nohelper) -- Stap-native (SystemTap, 6.8+, mbw/llcocc disabled) | Cliff (reliability) | Complete; emits `mbw`/`llcocc` as zeros and destabilizes `systemd-logind` — that is the result it exists to show |
+| V1 (stap-nohelper) -- Stap-native (SystemTap, 6.8+, mbw/llcocc disabled) | Cliff (reliability) | Complete; emits `mbw`/`llcocc` as zeros and destabilizes `systemd-logind`; that is the result it exists to show |
 | V1.1 (stap-modern) -- Stap + userspace helper (SystemTap, 6.8+, full metrics, RCU-safe) | Arch. proof (kernel 6.8) | Complete; carries the V0.2 helper design to 6.8 to prove SystemTap needs it there. Not a measured endpoint. HiBench distributed-mode limitation documented in METRICS-ALIGNMENT.md |
 | V2 (C-ABI) -- C / procfs / perf_event / resctrl | **Measured** | Complete; the campaign's UB24 leg (kernel 6.8.0-111) |
-| V2.1 (c-abi-cgroup) -- C, per-cgroup attribution (cgroup v2 + perf cgroup mode, no eBPF) | Paper 2 profiler | Active; validated on Hetzner Sapphire Rapids |
+| V2.1 (c-abi-cgroup) -- C, per-cgroup attribution (cgroup v2 + perf cgroup mode, no eBPF) | JSA profiler | Active; validated on Hetzner Sapphire Rapids |
 | V3.1 (bpftrace) -- bpftrace + Python orchestrator | Companion (corroboration) | Complete; mirrors V3's attachment points |
-| V3 (ebpf-ring) -- eBPF/CO-RE (libbpf, ring-buffer-streaming) | Predecessor (mechanism) | Complete; retained to contrast overhead profiles with V3.2 — it is the variant that shows the ~194-416x context-switch amplification |
+| V3 (ebpf-ring) -- eBPF/CO-RE (libbpf, ring-buffer-streaming) | Predecessor (mechanism) | Complete; retained to contrast overhead profiles with V3.2; it is the variant that shows the ~194-416x context-switch amplification |
 | V3.2 (eBPF-CORE) -- eBPF/CO-RE (libbpf, in-kernel-aggregating, paper §III-A) | **Measured** | Complete; the campaign's UB24 leg (kernel 6.8.0-111) |
-| V3.3 (ebpf-core-cgroup) -- eBPF/CO-RE (libbpf, per-cgroup, in-kernel-aggregating) | Paper 2 profiler | Active; validated on Hetzner Sapphire Rapids |
+| V3.3 (ebpf-core-cgroup) -- eBPF/CO-RE (libbpf, per-cgroup, in-kernel-aggregating) | JSA profiler | Active; validated on Hetzner Sapphire Rapids |
 
 All measurements were collected on a single-socket Intel Xeon Gold 5412U
 (Sapphire Rapids, 24 physical / 48 logical cores, 256 GB DDR5), dual-booted
@@ -84,26 +238,33 @@ If you use this software in your research, please cite it using the metadata in
 ### Where the measurement data lives
 
 **The campaign data and the rendered figures are not files in this repository.**
-They ship as **release assets** attached to
-[`v0.1.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.1.0) — about
-350 MB of measurement output that would swamp a source tree. Download them from
-the release page; cloning the repository will not produce them.
-The JSA campaign data is attached the same way to
-[`v0.2.1`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.1) (and
-`v0.2.0`): `across-intp-jsa-results-v0.2.0.tar.gz`,
-`IntP-JSA-complete-data-20260918.tar.xz` and their `SHA256SUMS`.
+Cloning the repository will not produce them; download them instead.
 
-| Release asset | What it holds |
+- **JSA article (v0.2.0 campaigns, cited as v0.2.1)**: Zenodo record
+  [23071202](https://zenodo.org/records/23071202) (version DOI
+  10.5281/zenodo.23071202) holds `across-intp-jsa-results-v0.2.0.tar.gz`,
+  `IntP-JSA-complete-data-20260918.tar.xz` and `SHA256SUMS`. The same files are
+  attached to the GitHub releases
+  [`v0.2.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.0) and
+  [`v0.2.1`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.1). See
+  [JSA artifact](#jsa-artifact-release-v021) for what each file holds.
+- **SBAC-PAD paper**: release assets of
+  [`v0.1.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.1.0) only
+  (no Zenodo record), about 350 MB of measurement output that would swamp a
+  source tree:
+
+| v0.1.0 release asset | What it holds |
 | --- | --- |
-| `across-intp-sbac-results-v0.1.0.tar.gz` | The anonymized campaign payload: the fusion tree of `run.json` records and profiler traces, `aggregate-means.tsv`, the fragility tables, the §V backing tables under `paper-tables/`, and `published/` with the 33 figure PDFs — 13 of them camera-ready renders — plus `QA-FIGS.md`, the typography gate report |
+| `across-intp-sbac-results-v0.1.0.tar.gz` | The anonymized campaign payload: the fusion tree of `run.json` records and profiler traces, `aggregate-means.tsv`, the fragility tables, the §V backing tables under `paper-tables/`, and `published/` with the 33 figure PDFs (13 of them camera-ready renders) plus `QA-FIGS.md`, the typography gate report |
 | `consolidation-raw.tar.gz` | The pre-anonymization raw sources: the five measurement sessions across two hosts, the auxiliary reruns behind the §V-B amplification result, and the fusion trees with their PROVENANCE records |
 | `SHA256SUMS` | Integrity reference covering both tarballs |
 
 What this repository *does* carry is everything that **produced** those assets:
 the eleven variants under `variants/`, the campaign drivers and complete plotting
 pipeline under `bench/`, and
-[sbac-results/PROVENANCE.md](sbac-results/PROVENANCE.md) — the chain from the
-measurement sessions to the published tarballs. Note that `sbac-results/` holds
+[sbac-results/PROVENANCE.md](sbac-results/PROVENANCE.md), the chain from the
+SBAC-PAD measurement sessions to the published tarballs (the JSA counterpart is
+[provenance/v0.2.0/](provenance/v0.2.0/README.md)). Note that `sbac-results/` holds
 that provenance record and its README **only**; the results themselves are in
 the release assets, not in that directory.
 
@@ -162,21 +323,21 @@ A stock KVM guest cannot measure `mbw`/`llcocc` (resctrl is host-only) or a
 comparable `llcmr` (the LL-read PMU events are not virtualized). `v2.1` and `v3.3`
 therefore offer eight additional columns -- six portable metrics computed by the
 **guest's own kernel** plus a scheduling-regime pair -- as a SEPARATE, flag-gated
-benchmark (`--portable-metrics`) — the canonical 7-metric
+benchmark (`--portable-metrics`); the canonical 7-metric
 fingerprint above and its on-disk schema are left untouched. Design + status:
 [docs/reports/8th-metric-vm-portable-design.md](docs/reports/8th-metric-vm-portable-design.md).
 
 - **schedlat** -- run-queue wait of the target's threads, % of interval × CPUs
   (eBPF `sched_wakeup`→`sched_switch` in v3.3; per-thread `/proc/<tid>/schedstat`
-  in v2.1, PSI `cpu.pressure` as fallback) — *directional*
-- **psi_mem** -- PSI `memory.pressure` (memory-capacity contention) — *descriptive*
+  in v2.1, PSI `cpu.pressure` as fallback); *directional*
+- **psi_mem** -- PSI `memory.pressure` (memory-capacity contention); *descriptive*
 - **membw_est** -- DRAM-bandwidth estimate (LLC misses × 64 B / interval, MB/s; the
-  bandwidth complement `psi_mem` is blind to, and the metric that survives in-guest) — *descriptive*
-- **psi_io** -- PSI `io.pressure` (`blk`'s contention companion) — *descriptive*
+  bandwidth complement `psi_mem` is blind to, and the metric that survives in-guest); *descriptive*
+- **psi_io** -- PSI `io.pressure` (`blk`'s contention companion); *descriptive*
 - **schedthr** -- CFS throttling (`cpu.stat` `throttled_usec`, a confound guard;
-  reads 0 without a `cpu.max` limit and counts only the cgroup's own limit) — *descriptive*
+  reads 0 without a `cpu.max` limit and counts only the cgroup's own limit); *descriptive*
 - **steal** -- hypervisor-stolen vCPU time (`/proc/stat`; VM-global, reflects host
-  CPU contention only) — *descriptive*
+  CPU contention only); *descriptive*
 - **psp** -- involuntary preemptions/s of the target's threads (scheduling regime;
   not Volpert's PSP, whose throttling role `schedthr` plays)
 - **idle_preempt** -- idle-CPU takeovers/s: the target's tasks dispatched onto a
@@ -227,7 +388,7 @@ fingerprint above and its on-disk schema are left untouched. Design + status:
 |   |-- v3-ebpf-ring/          eBPF/CO-RE with libbpf, ring-buffer-streaming
 |   |-- v3.1-bpftrace/         bpftrace scripts + Python orchestrator + resctrl
 |   |-- v3.2-ebpf-core/        MEASURED `eBPF-CORE`: eBPF/CO-RE, in-kernel aggregation (paper §III-A)
-|   |-- v3.3-ebpf-core-cgroup/ eBPF/CO-RE, per-cgroup targeting + in-kernel aggregation (Paper 2 cross-deployment path)
+|   |-- v3.3-ebpf-core-cgroup/ eBPF/CO-RE, per-cgroup targeting + in-kernel aggregation (JSA cross-deployment path)
 |-- bench/                     Campaign harness and analysis pipeline
 |   |-- OVERVIEW.md            Workload table, campaign stages, run accounting
 |   |-- run-intp-bench.sh      stress-ng campaign driver (per-variant kernel gates live here)
@@ -339,7 +500,7 @@ C-ABI's hybrid-C sibling with continuous per-cgroup attribution: cpu/blk/llcmr r
 cgroup v2 `cpu.stat`/`io.stat` and `perf_event_open` cgroup mode when `--cgroup`
 is given; disk bandwidth self-detects. `nets` stays system-wide (softirq is
 host-global without eBPF). One code path serves bare co-located processes,
-containers, and VM guests -- the paper-#2 container / IADA path; see
+containers, and VM guests -- the container / IADA path of the JSA article; see
 `variants/v2.1-c-abi-cgroup/DESIGN.md`. Requires kernel 5.8+ (cgroup v2);
 resctrl for mbw/llcocc.
 
@@ -414,7 +575,7 @@ metrics to one container or VM-guest cgroup instead of system-wide.
 host tap/vnet interface while the other six metrics are scoped via
 `--cgroup` over the QEMU scope. `--no-diag-cols` suppresses the
 trailing diagnostic columns. This is the active eBPF profiler for the
-Paper 2 cross-deployment suite; see
+JSA cross-deployment suite; see
 `variants/v3.3-ebpf-core-cgroup/DESIGN.md`.
 
 Requires: libbpf, clang, kernel BTF, kernel 5.8+ (cgroup v2), resctrl
@@ -430,7 +591,7 @@ down -> publish into `sbac-results/`.
 ```bash
 sudo bash ub24run.sh             # Ubuntu 24.04 leg -- v1.1, v2, v3.2 (bare metal)
 sudo bash ub22run.sh             # Ubuntu 22.04 leg -- v0.2 (bare metal)
-sudo bash containerun24.sh       # container leg -- v2.1 in LXC/LXD (paper #2)
+sudo bash containerun24.sh       # container leg -- v2.1 in LXC/LXD (JSA article)
 sudo bash ub24run.sh --dry-run   # preview every step, run nothing
 ```
 
@@ -441,9 +602,9 @@ container counterpart -- it pins the `container-lxc` env and drives
 launcher exists). See
 [bench/setup/REPRODUCTION.md](bench/setup/REPRODUCTION.md) section 9b.
 
-## Paper 2 -- cross-deployment suite
+## JSA article: cross-deployment suite
 
-Paper 2 runs the SAME application across six deployment legs --
+The JSA article runs the SAME application across six deployment legs --
 bare → docker (container) → podman (container-podman) → incus
 (container-lxc) → k3s (container-k8s) → vm-guest -- and profiles each
 with the per-cgroup variants V2.1 (c-abi-cgroup) and V3.3 (ebpf-core-cgroup),

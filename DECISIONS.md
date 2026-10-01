@@ -510,3 +510,53 @@ unchanged). The record now holds the zip, the two tarballs and `SHA256SUMS`,
 and their MD5 sums match the release assets. The v0.2.0 record (22970881)
 holds the same data files and is untouched. For any later release: expect to
 add data assets to the Zenodo record by hand, and do it in the web interface.
+
+## D20 - JSA-facing presentation of v0.2.1, docs only (2026-10-01)
+
+The JSA manuscript cites release v0.2.1 by its version DOI
+(10.5281/zenodo.23071202). This entry records how the repository presents
+that artifact to JSA readers. No tag, release or Zenodo version is created:
+the changes go to `main`, to the v0.2.1 GitHub release notes, and to the
+description of Zenodo record 23071202 (DOI, files and version unchanged).
+
+1. **What to cite.** README.md opens with a "JSA artifact (release v0.2.1)"
+   section. The version DOI is the citation; the concept DOI
+   (10.5281/zenodo.21959350) is named only as "latest release". v0.1.0, the
+   SBAC-PAD artifact, has no Zenodo record (the concept holds v0.2.0 and
+   v0.2.1 only), so it is cited by its tag, never by the concept DOI.
+   CITATION.cff gains `doi` and `identifiers` with both DOIs.
+2. **Where the data are.** The data section now names Zenodo record 23071202
+   first and the GitHub releases v0.2.0 and v0.2.1 second; it previously
+   pointed only to GitHub assets.
+3. **Figure and table map.** Built against the manuscript as of 2026-10-01
+   (Figs. 1 to 15, A.1, A.2; Tables 1 to 7), with PAPER-SYNC.md as the change
+   log. Fig. 15 (decision procedure) is TikZ in the manuscript and has no
+   script; Table 1 is literature only.
+4. **Regeneration sequence.** README.md gives an explicit command sequence
+   instead of `bench/render-jsa-paper-figures.sh`. That script shows two
+   problems against the manuscript: it reads the archive's
+   `01-tier-a-cross-deployment/cross-deployment.tsv` as shipped (710 rows,
+   predating app16/app17; regenerated: 994), so Fig. 8 loses two workloads;
+   and it passes `--by-env-tsv`, adding a third row to Fig. 5. Without the
+   S3 work tree its `fig_idi_decomp` step also crashes (not a manuscript
+   figure). The script is left as is. The sequence was run on 2026-10-01
+   from a clean clone and the Zenodo tarball: Figs. 1, 3 to 13 and A.1 are
+   pixel- and text-identical to the manuscript files at 150 dpi, as was
+   Fig. 2 before item 6; Figs. 14 and A.2 are visually identical with the
+   same values (Matplotlib 3.10.7 vs 3.11.2 page bounds); none is
+   byte-identical (embedded creation date).
+5. **Licenses.** README.md states CC BY 4.0 for the data tarballs and MIT
+   for the code. The Zenodo record's license field reads MIT for the whole
+   record and is not changed without the owner's decision.
+6. **Fig. 2.** `bench/plot/plot-fig-arch.py` drops the "(§ cost/placement)"
+   placeholder and draws the classifier, simulator and scheduling stages
+   with dashed edges inside an enclosure labelled "context, not evaluated",
+   matching the caption. Page size unchanged (7.17 x 2.66 in); the manuscript
+   file is replaced by hand in Overleaf.
+7. **Wording.** "Paper 2" (and "paper #2", "paper-#1") becomes "the JSA
+   article" (or "SBAC-PAD") in README.md and VERSIONS.md. DECISIONS logs keep
+   their wording. Em and en dashes are removed from README.md and
+   CITATION.cff.
+8. **Hygiene.** The decommissioned testbed address 157.180.55.33 does not
+   occur in the tree or in history (`git log -S` on all refs is empty), so
+   nothing was replaced and history is not rewritten.
