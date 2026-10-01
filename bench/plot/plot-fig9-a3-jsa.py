@@ -21,7 +21,7 @@ aggregation drifted and the script refuses to emit.
 
     python3 bench/plot/make-aggregate-means.py results/p2-15metric-xdeploy-1of3
     python3 bench/plot/plot-fig9-a3-jsa.py results/p2-15metric-xdeploy-1of3 \
-        --out /mnt/c/Users/sacil/Downloads/figs
+        --out figs
 """
 from __future__ import annotations
 

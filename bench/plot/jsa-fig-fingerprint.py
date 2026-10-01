@@ -247,7 +247,7 @@ def main() -> int:
     ap.add_argument("tsv", nargs="?", type=Path,
                     default="results/p2-realapps-combined/fingerprints.tsv")
     ap.add_argument("--out", type=Path,
-                    default=Path("/mnt/c/Users/sacil/Downloads/figs"))
+                    default=Path("figs"))
     ap.add_argument("--envs", default="container,vm-guest")
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)

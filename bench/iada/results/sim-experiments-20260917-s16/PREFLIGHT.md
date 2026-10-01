@@ -38,8 +38,8 @@ Logged as a DECISIONS entry (see below) rather than silently following the brief
 
 ## Validator (`validate_jsa.py`)
 Run against a symlink shim mapping the brief's `$DATA_EXP/paper2-extra/...` and
-`$DATA_EXP/IADA/...` paths onto the real extracted archive locations (`/home/saccilotto/results`,
-`/home/saccilotto/iada-sim`, `/home/saccilotto/iada-trainsets` — no files modified, shim is
+`$DATA_EXP/IADA/...` paths onto the real extracted archive locations (`~/results`,
+`~/iada-sim`, `~/iada-trainsets` — no files modified, shim is
 symlinks only). Full output: `validate-before.txt`. Notable: the R1 checks already reproduce the
 brief's Step 1 acceptance criteria exactly:
 - cpu vs ground truth: 60/60 in band, 0.92 to 0.99

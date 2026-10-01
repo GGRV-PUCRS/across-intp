@@ -247,7 +247,7 @@ def main() -> int:
     ap.add_argument("tsv", nargs="?", type=Path,
                     default="results/p2-15metric-xdeploy-1of3-w5/w5-victim-delta.tsv")
     ap.add_argument("--out", type=Path,
-                    default=Path("/mnt/c/Users/sacil/Downloads/figs"))
+                    default=Path("figs"))
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     cells, present, variants = load(args.tsv)

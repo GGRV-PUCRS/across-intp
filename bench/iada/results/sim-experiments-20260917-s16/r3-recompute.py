@@ -10,8 +10,8 @@
 # results/02-w5-colocation/w5-victim-delta.tsv exactly; they do.
 import glob, os, statistics, sys
 
-W5 = "/home/saccilotto/results/02-w5-colocation"
-XDEP = "/home/saccilotto/results/p2-15metric-xdeploy-1of3"
+W5 = os.path.expanduser("~/results/02-w5-colocation")
+XDEP = os.path.expanduser("~/results/p2-15metric-xdeploy-1of3")
 SCALE = 42656.0 / 281600.0  # pre-audit fallback ceiling / audited ceiling
 
 

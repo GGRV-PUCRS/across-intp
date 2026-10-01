@@ -22,7 +22,7 @@ reproduced in its pre-fix (schedlat-keyed) form this session. Step 0's
 toolchain build and Step 3.0's wiring-gap investigation (S10) happened
 before the first B gate run of this session, and by the time a B gate arm
 was run, the psp re-key patch had already been applied to the canonical R
-config (`/home/saccilotto/iada-tier-rda/B/kmeans.R`) — deliberately, since
+config (`~/iada-tier-rda/B/kmeans.R`) — deliberately, since
 reverting a ratified, already-validated fix just to re-measure a baseline
 that's already recorded in `DECISIONS-sim-experiments.md`'s own S8 section
 would have been pure overhead. The pre-fix B number used throughout this

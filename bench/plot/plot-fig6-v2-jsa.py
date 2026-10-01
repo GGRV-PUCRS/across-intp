@@ -13,7 +13,7 @@ results/_final/reports/W4-faithfulness-r2.md by plot-w4-summary.py's own
 parse() (imported via importlib; that filename is not a valid module name).
 
     python3 bench/plot/plot-fig6-v2-jsa.py results/p2-15metric-xdeploy-1of3 \
-        --out /mnt/c/Users/sacil/Downloads/figs
+        --out figs
 """
 from __future__ import annotations
 

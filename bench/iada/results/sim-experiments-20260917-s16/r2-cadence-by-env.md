@@ -1,4 +1,4 @@
-# Cadence sweep: fidelity & sample density vs sampling interval (per environment) — /home/saccilotto/IntP-JSA-consolidated-data/final/03-cadence-sweep
+# Cadence sweep: fidelity & sample density vs sampling interval (per environment) — ~/IntP-JSA-consolidated-data/final/03-cadence-sweep
 
 Cadences (interval s): 0.1, 0.25, 0.5, 1, 2, 5. Reference (finest) = 0.1s. Variants×workloads: 12. Metrics present: 15.
 

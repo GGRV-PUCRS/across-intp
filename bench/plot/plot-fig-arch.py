@@ -15,7 +15,10 @@ and shows, left to right:
      sec:design:fingerprint;
   3. the offline path from the profiler's per-second output into the
      interference classifier and its three CloudSimInterference
-     configurations (canonical-7, proxy-swap, full-fingerprint).
+     configurations (canonical-7, proxy-swap, full-fingerprint). The
+     classifier, simulator and scheduling stages sit in a dashed enclosure
+     labelled "context, not evaluated": the JSA article validates the
+     per-second stream only (D20).
 
 Usage: python3 plot-fig-arch.py --out /path/to/Figure_1.pdf
 """
@@ -161,11 +164,25 @@ def draw(ax) -> None:
     # ==================================================================
     tsv = box(ax, (col3_x0 + 0.02, 0.85), col3_x1 - col3_x0 - 0.04, 0.075,
                 "profiler.tsv\n(per-second)", fc="white", fontsize=style.ANNOT)
+
+    # Everything below profiler.tsv is downstream context: the article
+    # validates the per-second stream, not the classifier or the simulator
+    # (D20). Dashed enclosure + dashed box edges mark that region.
+    ax.add_patch(FancyBboxPatch(
+        (col3_x0 + 0.004, 0.035), 0.999 - col3_x0 - 0.008, 0.800,
+        boxstyle="round,pad=0.004,rounding_size=0.012",
+        facecolor="none", edgecolor="#777777", linewidth=0.8,
+        linestyle=(0, (3, 2)), zorder=1))
+    ax.text(0.988, 0.828, "context,\nnot evaluated",
+             ha="right", va="top", fontsize=style.ANNOT - 0.5,
+             style="italic", color="#555555", zorder=3)
+    ctx_ls = (0, (3, 2))
+
     arrow(ax, ((col3_x0 + col3_x1) / 2, 0.85),
           ((col3_x0 + col3_x1) / 2, 0.735))
     clf = box(ax, (col3_x0 + 0.02, 0.66), col3_x1 - col3_x0 - 0.04, 0.075,
                "interference\nclassifier", fc=style.REDDISH_PURPLE + "33",
-               ec=style.REDDISH_PURPLE, fontsize=style.ANNOT)
+               ec=style.REDDISH_PURPLE, ls=ctx_ls, fontsize=style.ANNOT)
 
     tiers = [
         ("canonical-7", style.ORANGE),
@@ -177,13 +194,13 @@ def draw(ax) -> None:
     for i, (name, color) in enumerate(tiers):
         tx = col3_x0 + 0.02 + i * (tw + 0.02)
         box(ax, (tx, ty), tw, 0.09, name, fc=color + "22", ec=color,
-            fontsize=style.ANNOT - 1.0)
+            ls=ctx_ls, fontsize=style.ANNOT - 1.0)
         arrow(ax, ((col3_x0 + col3_x1) / 2, 0.66), (tx + tw / 2, ty + 0.09),
               lw=0.6)
 
     sim = box(ax, (col3_x0 + 0.02, 0.235), col3_x1 - col3_x0 - 0.04, 0.075,
                "CloudSimInterference\n(closed-loop placement)", fc="white",
-               fontsize=style.ANNOT - 0.5)
+               ls=ctx_ls, fontsize=style.ANNOT - 0.5)
     for i in range(3):
         tx = col3_x0 + 0.02 + i * (tw + 0.02)
         arrow(ax, (tx + tw / 2, ty), ((col3_x0 + col3_x1) / 2, 0.31), lw=0.6)
@@ -191,7 +208,7 @@ def draw(ax) -> None:
     arrow(ax, ((col3_x0 + col3_x1) / 2, 0.235),
           ((col3_x0 + col3_x1) / 2, 0.13))
     box(ax, (col3_x0 + 0.02, 0.055), col3_x1 - col3_x0 - 0.04, 0.075,
-        "scheduling decision\n(§ cost/placement)", fc="#eeeeee",
+        "scheduling decision", fc="#eeeeee", ls=ctx_ls,
         fontsize=style.ANNOT - 0.5)
 
 
