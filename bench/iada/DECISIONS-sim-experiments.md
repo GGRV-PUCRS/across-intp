@@ -249,7 +249,7 @@ in-repo, version-controlled copy of tier B's inference R
 (`bench/iada/tier-b-R/kmeans.R`, commit `2d1017f`) — but `MLClassifier.java`
 actually loads tier B's `.rda` models and R sources from an **external**,
 non-versioned directory via `INTP_R_FOLDER`
-(`/home/saccilotto/iada-tier-rda/B/` on this checkout), and *that* copy's
+(`~/iada-tier-rda/B/` on this checkout), and *that* copy's
 `kmeans.R` was still schedlat-keyed (`predict.kmeans(object, newdata, 8)`).
 The freeze into version control was never re-synced to the directory the
 simulator actually reads. Fixed by applying the identical 3-line change
@@ -1067,7 +1067,7 @@ compute per-class precision and a full confusion matrix (every true x predicted 
 included), writing two new optional-arg output paths (`args[6]`, `args[7]`) so the existing
 default behavior/outputs are unchanged when they're omitted.
 
-**v3.3 (current default) rerun against the existing `/home/saccilotto/iada-trainsets` --
+**v3.3 (current default) rerun against the existing `~/iada-trainsets` --
 this is the SAME dataset that already produced the paper's quoted 0.507/0.426/0.780 and
 0.41/0.25/1.00 numbers**, confirmed by reading its pre-existing `tier-eval-transfer.tsv` before
 rerunning: identical to 4 decimals. Rerunning with the same seed (42, default) reproduces
@@ -1692,7 +1692,7 @@ multiplier (1.95) ever applied; how large is the psp re-key effect on a single
 build; and how sensitive is tier B's index to the regime multiplier magnitude?
 
 **Audit (task 1).** Reran `bench/iada/scripts/analyze-regime-levels.R` unchanged
-against the psp-keyed R folder the simulator reads (`/home/saccilotto/iada-tier-rda/B`)
+against the psp-keyed R folder the simulator reads (`~/iada-tier-rda/B`)
 and the current canonical 28-trace tree (reached via a symlink shim; nothing
 modified). The three counts are **per-level sample counts**: trace rows the tier B
 SVM classifies as regime (480 of 3360) assigned by the regime k-means to
@@ -1709,7 +1709,7 @@ almost always mod).** Output: `s7-levels.md`.
 
 **Same-build re-key (task 2).** Tier B with schedlat-keyed levels (S8 patch reverted
 in a scratch copy of the tier R folder at `/tmp/s7-rda-schedlat/B`; the real
-`/home/saccilotto/iada-tier-rda/B` untouched), n=10, same rebuilt toolchain and
+`~/iada-tier-rda/B` untouched), n=10, same rebuilt toolchain and
 tree as S3, via `run-sim-arm.sh`. Compared against S3's psp-keyed tier B
 (`s3-gate-B.tsv`, same build):
 

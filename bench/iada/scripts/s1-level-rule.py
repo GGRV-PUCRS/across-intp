@@ -65,7 +65,7 @@ def tertiles(values):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--trainset-root", default="/home/saccilotto/iada-trainsets/B/train")
+    ap.add_argument("--trainset-root", default=os.path.expanduser("~/iada-trainsets/B/train"))
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 

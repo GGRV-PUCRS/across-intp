@@ -558,5 +558,11 @@ description of Zenodo record 23071202 (DOI, files and version unchanged).
    their wording. Em and en dashes are removed from README.md and
    CITATION.cff.
 8. **Hygiene.** The decommissioned testbed address 157.180.55.33 does not
-   occur in the tree or in history (`git log -S` on all refs is empty), so
-   nothing was replaced and history is not rewritten.
+   occur in the tree or in history (`git log -S` on all refs is empty). The
+   testbed's public address in `bench/setup/REPRODUCTION.md` becomes
+   `<testbed-host>`. The author's home directory becomes `~/` in docs, logs,
+   generated reports and the recorded smoke-run `input.txt` files, and
+   `$HOME` or `os.path.expanduser` in script defaults (same behavior on the
+   original machine). Windows download defaults in four plot scripts become
+   a relative `figs`. The host is decommissioned, so history is not
+   rewritten.

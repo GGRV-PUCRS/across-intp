@@ -95,7 +95,7 @@ To do after the release (the v2.1 re-run of C38 is not part of v0.2.1):
 - [x] `AUDIT-BASELINE.md` (`bench/iada/AUDIT-BASELINE.md`) — T1/A gate and CV/transfer numbers independently reproduced (within ~1.5%/exact); tier B's pre-fix baseline is the repo's own prior recorded value, not independently re-verified this session (patched before first measured) — gap stated plainly in the file itself.
 - [x] Every fix has a dated, file:line-cited log entry (`docs/DECISIONS-container.md` C36-C37; `bench/iada/DECISIONS-sim-experiments.md` S10-S13; `bench/iada/CV-LEAKAGE-FIX.md`; `bench/iada/DENSITY-SWEEP.md`).
 - [x] Grouped-CV numbers reported before/after (`CV-LEAKAGE-FIX.md`).
-- [x] S8 rebank applied at the canonical config location (`/home/saccilotto/iada-tier-rda/B/kmeans.R`, reconciled with the in-repo `bench/iada/tier-b-R/kmeans.R` copy), old number kept as documented history.
+- [x] S8 rebank applied at the canonical config location (`~/iada-tier-rda/B/kmeans.R`, reconciled with the in-repo `bench/iada/tier-b-R/kmeans.R` copy), old number kept as documented history.
 - [x] Oracle-scoring **fully implemented and run** (exceeds the brief's minimum bar of "caveat present if not completed"): T1 significantly pessimistic vs. the common yardstick, A slightly but significantly optimistic (paired test), B an exact self-consistency check; T1 and A placements indistinguishable on the common yardstick (S13).
 - [x] EVEN run and reported; CIAPA **fixed and run** (not just documented as a gap) after two follow-up rounds (crash, then a silent no-op degeneracy, then a real working result); Segmented's non-existence as code stated plainly (S12).
 - [x] Density sweep labeled new/exploratory, not merged into or presented as a rerun of E3/Fig A.1.

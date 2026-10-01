@@ -6,8 +6,8 @@
 #   bench/render-jsa-paper-figures.sh [DATA_ROOT] [OUT_DIR]
 #
 # Defaults:
-#   DATA_ROOT = /home/saccilotto/IntP-JSA-consolidated-data
-#   OUT_DIR   = /home/saccilotto/paper/figs
+#   DATA_ROOT = $HOME/IntP-JSA-consolidated-data
+#   OUT_DIR   = $HOME/paper/figs
 #
 # The archive is treated as read-only: renderers whose inputs must sit inside
 # the campaign directory (tagged TSVs, aggregate-means.tsv) run against
@@ -20,8 +20,8 @@
 
 set -euo pipefail
 
-DATA="${1:-/home/saccilotto/IntP-JSA-consolidated-data}"
-OUT="${2:-/home/saccilotto/paper/figs}"
+DATA="${1:-$HOME/IntP-JSA-consolidated-data}"
+OUT="${2:-$HOME/paper/figs}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REF="${JSAREF:-$HOME/results}"           # validation reference only
 WORK=/tmp/jsa-fig-render                 # staging

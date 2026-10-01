@@ -23,7 +23,7 @@ from the consolidated archive:
 
 ```
 bench/render-jsa-paper-figures.sh [DATA_ROOT] [OUT_DIR]
-# defaults: /home/saccilotto/IntP-JSA-consolidated-data  /home/saccilotto/paper/figs
+# defaults: $HOME/IntP-JSA-consolidated-data  $HOME/paper/figs
 ```
 
 It treats the archive as read-only (derived TSVs — `cross-deployment

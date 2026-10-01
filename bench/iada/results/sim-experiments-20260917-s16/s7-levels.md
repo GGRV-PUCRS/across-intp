@@ -2,7 +2,7 @@
 
 Date: 2026-09-19. Tool: `bench/iada/scripts/analyze-regime-levels.R` (the S8 audit
 script, rerun unchanged) against the psp-keyed tier B R folder
-(`/home/saccilotto/iada-tier-rda/B`, the folder the simulator actually reads) and the
+(`~/iada-tier-rda/B`, the folder the simulator actually reads) and the
 current canonical 28-trace tier B tree
 (`paper-assets/deliverables/data/inputs-iada-trees-20260916/tree-B-vm-guest`,
 reached through a symlink shim `/tmp/s7-tree-shim` so the script's tree glob matches;

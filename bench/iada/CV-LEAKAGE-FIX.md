@@ -93,7 +93,7 @@ extracted campaign directories:
   superseded campaign, nowhere near the bare/container/vm-guest ×
   v2.1/v3.3 coverage every other class has.
 - Searched inside all three still-compressed archives at
-  `/home/saccilotto/results/*.tar.{gz,xz}` (`tar -t`, not just filenames on
+  `~/results/*.tar.{gz,xz}` (`tar -t`, not just filenames on
   disk): `intp-paper2-final-data-20260616.tar.gz` and `paper2-extra.tar.xz`
   are repackagings of the same six campaigns already extracted — no hits.
   **`across-intp-sbac-results-v0.1.0.tar.gz` does contain
