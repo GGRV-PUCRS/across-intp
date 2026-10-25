@@ -13,12 +13,12 @@ and shows, left to right:
   2. the 15-metric fingerprint, grouped as canonical-7 / portable-6 /
      regime-2, matching the grouping already in the manuscript's
      sec:design:fingerprint;
-  3. the offline path from the profiler's per-second output into the
-     interference classifier and its three CloudSimInterference
-     configurations (canonical-7, proxy-swap, full-fingerprint). The
-     classifier, simulator and scheduling stages sit in a dashed enclosure
-     labelled "context, not evaluated": the JSA article validates the
-     per-second stream only (D20).
+  3. the offline path from the profiler's per-second output into an
+     interference classifier and a scheduling decision. Both stages sit in
+     a dashed enclosure labelled "context, not evaluated": the JSA article
+     validates the per-second stream only (D20). The classifier
+     configurations and the simulator are not drawn, since the article does
+     not define them (D21).
 
 Usage: python3 plot-fig-arch.py --out /path/to/Figure_1.pdf
 """
@@ -166,7 +166,7 @@ def draw(ax) -> None:
                 "profiler.tsv\n(per-second)", fc="white", fontsize=style.ANNOT)
 
     # Everything below profiler.tsv is downstream context: the article
-    # validates the per-second stream, not the classifier or the simulator
+    # validates the per-second stream, not the classifier or the scheduler
     # (D20). Dashed enclosure + dashed box edges mark that region.
     ax.add_patch(FancyBboxPatch(
         (col3_x0 + 0.004, 0.035), 0.999 - col3_x0 - 0.008, 0.800,
@@ -178,36 +178,19 @@ def draw(ax) -> None:
              style="italic", color="#555555", zorder=3)
     ctx_ls = (0, (3, 2))
 
-    arrow(ax, ((col3_x0 + col3_x1) / 2, 0.85),
-          ((col3_x0 + col3_x1) / 2, 0.735))
-    clf = box(ax, (col3_x0 + 0.02, 0.66), col3_x1 - col3_x0 - 0.04, 0.075,
-               "interference\nclassifier", fc=style.REDDISH_PURPLE + "33",
-               ec=style.REDDISH_PURPLE, ls=ctx_ls, fontsize=style.ANNOT)
-
-    tiers = [
-        ("canonical-7", style.ORANGE),
-        ("proxy-\nswap", style.SKY_BLUE),
-        ("full-\nfingerprint", style.BLUISH_GREEN),
-    ]
-    tw = (col3_x1 - col3_x0 - 0.06) / 3
-    ty = 0.44
-    for i, (name, color) in enumerate(tiers):
-        tx = col3_x0 + 0.02 + i * (tw + 0.02)
-        box(ax, (tx, ty), tw, 0.09, name, fc=color + "22", ec=color,
-            ls=ctx_ls, fontsize=style.ANNOT - 1.0)
-        arrow(ax, ((col3_x0 + col3_x1) / 2, 0.66), (tx + tw / 2, ty + 0.09),
-              lw=0.6)
-
-    sim = box(ax, (col3_x0 + 0.02, 0.235), col3_x1 - col3_x0 - 0.04, 0.075,
-               "CloudSimInterference\n(closed-loop placement)", fc="white",
-               ls=ctx_ls, fontsize=style.ANNOT - 0.5)
-    for i in range(3):
-        tx = col3_x0 + 0.02 + i * (tw + 0.02)
-        arrow(ax, (tx + tw / 2, ty), ((col3_x0 + col3_x1) / 2, 0.31), lw=0.6)
-
-    arrow(ax, ((col3_x0 + col3_x1) / 2, 0.235),
-          ((col3_x0 + col3_x1) / 2, 0.13))
-    box(ax, (col3_x0 + 0.02, 0.055), col3_x1 - col3_x0 - 0.04, 0.075,
+    # Two context stages, evenly spaced between profiler.tsv and the bottom
+    # of the enclosure (the same 0.055 floor the old four-stage stack used).
+    stage_h = 0.075
+    stage_x, stage_w = col3_x0 + 0.02, col3_x1 - col3_x0 - 0.04
+    stage_cx = (col3_x0 + col3_x1) / 2
+    sched_y = 0.055
+    clf_y = (0.85 + sched_y) / 2
+    arrow(ax, (stage_cx, 0.85), (stage_cx, clf_y + stage_h))
+    box(ax, (stage_x, clf_y), stage_w, stage_h,
+        "interference\nclassifier", fc=style.REDDISH_PURPLE + "33",
+        ec=style.REDDISH_PURPLE, ls=ctx_ls, fontsize=style.ANNOT)
+    arrow(ax, (stage_cx, clf_y), (stage_cx, sched_y + stage_h))
+    box(ax, (stage_x, sched_y), stage_w, stage_h,
         "scheduling decision", fc="#eeeeee", ls=ctx_ls,
         fontsize=style.ANNOT - 0.5)
 

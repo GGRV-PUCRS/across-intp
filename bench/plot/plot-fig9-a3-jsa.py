@@ -33,6 +33,7 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -111,8 +112,15 @@ def render(df, stats_df, variant: str, out: Path) -> None:
             patch.set_facecolor("#cfd8dc")
             patch.set_alpha(0.7)
         ax.set_yticks(list(range(1, len(present) + 1)))
-        ax.set_yticklabels(present, fontsize=style.BODY)
+        # raw env ids select the data; only the printed tick is relabeled
+        ax.set_yticklabels([style.env_label(e) for e in present],
+                           fontsize=style.BODY)
         ax.tick_params(axis="x", labelsize=style.ANNOT)
+        # AutoLocator with its tick count pinned to what the panels had under
+        # the raw env-id labels: the shorter labels (D21) widen the panels,
+        # and "auto" would then print a different set of tick values.
+        ax.xaxis.set_major_locator(
+            mticker.MaxNLocator(nbins=2, steps=[1, 2, 2.5, 5, 10]))
         ax.set_xlabel("value", fontsize=style.BODY)
     for j in range(len(metrics), nrows * ncols):
         axes[j // ncols][j % ncols].axis("off")

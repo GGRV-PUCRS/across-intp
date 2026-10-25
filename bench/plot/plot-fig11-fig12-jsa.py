@@ -129,7 +129,7 @@ def fig_victim(cells, present, variants, out: Path) -> None:
                         color=col, mfc=(col if fs >= 0.5 else "white"),
                         mec=col, mew=1.2, zorder=3)
         ax.set_xlim(-1.25, 1.25)
-        ax.set_title(env, fontsize=style.TITLE)
+        ax.set_title(style.env_label(env), fontsize=style.TITLE)
         ax.set_xlabel("Cliff's δ (pairwise − solo)")
         ax.grid(axis="x", ls=":", alpha=0.3)
     axes[0].set_yticks(range(len(metrics)))
@@ -139,7 +139,7 @@ def fig_victim(cells, present, variants, out: Path) -> None:
 
     handles = [
         plt.Line2D([0], [0], marker="o", color=FAM_COLOR["canon"], ls="",
-                   ms=5.5, label="canonical-7"),
+                   ms=5.5, label="canonical"),
         plt.Line2D([0], [0], marker="o", color=FAM_COLOR["portable"], ls="",
                    ms=5.5, label="portable"),
         plt.Line2D([0], [0], marker="o", color=FAM_COLOR["guard"], ls="",
@@ -190,7 +190,7 @@ def fig_vmproxy(cells, present, variants, out: Path) -> None:
     ax_g.set_facecolor("#fdf2ec")  # light tint: this is the headline panel
 
     for ax, env, title in ((ax_h, "bare", "host (bare metal)"),
-                            (ax_g, "vm-guest", "vm-guest")):
+                            (ax_g, "vm-guest", "KVM guest")):
         yy = list(range(len(labels)))
         vals, cols, hatch, notes = [], [], [], []
         for m in labels:

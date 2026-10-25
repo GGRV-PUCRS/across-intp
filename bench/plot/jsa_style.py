@@ -74,6 +74,23 @@ VARIANT_COLOR = {"v2.1": BLUE, "v3.3": VERMILLION}
 VARIANT_MARKER = {"v2.1": "o", "v3.3": "^"}
 VARIANT_LABEL = {"v2.1": "v2.1", "v3.3": "v3.3"}
 
+# Deployment environments as the manuscript text and Table 2 name them
+# (DECISIONS.md D21). The internal ids stay in the data and the directory
+# layout; only the printed label changes. container-k8s ran on k3s.
+ENV_LABEL = {
+    "bare": "bare metal",
+    "container": "Docker",
+    "container-podman": "Podman",
+    "container-lxc": "Incus",
+    "container-k8s": "k3s",
+    "vm-guest": "KVM guest",
+}
+
+
+def env_label(env_id: str) -> str:
+    """Figure label for an environment id; unknown ids print as given."""
+    return ENV_LABEL.get(env_id, env_id)
+
 # --------------------------------------------------------------------------
 # Canonical workload identifiers (single source of truth for figure labels):
 # appNN[b]_<profile>, underscores only, profile is the 2022 application

@@ -49,29 +49,30 @@ writes when it differs from the manuscript's file name.
 | --- | --- | --- | --- | --- |
 | Fig. 1, availability | `fig_availability.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_2.pdf` |
 | Fig. 2, architecture | `fig_arch.pdf` | `plot/plot-fig-arch.py` | none (schematic) | |
-| Fig. 3, claim class | `fig_claimclass.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_8.pdf` |
-| Fig. 4, PSI | `fig_psi.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_3.pdf` |
-| Fig. 5, cadence | `fig_cadence.pdf` | `plot/plot-cadence-curves.py --jsa-merged` | `03-cadence-sweep/cadence-fidelity.tsv` | |
-| Fig. 6, overhead | `fig_overhead.pdf` | `analyze-cadence-overhead.py --jsa-style` | `06-cadence-overhead-F9/` | |
-| Fig. 7, pipeline | `fig_pipeline.pdf` | `plot/plot-fig-pipeline.py` | none (schematic) | |
-| Fig. 8, faithfulness | `fig_faithfulness.pdf` | `plot/plot-fig6-v2-jsa.py` | `01-tier-a-cross-deployment/cross-deployment.tsv` (regenerated, see below) and `docs/reports/W4-faithfulness-r2.md` (repository) | `Figure_6_v2.pdf` |
-| Fig. 9, `membw_est` proxy | `fig_membwproxy.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_4.pdf` |
-| Fig. 10, preemption | `fig_preempt.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_14.pdf` |
+| Fig. 3, pipeline | `fig_pipeline.pdf` | `plot/plot-fig-pipeline.py` | none (schematic) | |
+| Fig. 4, claim class | `fig_claimclass.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_8.pdf` |
+| Fig. 5, faithfulness | `fig_faithfulness.pdf` | `plot/plot-fig6-v2-jsa.py` | `01-tier-a-cross-deployment/cross-deployment.tsv` (regenerated, see below) and `docs/reports/W4-faithfulness-r2.md` (repository) | `Figure_6_v2.pdf` |
+| Fig. 6, `membw_est` proxy | `fig_membwproxy.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_4.pdf` |
+| Fig. 7, PSI | `fig_psi.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_3.pdf` |
+| Fig. 8, preemption | `fig_preempt.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_14.pdf` |
+| Fig. 9, cadence | `fig_cadence.pdf` | `plot/plot-cadence-curves.py --jsa-merged` | `03-cadence-sweep/cadence-fidelity.tsv` | |
+| Fig. 10, overhead | `fig_overhead.pdf` | `analyze-cadence-overhead.py --jsa-style` | `06-cadence-overhead-F9/` | |
 | Fig. 11, anomaly (v2.1) | `fig_anomaly.pdf` | `plot/plot-fig9-a3-jsa.py` | `01-tier-a-cross-deployment/aggregate-means.tsv` (from `plot/make-aggregate-means.py`) | `Figure_9.pdf` |
-| Fig. 12, in-guest proxy | `fig_vmproxy.pdf` | `plot/plot-fig11-fig12-jsa.py` | `02-w5-colocation/w5-victim-delta-tagged.tsv` | `Figure_12.pdf` |
-| Fig. 13, victim delta | `fig_victim.pdf` | `plot/plot-fig11-fig12-jsa.py` | `02-w5-colocation/w5-victim-delta-tagged.tsv` | `Figure_11.pdf` |
+| Fig. 12, victim delta | `fig_victim.pdf` | `plot/plot-fig11-fig12-jsa.py` | `02-w5-colocation/w5-victim-delta-tagged.tsv` | `Figure_11.pdf` |
+| Fig. 13, in-guest proxy | `fig_vmproxy.pdf` | `plot/plot-fig11-fig12-jsa.py` | `02-w5-colocation/w5-victim-delta-tagged.tsv` | `Figure_12.pdf` |
 | Fig. 14, fingerprint (v3.3) | `fig_fingerprint_v33.pdf` | `plot/plot-tierb-fingerprint.py --variants v3.3` | `04-tier-b-realapps/` and `05-tier-c-dsb/` via `analyze-tierb.py --tag-status` | |
 | Fig. 15, decision procedure | | none: TikZ in the manuscript | none | |
 | Fig. A.1, anomaly (v3.3) | `figA_anomaly_v33.pdf` | `plot/plot-fig9-a3-jsa.py` | as Fig. 11 | `Figure_A3.pdf` |
 | Fig. A.2, fingerprint (v2.1, masked) | `fig_fingerprint_v21_prefix.pdf` | `plot/plot-tierb-fingerprint.py --variants v2.1 --mask c38-prefix` | as Fig. 14 | |
+| Graphical abstract | `graphical-abstract-JSA.pdf`, `.png` | `plot/plot-graphical-abstract-jsa.py` | as Fig. 1 | |
 
 | Manuscript | Source |
 | --- | --- |
-| Table 2, deployment environments | `final/*/metadata.txt`, `capabilities.env`, `variants.manifest` in the archive; host build in [bench/setup/REPRODUCTION.md](bench/setup/REPRODUCTION.md) |
+| Table 2, deployment environments | `final/*/metadata.txt`, `capabilities.env`, `variants.manifest` in the archive; host build in [bench/setup/REPRODUCTION.md](bench/setup/REPRODUCTION.md). The table names the environments Docker, Podman, Incus, k3s and KVM guest, as the figures do; the archive keeps the ids `container`, `container-podman`, `container-lxc`, `container-k8s` and `vm-guest` (DECISIONS.md D21) |
 | Table 3, workload set | `bench/run-intp-bench.sh` (synthetic layer), `bench/workloads/compose/` and `bench/setup/stage-next-campaigns.sh` (real applications and DeathStarBench) |
 | Table 4, campaign inventory | `final/MANIFEST.md` in the archive (cell counts per campaign) |
 | Table 5, faithfulness verdicts | [docs/reports/W4-faithfulness-r2.md](docs/reports/W4-faithfulness-r2.md), [docs/reports/portable-faithfulness.md](docs/reports/portable-faithfulness.md) |
-| Table 6, findings summary | Summarizes Figs. 1, 4, 8, 9, 10, 12 and 14; each row's numbers come from the figure's input above and from [docs/reports/p2-cross-deployment-15metric.md](docs/reports/p2-cross-deployment-15metric.md), [docs/reports/w5-victim-delta.md](docs/reports/w5-victim-delta.md) and [docs/reports/p2-tierb-15metric.md](docs/reports/p2-tierb-15metric.md) |
+| Table 6, summary of results | Summarizes Figs. 1, 5, 6, 7, 8, 13 and 14; each row's numbers come from the figure's input above and from [docs/reports/p2-cross-deployment-15metric.md](docs/reports/p2-cross-deployment-15metric.md), [docs/reports/w5-victim-delta.md](docs/reports/w5-victim-delta.md) and [docs/reports/p2-tierb-15metric.md](docs/reports/p2-tierb-15metric.md) |
 | Table 7, corrections and open findings | [docs/DECISIONS-container.md](docs/DECISIONS-container.md) (mid-campaign corrections, C-entries) and [DECISIONS.md](DECISIONS.md) D16 to D18 (the v0.2.1 fix) |
 
 Table 1 (comparison with prior systems) is drawn from the literature and has no
@@ -122,6 +123,7 @@ python3 bench/plot/plot-tierb-fingerprint.py $OUT/fingerprints-tagged.tsv \
     --variants v3.3 --pdf $OUT/fig_fingerprint_v33.pdf
 python3 bench/plot/plot-tierb-fingerprint.py $OUT/fingerprints-tagged.tsv \
     --variants v2.1 --mask c38-prefix --pdf $OUT/fig_fingerprint_v21_prefix.pdf
+python3 bench/plot/plot-graphical-abstract-jsa.py $D/01-tier-a-cross-deployment --out $OUT
 ```
 
 Checked on 2026-10-01 from a clean clone and the release tarball (Python 3.14,
@@ -135,11 +137,17 @@ Matplotlib 3.11.2) against the manuscript's figure files, rasterized at
   3.10.7.
 - **Byte-identical**: none. Matplotlib embeds a creation date in every PDF.
 
+Since DECISIONS.md D21 (figure numbers above are the current ones) the
+figure text uses the manuscript's names (v2.1, v3.3, Docker, Podman, Incus,
+k3s, KVM guest) and Fig. 2 drops the classifier configurations. Values, page
+sizes and layout are unchanged, so the comparison above holds for everything
+except those labels.
+
 Two traps, both avoided by the sequence above:
 
 - `bench/render-jsa-paper-figures.sh` reads `cross-deployment.tsv` as
-  shipped, so Fig. 8 loses its app16/app17 rows.
-- The same script passes `--by-env-tsv`, which adds a third row to Fig. 5 that
+  shipped, so Fig. 5 loses its app16/app17 rows.
+- The same script passes `--by-env-tsv`, which adds a third row to Fig. 9 that
   the manuscript does not have.
 
 ### Requirements to re-run the campaigns

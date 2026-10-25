@@ -80,7 +80,7 @@ def main() -> int:
                   (x + bw + gap - 0.002, y0 + h / 2))
 
     ax.text(0.5, 0.06,
-             "one command end to end — index.tsv is the single source of "
+             "one command end to end: index.tsv is the single source of "
              "truth; resume is idempotent gap-filling keyed on CAMPAIGN_OUT",
              ha="center", va="center", fontsize=style.ANNOT - 0.7,
              style="italic", color="#444444")

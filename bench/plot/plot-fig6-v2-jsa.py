@@ -85,7 +85,7 @@ def draw_ratio_row(fig, subgrid, d: pd.DataFrame) -> None:
                             fmt=env_markers.get(env, "o"), ms=4,
                             color=style.OKABE_ITO[i % len(style.OKABE_ITO)],
                             capsize=2, label=ENV_SHORT[env], zorder=2)
-            ax.text(0.02, 1.245, "0.8–1.25× equivalence corridor",
+            ax.text(0.02, 1.245, "0.8 to 1.25× equivalence corridor",
                     transform=ax.get_yaxis_transform(),
                     fontsize=style.ANNOT - 0.5, color="#2f6b4f",
                     ha="left", va="top")
@@ -125,7 +125,9 @@ def draw_faith_row(fig, subgrid, ratios, rho) -> None:
     for x, v in zip(xs, vals):
         ax2.text(x, v + 0.02, f"{v:.2f}", ha="center", fontsize=style.BODY)
     ax2.set_xticks(list(xs))
-    ax2.set_xticklabels([w4_mod.VARIANT_LABELS.get(v, v) for v in variants],
+    # jsa_style labels, not plot-w4-summary's (that module feeds the SA
+    # deck and keeps its own names).
+    ax2.set_xticklabels([style.VARIANT_LABEL.get(v, v) for v in variants],
                         rotation=20, ha="right", rotation_mode="anchor",
                         fontsize=style.BODY)
     ax2.set_ylim(0.0, 1.0)

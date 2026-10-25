@@ -85,6 +85,31 @@ To do after the release (the v2.1 re-run of C38 is not part of v0.2.1):
 - [ ] Insert the v0.2.1 version DOI, `10.5281/zenodo.23071202`, in Data availability and in the `sacilotto2026acrossintp` entry of `references.bib`, and remove the `% TODO(v0.2.1)` comment. The record holds the source zip, both data tarballs and `SHA256SUMS`. Any citation of the SBAC-PAD artifact (v0.1.0, no Zenodo record) must use the tag, never the concept DOI.
 - [ ] Rebuild the PDF and the latexdiff against the reviewed snapshot (Version 1336).
 
+## Figure labels after the advisor review (D21)
+
+Figure text only; no value, scale, layout or page size changed. Figure
+numbers are the manuscript's new order (README.md, "Figure and table map").
+Replace each file in Overleaf `figs/` by hand.
+
+| Figure | File | Old text | New text |
+|---|---|---|---|
+| Fig. 1, availability | `fig_availability.pdf` | panel titles `c-abi-cgroup` / `ebpf-core-cgroup`; rows `bare`, `docker`, `podman`, `lxc/incus`, `k8s`, `kvm-guest` | v2.1 / v3.3; bare metal, Docker, Podman, Incus, k3s, KVM guest |
+| Fig. 2, architecture | `fig_arch.pdf` | column 3: classifier, three configuration boxes (`canonical-7`, `proxy-swap`, `full-fingerprint`), `CloudSimInterference (closed-loop placement)`, scheduling decision | column 3: interference classifier, one arrow, scheduling decision, inside the same "context, not evaluated" enclosure; matches the revised caption |
+| Fig. 3, pipeline | `fig_pipeline.pdf` | footer joined with an em dash | "one command end to end: index.tsv is the single source of truth; resume is idempotent gap-filling keyed on CAMPAIGN_OUT" |
+| Fig. 4, claim class | `fig_claimclass.pdf` | as Fig. 1 (variant titles, environment ticks) | as Fig. 1 |
+| Fig. 5, faithfulness | `fig_faithfulness.pdf` | (a) titles `c-abi-cgroup` / `ebpf-core-cgroup`, corridor "0.8–1.25×", legend `docker` ... `kvm-guest`; (b) ticks `C-ABI v2.1` / `eBPF-CORE v3.3` | (a) v2.1 / v3.3, "0.8 to 1.25× equivalence corridor", Docker ... KVM guest; (b) v2.1 / v3.3 |
+| Fig. 7, PSI | `fig_psi.pdf` | x ticks `bare` ... `kvm-guest` | bare metal ... KVM guest |
+| Fig. 8, preemption | `fig_preempt.pdf` | as Fig. 1 (variant titles, environment ticks) | as Fig. 1 |
+| Fig. 11, anomaly (v2.1) | `fig_anomaly.pdf` | y ticks `bare`, `container`, `container-podman`, `container-lxc`, `container-k8s`, `vm-guest` | bare metal, Docker, Podman, Incus, k3s, KVM guest; x tick values unchanged |
+| Fig. 12, victim delta | `fig_victim.pdf` | panel titles `bare` / `container` / `vm-guest`; legend `canonical-7` | bare metal / Docker / KVM guest; legend "canonical" |
+| Fig. 13, in-guest proxy | `fig_vmproxy.pdf` | right panel title `vm-guest` | KVM guest |
+| Fig. 14, fingerprint (v3.3) | `fig_fingerprint_v33.pdf` | row bands `container` / `vm-guest` | Docker / KVM guest |
+| Fig. A.1, anomaly (v3.3) | `figA_anomaly_v33.pdf` | as Fig. 11 | as Fig. 11 |
+| Fig. A.2, fingerprint (v2.1, masked) | `fig_fingerprint_v21_prefix.pdf` | as Fig. 14 | as Fig. 14 |
+| Graphical abstract | `graphical-abstract-JSA.pdf`, `.png` | title "What survives the deployment boundary?" | new figure: title "Interference profiling across deployment environments", two-line subtitle, metric-family availability panel (D21 item 4) |
+
+Figs. 6, 9 and 10 are unchanged.
+
 ## Not requiring any `.tex` change
 
 - CV-leakage fix (Phase 2.1): implemented, verified, does not move any number the paper currently cites — no text change forced, though a methods-section footnote noting the grouped-CV check would strengthen the reproducibility claim.

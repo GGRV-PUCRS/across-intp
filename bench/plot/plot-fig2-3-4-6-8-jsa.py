@@ -46,12 +46,12 @@ import jsa_style as style
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import intp_metrics as M  # noqa: E402
 
-VARIANT_LABELS = {"v2.1": "c-abi-cgroup", "v3.3": "ebpf-core-cgroup"}
+# Printed labels come from jsa_style (DECISIONS.md D21). Both names stay as
+# aliases: plot-fig6-v2-jsa.py imports ENV_SHORT and vlabel from here.
+VARIANT_LABELS = style.VARIANT_LABEL
 ENV_ORDER = ["container", "container-podman", "container-lxc",
              "container-k8s", "vm-guest"]
-ENV_SHORT = {"container": "docker", "container-podman": "podman",
-             "container-lxc": "lxc/incus", "container-k8s": "k8s",
-             "vm-guest": "kvm-guest", "bare": "bare"}
+ENV_SHORT = style.ENV_LABEL
 METRICS_PORTABLE = ["schedlat", "psi_mem", "membw_est", "psi_io",
                      "schedthr", "steal"]
 METRICS_REGIME = ["psp", "idle_preempt"]
@@ -484,7 +484,7 @@ def fig_ratio(df: pd.DataFrame, out: Path) -> None:
                             fmt=env_markers.get(env, "o"), ms=4,
                             color=style.OKABE_ITO[i % len(style.OKABE_ITO)],
                             capsize=2, label=ENV_SHORT[env], zorder=2)
-            ax.text(0.02, 1.245, "0.8–1.25× equivalence corridor",
+            ax.text(0.02, 1.245, "0.8 to 1.25× equivalence corridor",
                     transform=ax.get_yaxis_transform(), fontsize=style.ANNOT - 0.5,
                     color="#2f6b4f", ha="left", va="top")
             ax.set_xticks(range(len(wls)))

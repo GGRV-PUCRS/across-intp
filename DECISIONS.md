@@ -566,3 +566,94 @@ description of Zenodo record 23071202 (DOI, files and version unchanged).
    original machine). Windows download defaults in four plot scripts become
    a relative `figs`. The host is decommissioned, so history is not
    rewritten.
+
+## D21 - JSA figure labels after the advisor review (2026-10-25)
+
+The advisor review of the JSA manuscript asked for scientific rather than
+metaphorical language, text a reader can follow before reading the article,
+and no internal jargon. The manuscript text was revised first; this entry
+brings the figures in line with it. Only labels and one schematic change: no
+statistic, value, color scale, panel layout or page size. The frozen archive
+is untouched; the figures were rendered with the README.md sequence (not
+`bench/render-jsa-paper-figures.sh`, see D20 item 4), Matplotlib 3.11.2.
+
+1. **Label convention.** `bench/plot/jsa_style.py` is the single source:
+   `VARIANT_LABEL` (v2.1, v3.3, unchanged) and the new `ENV_LABEL` /
+   `env_label()` (`bare` bare metal, `container` Docker, `container-podman`
+   Podman, `container-lxc` Incus, `container-k8s` k3s, `vm-guest` KVM guest;
+   unknown ids print as given). `container-k8s` ran on k3s, so the old `k8s`
+   label was wrong as well as internal. "bare metal" fits everywhere,
+   including the tick labels, so the short form "bare" is not used. The
+   ids stay in the data, the directory layout and the selection code; only
+   printed text changes. `plot-fig2-3-4-6-8-jsa.py` keeps `VARIANT_LABELS`
+   and `ENV_SHORT` as aliases of the two maps (`plot-fig6-v2-jsa.py` imports
+   them). Where a JSA renderer took labels from a module that also feeds
+   SBAC-PAD or Seminario figures, the label is overridden at the JSA call
+   site: Fig. 5(b) uses `jsa_style.VARIANT_LABEL` instead of
+   `plot-w4-summary.py`'s "C-ABI v2.1" / "eBPF-CORE v3.3", and Figs. 11 and
+   A.1 map `plot-cross-environment.py`'s raw ids through `env_label` at the
+   tick-label step. Other text: the corridor label reads "0.8 to 1.25×
+   equivalence corridor", the Fig. 12 legend says "canonical" instead of
+   "canonical-7", the Fig. 3 footer joins its two clauses with a colon
+   instead of an em dash. No en or em dash remains in figure text except
+   the "unavailable" cell marker of Figs. 14 and A.2, which the caption
+   calls a dash.
+2. **Figs. 11 and A.1 tick density.** The shorter environment labels widen
+   these constrained-layout panels, and Matplotlib's automatic x locator
+   then printed a different set of tick values (0.00 to 0.15 instead of 0.0
+   and 0.1, for example). `plot-fig9-a3-jsa.py` now sets the same locator
+   with its count fixed at the value the narrower panels produced
+   (`MaxNLocator(nbins=2, steps=[1, 2, 2.5, 5, 10])`), so every printed
+   number is as before. `check_against_banked` passes.
+3. **Fig. 2 simplification.** Column 3 keeps `profiler.tsv` and, inside the
+   dashed "context, not evaluated" enclosure, two stages joined by one
+   arrow: interference classifier and scheduling decision, evenly spaced.
+   The three classifier configuration boxes (`canonical-7`, `proxy-swap`,
+   `full-fingerprint`) and the `CloudSimInterference` box are removed: the
+   article never defines them. Columns 1 and 2 and the page size are
+   unchanged (column 1 still reads "Incus/LXC", as before).
+4. **Graphical abstract.** The old title, the phrase struck from the article
+   title, is gone. `bench/plot/plot-graphical-abstract-jsa.py` writes
+   `graphical-abstract-JSA.pdf` and `.png` (3984 x 1592 px, ratio 2.5):
+   title "Interference profiling across deployment environments", the
+   subtitle given in the review brief, and a 3 x 3 availability panel
+   (bare metal, containers, KVM guest by hardware-backed canonical,
+   software canonical and portable metrics). It reads the Fig. 1 input with
+   the Fig. 1 loaders. Each cell holds one unlabeled square per metric; a
+   column pools both variants and all its environments. Rule: unavailable
+   if no variant reads the metric in any of the column's environments;
+   available if every variant reads it from its own backend everywhere;
+   available through a proxy otherwise, provided every non-native reading
+   is a substitute-backend (PROXY) reading; any other mix stops the script.
+   On this data the rule yields one proxy square in the software row of
+   every column (v3.3 `nets`) and, in the KVM guest, hardware-backed row
+   unavailable / proxy / available (`mbw`; `llcocc`, v2.1 proxy and v3.3
+   absent; `llcmr`). The subtitle wraps onto two lines: on one line it
+   would print below 4 pt at the 13 cm width the journal displays the
+   abstract at.
+5. **Figure numbering.** The manuscript's floats moved so that results sit
+   in the results sections and figures are cited in order. README.md's
+   figure map follows the new order (Fig. 3 pipeline, 4 claim class,
+   5 faithfulness, 6 `membw_est` proxy, 7 PSI, 8 preemption, 9 cadence,
+   10 overhead, 12 victim delta, 13 in-guest proxy; 1, 2, 11, 14, 15, A.1
+   and A.2 unchanged), Table 6 is "summary of results", and Table 2 names
+   the environments Docker, Podman, Incus, k3s and KVM guest. Renderer
+   output names are unchanged.
+6. **Validation** (baseline: the same sequence on unmodified `main`).
+   V1, label scan of the 16 figures and the graphical abstract: none of the
+   internal labels, `neighbour`, `survives`, U+2013, or U+2014 outside
+   Figs. 14 and A.2; the remaining `Docker` tokens are the intended labels.
+   V2, the multiset of numeric tokens equals the baseline for every data
+   figure, once digits that belong to labels (`k8s`/`k3s`, `v2.1`/`v3.3`,
+   `canonical-7`) are set aside. V3, every page size within 0.5 pt of the
+   baseline (largest change 0.07 pt in height). V4, `qa_fig_fonts.py` has
+   no JSA spec table and is not changed here (it feeds SBAC-PAD and the
+   Seminario); its own span and clip checks, run over the JSA set, find
+   minimum font sizes and clip flags identical to the baseline (the
+   rotated 12 pt band labels of Figs. 14 and A.2 overhang the page by
+   3.5 pt in both, a `bbox_inches="tight"` artifact). V5, `fig_membwproxy`
+   holds 0.81, 413 and 412; `fig_fingerprint_v33` holds v3.3 and
+   unavailable; `fig_fingerprint_v21_prefix` holds v2.1 and "pre-fix, not
+   interpreted"; `pytest bench/plot/tests` passes (50 tests). V6, a before
+   and after sheet at 100 dpi went to the author for a visual check. Figs. 9
+   and 10 needed no change: their JSA renders already pass the V1 scan.

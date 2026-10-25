@@ -41,6 +41,7 @@ from matplotlib.patches import Rectangle
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fig_names  # noqa: E402  (figure naming registry)
+import jsa_style as style  # noqa: E402  (environment labels, D21)
 import p2_figio  # noqa: E402  (shared {png,pdf} output layout)
 import numpy as np
 
@@ -243,8 +244,8 @@ def fig_fingerprint(med, status, cls, apps, envs_show, variants, out, *,
         # environment row label, just outboard of the app ticks (-0.42 left a
         # blank gutter between the label and the tick text; -0.26 still had
         # more gutter than needed once the app-name column itself is short)
-        axes[ri][0].annotate(e, xy=(-0.19, 0.5), xycoords="axes fraction",
-                             ha="center", va="center", rotation=90,
+        axes[ri][0].annotate(style.env_label(e), xy=(-0.19, 0.5),
+                             xycoords="axes fraction", ha="center", va="center", rotation=90,
                              fontsize=12, fontweight="bold", color="#333333")
     if pdf:
         for row in axes[:-1]:          # no stray x ticks between row bands
