@@ -300,7 +300,7 @@ its `SYNC.md` names the commit of this repository it is synced with.
 | Debuginfo required       |    Yes     |   Yes    |     Yes     |    Yes    |     Yes     |      No       |     No      |   No (BTF)    |   No (BTF)   |   No (BTF)     |     No (BTF)      |
 | Kernel crash risk        |    High    |   High   |     Low     |    Low    |     Low     |     None      |    None     |    None       |     None     |     None       |      None        |
 | Min kernel (technical)   |   <=4.13   |   6.8+   |  5.15 GA    |    6.8+   |     6.8+    |     4.10+     |    5.8+     |    5.8+       |     5.8+     |    5.8+        |      5.8+         |
-| Kernel tested/gated      | 4.19-<6.8  |  >=4.19  | 5.10-<6.0   | 4.19-<6.8 |   >=4.19    |     >=5.8     |    >=5.8    |    >=5.4      |    >=5.10    |    >=5.10      |      >=5.8        |
+| Kernel tested/gated      | 4.19-<6.8  |  >=4.19  | 5.10-<6.0   |4.19-<6.8* |   >=4.19    |     >=5.8     |    >=5.8    |    >=5.4      |    >=5.10    |    >=5.10      |      >=5.8        |
 | Per-cgroup attribution   |     No     |    No    |     No      |     No    |     No      |      No       |     Yes     |     No        |      No      |      No        |      Yes         |
 | netp                     |     x      |    x     |      x      |     x     |      x      |       x       |      x      |       x       |       x      |       x        |       x          |
 | nets (service-time)      |     x      |    x     |      x      |     x     |      x      |       ~       |      ~      |       x       |       x      |       x        |       x          |
@@ -321,6 +321,23 @@ x = supported, ~ = polling approximation, - = disabled in this build
 window that `variant_kernel_ok` in `bench/run-intp-bench.sh` enforces; the eBPF
 variants need BTF, and V3 and V3.2 use a 5.10 floor even though the mechanism
 exists from 5.8.
+
+\* V1's gate is stale: it dates from before V1 was documented as a kernel 6.8+
+variant (`variants/v1-stap-nohelper/README.md`), and it refuses 6.8 and later.
+V1 is structural evidence and was not part of the measured campaign.
+
+**Differences from the SBAC-PAD 2026 paper (Table I, frozen).** This repository
+follows the variant documentation and the harness code. Where Table I differs,
+the repository value is the one to use:
+
+| Variant | Paper, "Min. kernel" | This repository | Source |
+|---|---|---|---|
+| V0.1 | <=6.5 HWE | 6.8+ (a minimal 6.8 adaptation; compile gate 4.19+) | `variants/v0.1-stap-nollc/README.md`, `variant_kernel_ok` |
+| V2 | 5.15+ | 4.10+ technical, >=5.8 gated (`CAP_PERFMON`) | `variants/v2-c-abi/README.md`, `variant_kernel_ok` |
+| V0.2 | 5.10 <= k < 6.0 | same window; technical target is 5.15 GA | `variant_kernel_ok` |
+
+The paper's column mixes minimums, ceilings and gate windows; the two kernel
+rows of the Variant Comparison table keep them apart.
 
 ## The 7 Metrics
 

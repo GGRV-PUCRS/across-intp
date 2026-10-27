@@ -290,6 +290,13 @@ issue→complete **service time** per interval.
 >   at `block_rq_complete` through the current task's cgroup (`cg_in_filter`),
 >   and its `block_bio_complete` path attributes only byte volume to the owning
 >   blkcg (writeback), not service time.
+> - **Run scope differs from the SBAC-PAD text (frozen).** The paper's Section IV
+>   describes eBPF-CORE as attributing per-PID with no cgroup isolation. The v3.2
+>   stress-ng traces carry `scope=cgroup=…` headers, so they ran cgroup-scoped,
+>   which is the mode where the `blk` gate applies. This note, not the paper, is
+>   the authoritative description of the run scope; the paper's `blk`
+>   statements for eBPF-CORE (IDI, ground-truth correlation, "service-time
+>   fractions preserve queue-depth pressure") should be read with it.
 > - **Provenance note.** The published v3.2 stress-ng data are from the second
 >   campaign (binary `1b52a8e4…`), but the published manifests pin the first
 >   campaign's hash (`029ab712…`). The published v3.2-versus-others `blk`
