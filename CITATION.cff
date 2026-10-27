@@ -26,7 +26,7 @@ authors:
     affiliation: "School of Technology, Pontifícia Universidade Católica do Rio Grande do Sul (PUCRS)"
     email: "andre.santos01@edu.pucrs.br"
     orcid: "https://orcid.org/0000-0002-1639-3238"
-repository-code: "https://github.com/ggrv-intp/across-intp"
+repository-code: "https://github.com/GGRV-PUCRS/across-intp"
 doi: "10.5281/zenodo.23071202"
 identifiers:
   - type: doi

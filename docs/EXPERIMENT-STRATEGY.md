@@ -116,7 +116,7 @@ question:
   results are interpretable as *scheduling quality* only after the
   classifier has been retrained on a dataset drawn from the target
   environment (`R/retrain.R` in
-  [ggrv-intp/CloudSimInterference](https://github.com/ggrv-intp/CloudSimInterference),
+  [GGRV-PUCRS/CloudSimInterference](https://github.com/GGRV-PUCRS/CloudSimInterference),
   branch `retrain-pipeline`). Without retraining, M2 is a domain-
   transfer ablation and must be framed as such.
 

@@ -5,7 +5,7 @@ paper shows or promises to where it lives here.
 
 Two sources: **repo** paths are relative to this repository, and **artifact**
 paths are inside the release assets of
-[v0.1.0](https://github.com/ggrv-intp/across-intp/releases/tag/v0.1.0) —
+[v0.1.0](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.1.0) —
 `across-intp-sbac-results-v0.1.0.tar.gz` unless the row says
 `consolidation-raw.tar.gz`. `sbac-results/PROVENANCE.md` is the chain from the
 measurement campaigns to those assets.

@@ -25,7 +25,7 @@ AUTO_CLONE=0
 NO_UPDATE=0
 CLONE_ROOT=""
 CLOUDSIM_REF="master"
-CLOUDSIM_URL="https://github.com/ggrv-intp/CloudSimInterference.git"
+CLOUDSIM_URL="https://github.com/GGRV-PUCRS/CloudSimInterference.git"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # bench/iada/scripts → repo root is three levels up

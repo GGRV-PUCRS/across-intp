@@ -13,9 +13,9 @@ repository as a whole.
 
 | You are citing | Identifier |
 | --- | --- |
-| The JSA article's code and data | **Version DOI [10.5281/zenodo.23071202](https://doi.org/10.5281/zenodo.23071202)** (release [`v0.2.1`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.1)) |
+| The JSA article's code and data | **Version DOI [10.5281/zenodo.23071202](https://doi.org/10.5281/zenodo.23071202)** (release [`v0.2.1`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.1)) |
 | The latest release, whatever it is | Concept DOI [10.5281/zenodo.21959350](https://doi.org/10.5281/zenodo.21959350) (the badge above); it moves with every release, so do not use it to cite the JSA results |
-| The SBAC-PAD 2026 artifact | Release [`v0.1.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.1.0). It predates the Zenodo integration and has no version DOI; cite it by its tag, never by the concept DOI |
+| The SBAC-PAD 2026 artifact | Release [`v0.1.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.1.0). It predates the Zenodo integration and has no version DOI; cite it by its tag, never by the concept DOI |
 
 The campaigns ran with release v0.2.0. Release v0.2.1 adds a post-campaign fix
 to the v2.1 profiler (thread and subtree enumeration, DECISIONS.md D16) and
@@ -26,8 +26,8 @@ does not re-measure anything: its data files are the v0.2.0 ones, unchanged.
 Zenodo record [23071202](https://zenodo.org/records/23071202) holds the source
 snapshot of v0.2.1 and the three data files below. The same three files are
 attached to the GitHub releases
-[`v0.2.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.0) and
-[`v0.2.1`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.1).
+[`v0.2.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.0) and
+[`v0.2.1`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.1).
 
 | File | Size | What it holds |
 | --- | ---: | --- |
@@ -85,7 +85,7 @@ Needs Python 3 with `pip install -r bench/plot/requirements.txt`; no root, no
 RDT hardware. From an empty directory:
 
 ```bash
-git clone --branch v0.2.1 https://github.com/ggrv-intp/across-intp.git
+git clone --branch v0.2.1 https://github.com/GGRV-PUCRS/across-intp.git
 mkdir jsa-data && cd jsa-data
 for f in IntP-JSA-complete-data-20260918.tar.xz SHA256SUMS; do
   curl -LO "https://zenodo.org/records/23071202/files/$f"
@@ -253,11 +253,11 @@ Cloning the repository will not produce them; download them instead.
   10.5281/zenodo.23071202) holds `across-intp-jsa-results-v0.2.0.tar.gz`,
   `IntP-JSA-complete-data-20260918.tar.xz` and `SHA256SUMS`. The same files are
   attached to the GitHub releases
-  [`v0.2.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.0) and
-  [`v0.2.1`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.1). See
+  [`v0.2.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.0) and
+  [`v0.2.1`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.1). See
   [JSA artifact](#jsa-artifact-release-v021) for what each file holds.
 - **SBAC-PAD paper**: release assets of
-  [`v0.1.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.1.0) only
+  [`v0.1.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.1.0) only
   (no Zenodo record), about 350 MB of measurement output that would swamp a
   source tree:
 
@@ -283,9 +283,9 @@ In [docs/READER-MAP.md](docs/READER-MAP.md) every row is tagged **repo:** or
 
 | Release | What it is |
 | --- | --- |
-| [`v0.1.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.1.0) | The SBAC-PAD 2026 artifact, with the data assets above. The `release/v0.1.0` branch holds the same tree for browsing without downloading. |
-| [`v0.2.0`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.0) | Superseded by v0.2.1 (code fix; same data). The JSA campaigns ran with this release: the container-based interference work (v2.1 and v3.3 per-cgroup profilers, the cross-deployment suite, the IADA simulator campaigns). Campaign results and the frozen campaign archive are attached as release assets. See `docs/DECISIONS-container.md` and DECISIONS.md D15. |
-| [`v0.2.1`](https://github.com/ggrv-intp/across-intp/releases/tag/v0.2.1) | The JSA artifact as cited. Fixes v2.1 per-thread scheduler metrics (`schedlat`, `psp`) and recursive RDT enrollment (C38); the affected cells are not re-measured. The data assets are the v0.2.0 ones, unchanged; see [provenance/v0.2.0/](provenance/v0.2.0/README.md) and DECISIONS.md D16 to D18. |
+| [`v0.1.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.1.0) | The SBAC-PAD 2026 artifact, with the data assets above. The `release/v0.1.0` branch holds the same tree for browsing without downloading. |
+| [`v0.2.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.0) | Superseded by v0.2.1 (code fix; same data). The JSA campaigns ran with this release: the container-based interference work (v2.1 and v3.3 per-cgroup profilers, the cross-deployment suite, the IADA simulator campaigns). Campaign results and the frozen campaign archive are attached as release assets. See `docs/DECISIONS-container.md` and DECISIONS.md D15. |
+| [`v0.2.1`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.1) | The JSA artifact as cited. Fixes v2.1 per-thread scheduler metrics (`schedlat`, `psp`) and recursive RDT enrollment (C38); the affected cells are not re-measured. The data assets are the v0.2.0 ones, unchanged; see [provenance/v0.2.0/](provenance/v0.2.0/README.md) and DECISIONS.md D16 to D18. |
 
 The production profiler built from V2.1 and V3.3 is `intp`, packaged for
 Ubuntu in [`ppa:norohim/intp`](https://launchpad.net/~norohim/+archive/ubuntu/intp);

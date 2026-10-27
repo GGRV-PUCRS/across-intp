@@ -286,7 +286,7 @@ sudo bash bench/iada/scripts/setup-iada.sh --auto-clone
 
 Installs: R, r-base-dev, r-cran-rjava, libtirpc-dev, openjdk-17-jdk-headless,
 plus R packages (caret, e1071, dplyr, ggplot2, ocp) into `~/R/library`.
-Clones the [ggrv-intp/CloudSimInterference](https://github.com/ggrv-intp/CloudSimInterference)
+Clones the [GGRV-PUCRS/CloudSimInterference](https://github.com/GGRV-PUCRS/CloudSimInterference)
 fork next to this repo (override with `--clone-root` or `--cloudsim`),
 applies `bench/iada/patches/mlclassifier-env-vars.patch` idempotently if the
 fork doesn't already expose `INTP_R_FOLDER` (the ggrv-intp `master` already
@@ -314,7 +314,7 @@ The patch reads `INTP_R_FOLDER` and `INTP_R_LIBPATHS` env vars rather
 than dispatching on hostname. It ships as
 [bench/iada/patches/mlclassifier-env-vars.patch](../iada/patches/mlclassifier-env-vars.patch)
 and is applied automatically by `setup-iada.sh`. The default fork
-([ggrv-intp/CloudSimInterference](https://github.com/ggrv-intp/CloudSimInterference))
+([GGRV-PUCRS/CloudSimInterference](https://github.com/GGRV-PUCRS/CloudSimInterference))
 already carries the change, so on first-time setup the patch step is a
 no-op log line ("MLClassifier.java already exposes INTP_R_FOLDER — patch
 skipped"). If you point `--cloudsim` at an unmodified upstream Meyer

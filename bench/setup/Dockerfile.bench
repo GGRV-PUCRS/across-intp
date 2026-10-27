@@ -29,7 +29,7 @@ FROM ubuntu:24.04
 
 LABEL org.opencontainers.image.title="intp-bench" \
       org.opencontainers.image.description="Lean IntP bench tenant (stress-ng + bench deps; NOT the full HDFS/Spark intp-full image)" \
-      org.opencontainers.image.source="https://github.com/ggrv-intp/across-intp" \
+      org.opencontainers.image.source="https://github.com/GGRV-PUCRS/across-intp" \
       org.opencontainers.image.base.name="ubuntu:24.04"
 
 ARG DEBIAN_FRONTEND=noninteractive

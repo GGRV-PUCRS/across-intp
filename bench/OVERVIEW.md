@@ -529,8 +529,8 @@ with the metric vectors collected by V1-V3 on this host.
 
 | Repository | Origin | Local clone |
 | --- | --- | --- |
-| `interference-classifier` | github.com/ggrv-intp/interference-classifier (fork of github.com/ViniciusMeyer/interference-classifier) | `../interference-classifier` |
-| `CloudSimInterference` | github.com/ggrv-intp/CloudSimInterference (fork of github.com/ViniciusMeyer/CloudSimInterference) | `../CloudSimInterference` |
+| `interference-classifier` | github.com/GGRV-PUCRS/interference-classifier (fork of github.com/ViniciusMeyer/interference-classifier) | `../interference-classifier` |
+| `CloudSimInterference` | github.com/GGRV-PUCRS/CloudSimInterference (fork of github.com/ViniciusMeyer/CloudSimInterference) | `../CloudSimInterference` |
 
 Forks belong to `ggrv-intp` so we can patch and avoid loss of upstream.
 

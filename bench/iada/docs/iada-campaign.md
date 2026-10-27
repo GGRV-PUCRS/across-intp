@@ -86,7 +86,7 @@ manifest alone cannot tell those apart.
 
 **What is interpretable from M2 *after* domain-specific retraining:**
 the scheduling-quality comparison. The fork
-[ggrv-intp/CloudSimInterference](https://github.com/ggrv-intp/CloudSimInterference)
+[GGRV-PUCRS/CloudSimInterference](https://github.com/GGRV-PUCRS/CloudSimInterference)
 branch `retrain-pipeline` ships `R/retrain.R` for exactly this. See
 [retraining](#retraining) below.
 
@@ -146,7 +146,7 @@ operating manual and metric reference (paper Meyer 2021 Table 3).
 ### Auxiliary repos
 
 Single auxiliary repo:
-[ggrv-intp/CloudSimInterference](https://github.com/ggrv-intp/CloudSimInterference)
+[GGRV-PUCRS/CloudSimInterference](https://github.com/GGRV-PUCRS/CloudSimInterference)
 — the CloudSim/IADA Java simulator with the IADA classifier embedded
 in `R/`. `setup-iada.sh --auto-clone` clones it next to this repo by
 default. There is **no** separate `interference-classifier` repo;

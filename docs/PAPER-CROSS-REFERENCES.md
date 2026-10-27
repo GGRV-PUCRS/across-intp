@@ -368,7 +368,7 @@ paragraphs.
 
 **Source in repo (future work paths):**
 - IADA integration → `bench/iada/docs/iada-campaign.md` and the
-  CloudSimInterference fork (https://github.com/ggrv-intp/CloudSimInterference)
+  CloudSimInterference fork (https://github.com/GGRV-PUCRS/CloudSimInterference)
   + interference-classifier fork.
 - Container/VM cross-environment → `bench/deploy/` (qcow2 build/snapshot
   scripts, Docker integration in `run-intp-bench.sh`).
