@@ -14,7 +14,7 @@ Reads:
 
 Already-present check: setup-iada.sh greps for "INTP_R_FOLDER" in the
 target file and skips this patch silently when the fork (e.g.
-ggrv-intp/CloudSimInterference) already carries the change.
+GGRV-PUCRS/CloudSimInterference) already carries the change.
 
 Apply with:
   git apply bench/iada/patches/mlclassifier-env-vars.patch

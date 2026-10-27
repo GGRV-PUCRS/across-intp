@@ -1157,7 +1157,7 @@ sync and running the correctly-scoped v2.1 binary.
 
 ### C35 — Paper 1 CI + vocabulary directive ported to the P2 figure set (2026-08-11)
 
-**Upstream sync.** `upstream/main` (ggrv-intp) carried one novelty over the
+**Upstream sync.** `upstream/main` (GGRV-PUCRS) carried one novelty over the
 fork's `main`, `66a419a` (campaign stages + veth workloads in bench/OVERVIEW.md
 and a READER-MAP entry); the camera-ready plot/style work was already on this
 branch via `8825e81`. `main` fast-forwarded, then merged here. One conflict, in

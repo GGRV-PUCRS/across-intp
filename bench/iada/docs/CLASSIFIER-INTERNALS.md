@@ -4,7 +4,7 @@
 > [`../CONFORMANCE.md`](../CONFORMANCE.md) is authoritative and supersedes
 > this file; this file remains the internals snapshot.
 
-Snapshot of how the **CloudSimInterference** fork (ggrv-intp branch
+Snapshot of how the **CloudSimInterference** fork (GGRV-PUCRS branch
 `master` at the time of writing) loads and uses the shipped
 classifier, captured to anchor the sanity-check + retrain pipelines
 in `bench/iada/`.
@@ -128,7 +128,7 @@ Output of `predict_<class>.kmeans` is one of `"low"`, `"mod"`, `"hig"`.
 ## 5. How `MLClassifier.java` loads the artifacts
 
 The Java side **already supports** `INTP_R_FOLDER` /
-`INTP_R_LIBPATHS` env-var overrides (verified in the ggrv-intp fork's
+`INTP_R_LIBPATHS` env-var overrides (verified in the GGRV-PUCRS fork's
 `master` at the time of writing).
 
 ```

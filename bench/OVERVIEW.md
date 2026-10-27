@@ -532,7 +532,7 @@ with the metric vectors collected by V1-V3 on this host.
 | `interference-classifier` | github.com/GGRV-PUCRS/interference-classifier (fork of github.com/ViniciusMeyer/interference-classifier) | `../interference-classifier` |
 | `CloudSimInterference` | github.com/GGRV-PUCRS/CloudSimInterference (fork of github.com/ViniciusMeyer/CloudSimInterference) | `../CloudSimInterference` |
 
-Forks belong to `ggrv-intp` so we can patch and avoid loss of upstream.
+Forks belong to `GGRV-PUCRS` so we can patch and avoid loss of upstream.
 
 ### 10.2 Input format expected by both projects
 

@@ -5,7 +5,7 @@ the campaign actually consisted of so the numbers in the reports and in
 `DECISIONS-sim-experiments.md` can be traced to immutable artifacts.
 
 - **Simulator source**: `CloudSimInterference` tag **`campaign-2026-08`**
-  (= commit `e49fb46`, branch `feat/approach-b-15metric`, pushed to ggrv-intp).
+  (= commit `e49fb46`, branch `feat/approach-b-15metric`, pushed to GGRV-PUCRS).
 - **Build**: `javac --release 8` (class file major 52), tree
   `CloudSimInterference-rel8`; bit-compatible with the banked Eclipse `bin/`.
   A JDK-17 (major 61) build was shown equivalent (S2, 20-rep confirmation).

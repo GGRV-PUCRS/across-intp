@@ -123,9 +123,9 @@ a note that `hibench-sample-loss.py` is safe to re-run on the published tree
 (writes only `fragility-hibench-*.tsv`) whereas `extract-fragility.py` would
 rewrite the stall-bearing tables.
 
-## D10 — v2.1 + v3.3 ported-and-frozen into ggrv-intp/intp (2026-06-10)
+## D10 — v2.1 + v3.3 ported-and-frozen into GGRV-PUCRS/intp (2026-06-10)
 
-The production repository (`ggrv-intp/intp`, local `../intp`) ported
+The production repository (`GGRV-PUCRS/intp`, local `../intp`) ported
 the measured engines at freeze commit `2e87b30fc762` of
 `feat/container-based-interference`:
 
@@ -153,7 +153,7 @@ documented in the intp tree.
 
 ## D11 — latent per-overflow perf wakeup load in v3.2/v3.3 llcmr (observation from the intp port, 2026-06-11)
 
-While gating the production port (ggrv-intp/intp, see D10), the
+While gating the production port (GGRV-PUCRS/intp, see D10), the
 v3.3-inherited ctxsw-amplification acceptance test FAILED on a hybrid
 client CPU (Intel Core 7 240H, kernel 6.17) at **ratio 6.84** under a
 cpu-bound stress-ng load — despite the identical attr passing <= 1.10
@@ -377,11 +377,11 @@ The release keeps version `v0.1.0`, the tag is re-cut at this pass's head, and
 the assets are clobbered in place. The camera-ready PDF is untouched: no placed
 figure was re-rendered, so the 11-page layout stands.
 
-## D15 — v0.2.0: container-based interference published; pinned re-sync with ggrv-intp/intp (2026-09-22)
+## D15 — v0.2.0: container-based interference published; pinned re-sync with GGRV-PUCRS/intp (2026-09-22)
 
 The container-based interference work (PR #1, `feat/container-based-interference`,
 C25 to C37 in `docs/DECISIONS-container.md`, the S15/S16 simulator campaigns)
-is released publicly as **`v0.2.0`** of `ggrv-intp/across-intp`. This
+is released publicly as **`v0.2.0`** of `GGRV-PUCRS/across-intp`. This
 repository (`cutting-edge-intp`) stays the private working copy; its `main`
 is pushed to a branch of across-intp and merged there through a pull request,
 so every commit hash cited in this log resolves in the public repository.

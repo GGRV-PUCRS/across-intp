@@ -289,7 +289,7 @@ plus R packages (caret, e1071, dplyr, ggplot2, ocp) into `~/R/library`.
 Clones the [GGRV-PUCRS/CloudSimInterference](https://github.com/GGRV-PUCRS/CloudSimInterference)
 fork next to this repo (override with `--clone-root` or `--cloudsim`),
 applies `bench/iada/patches/mlclassifier-env-vars.patch` idempotently if the
-fork doesn't already expose `INTP_R_FOLDER` (the ggrv-intp `master` already
+fork doesn't already expose `INTP_R_FOLDER` (the GGRV-PUCRS `master` already
 does, so the patch is skipped silently), and writes `~/.iada-env` with
 `CLOUDSIM_REPO`, `INTP_R_FOLDER`, `INTP_R_LIBPATHS`, `JAVA_HOME`,
 `R_LIBS_USER`, `LD_LIBRARY_PATH`, `INTP_JAVA_OPTS`.
@@ -526,9 +526,9 @@ sudo bash bench/setup/setup-distributed-mode.sh smoke    # expect "Pi is roughly
 sudo bash bench/setup/setup-distributed-mode.sh prepare-hdfs   # one-shot, ~10-30 min
 
 # 7. IADA environment (only if running CloudSim afterward)
-#    --auto-clone fetches ggrv-intp/CloudSimInterference next to this repo
+#    --auto-clone fetches GGRV-PUCRS/CloudSimInterference next to this repo
 #    and applies the MLClassifier.java patch idempotently (already a no-op
-#    against the ggrv-intp fork's master).
+#    against the GGRV-PUCRS fork's master).
 sudo bash bench/iada/scripts/setup-iada.sh --auto-clone
 source ~/.iada-env
 
@@ -601,7 +601,7 @@ job).
 | Kernel mitigations status not captured | small perf shift if next host differs |
 | CPU governor not pinned | up to 5% throughput variance run-to-run |
 | `MEM_BW_MAX_BPS=24 GB/s` source unclear | calibration is reproducible only if value is documented |
-| MLClassifier.java patch out-of-tree (historical) | resolved: patch is in `bench/iada/patches/` and applied by `setup-iada.sh`. The default fork (ggrv-intp) already carries the change, so the apply step is a no-op there. |
+| MLClassifier.java patch out-of-tree (historical) | resolved: patch is in `bench/iada/patches/` and applied by `setup-iada.sh`. The default fork (GGRV-PUCRS) already carries the change, so the apply step is a no-op there. |
 | resctrl schemata not persisted | reboot loses CAT/MBA state until first run re-creates |
 | Veth pair not in `WORKLOADS` array | `netp`/`nets` gap on V2+ unless veth-driven workload is invoked manually |
 
