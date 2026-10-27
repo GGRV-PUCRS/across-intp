@@ -223,8 +223,11 @@ column and a black `netp` column where stap-modern/C-ABI light up. The two have
 **different** explanations, and only one is a real gap *(historical analysis
 below; see the correction above for `netp`)*:
 
-- **`blk` (black) is correct, not a gap.** It is eBPF-CORE's production-faithful
-  *service-time* definition reading ~0 on fast NVMe (see below). Nothing to fix.
+- **`blk` (black) is a capture gap under `--cgroup`/PID scope, not a faithful
+  reading.** `tp_block_rq_complete` is gated by `should_monitor_current()`, but
+  block completions run in IRQ/softirq context, so `current` is usually an
+  unrelated task (often an idle CPU's swapper). Only completions that happen to
+  interrupt a workload task are counted. See the correction under *blk* below.
 - **`netp` (black) is two cells with two causes.** `net_v_net` (loopback) reads 0
   in *both* C-ABI and eBPF-CORE and is correct (loopback → `nets`). `tcp_v_tcp_veth`
   (veth) is a **genuine eBPF-CORE probe gap** — C-ABI reads it, eBPF-CORE misses it — and is
@@ -240,22 +243,54 @@ The two backends measure different definitions of "block I/O utilization":
 | variant | definition | source | reads on NVMe under load |
 |---------|-----------|--------|--------------------------|
 | v1.1 (stap-modern), v2 (C-ABI) | iostat `%util` — wall-time fraction the device queue was non-empty | `/proc/diskstats` `io_ticks` ([blk.c](../../variants/v2-c-abi/src/blk.c)) | **97–99%** |
-| v3.2 (eBPF-CORE) (=V3) | service-time utilization = `Σ per-request svctm / interval` | eBPF `block_rq_issue→complete` ([intp_agg.bpf.h:63](../../variants/v3.2-ebpf-core/src/intp_agg.bpf.h#L63)) | **~1–4%** |
+| v3.2 (eBPF-CORE) (=V3) | service-time utilization = `Σ per-request svctm / interval` | eBPF `block_rq_issue→complete` ([intp_agg.bpf.h:63](../../variants/v3.2-ebpf-core/src/intp_agg.bpf.h#L63)) | **~1–4% under `--cgroup` (see correction); 95–100% system-wide** |
 
 `%util` (io_ticks) is the classic disk-busy metric, but it **saturates to ~100%
 on multi-queue NVMe** even at a tiny fraction of the device's real throughput —
 the queue is essentially never empty under stress. eBPF-CORE instead sums the actual
-issue→complete **service time**; on NVMe each request finishes in microseconds,
-so the summed busy-time is a sliver of the 1 s interval → ~1–4%. The raw eBPF-CORE
-trace confirms it (per-sample blk values are `01`–`04`).
+issue→complete **service time** per interval.
 
-**Which is "right"?** For a *production* server — where the relevant question
-is "how much real I/O service pressure is this co-runner adding" — eBPF-CORE's
-service-time number is the faithful, non-saturating signal, and `%util` is the
-misleading one (it pins to 100% and hides headroom on SSD/NVMe). For *this
-benchmark*, whose disk stressor hammers a fast NVMe, that production-faithful
-number is legitimately near zero. So the black `blk` column is eBPF-CORE telling the
-truth about an NVMe that is barely service-time-bound, not a missing metric.
+> **CORRECTION — the earlier reading of the ~1–4% figure as "faithful service
+> time on a barely loaded fast NVMe" is SUPERSEDED.**
+>
+> - **The probe is gated, and the gate is the lever.** On a separate 20-CPU
+>   development host (not the campaign testbed), with the same disk and the same
+>   buffered-write workload, the build as of `2963f77` under `--cgroup` read 6–18
+>   across four runs. The same build system-wide, and a build with only the
+>   completion gate removed, read 100 on every sample. A bpftrace probe on
+>   `block_rq_complete` showed only 2.5–6.3% of completed bytes (3.5–7.4% of ops)
+>   belonged to the workload cgroup; most completed while an idle CPU's swapper
+>   was interrupted. The gated mean tracks that share.
+> - **The campaign data agree.** Every system-wide or unscoped run reads 95–100
+>   (aux `ref_disk` on every date, the overhead stage, HiBench disk-extreme). Only
+>   cgroup-scoped stress-ng runs read low. V3 has the same gate and read about
+>   1–3% on the `--hdd` workloads in the 8–9 May campaigns on the same host, while
+>   v1.1, v2 and v3.1 read 97–99%.
+> - **The reading is not stable across campaigns.** Two ub24 campaigns with the
+>   same harness definitions, workloads and host gave about 1–3% (first run,
+>   18/05) and about 56–62% (22/05) for the same `--hdd` workloads (app13, app14),
+>   with non-zero samples in about 3% versus about 90% of intervals. The first
+>   v3.2 sample reads 100 in every rep of both campaigns. No committed v3.2 blk
+>   code, and no v3.2 userspace code, differs between the two builds; the only
+>   v3.2 source change in that window (`2963f77`) concerns the netp probes. A
+>   binary change did coincide with the change in disk regime, so the two cannot
+>   be separated from the recorded data.
+> - **The disk was in a different regime in the second campaign.** The
+>   no-profiler `--hdd` baseline ran about 2.5x slower (about 2580 versus 1028
+>   ops/s), with about 17x lower system softirq and higher iowait, while CPU and
+>   stream workloads were unchanged. Cumulative disk counters differ 34x between
+>   the campaigns, consistent with a reboot. Both regimes recur elsewhere in the
+>   data. The cause of the higher capture in the second campaign is not recorded
+>   (no IRQ affinity, NVMe queue mapping, dirty-page state or per-CPU data was
+>   captured) and is untested.
+> - **Consequence.** v3.2 `blk` under cgroup/PID scope is the share of completions
+>   that happen to land on workload tasks, not the workload's I/O. Report v3.2
+>   `blk` only from system-wide runs, or state the scope and this limitation.
+>   v3.3's bio-blkcg attribution is the design-level fix.
+> - **Provenance note.** The published v3.2 stress-ng data are from the second
+>   campaign (binary `1b52a8e4…`), but the published manifests pin the first
+>   campaign's hash (`029ab712…`). The published v3.2-versus-others `blk`
+>   correlations reproduce from the second campaign only.
 
 ### `netp` — the single-node network model, and the one real gap
 
