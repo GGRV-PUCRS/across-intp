@@ -293,13 +293,14 @@ its `SYNC.md` names the commit of this repository it is synced with.
 
 ## Variant Comparison
 
-| Feature                  | V0 classic | V0.1 k68 | V0.2 helper | V1 native | V1.1 helper | V2 stable-abi | V2.1 cgroup | V3.1 bpftrace | V3 ebpf-core | V3.2 eBPF-CORE | V3.3 ebpf-core-cgroup |
+| Feature                  | V0 classic | V0.1 k68 | V0.2 helper | V1 native | V1.1 helper | V2 stable-abi | V2.1 cgroup | V3.1 bpftrace | V3 ebpf-ring | V3.2 eBPF-CORE | V3.3 ebpf-core-cgroup |
 |--------------------------|:----------:|:--------:|:-----------:|:---------:|:-----------:|:-------------:|:-----------:|:-------------:|:------------:|:--------------:|:----------------:|
 | Kernel module required   |    Yes     |   Yes    |     Yes     |    Yes    |     Yes     |      No       |     No      |     No        |      No      |      No        |       No         |
 | Userspace helper         |    No      |   No     |     Yes     |    No     |     Yes     |      n/a      |     n/a     |     Yes       |     Yes      |      Yes       |       Yes        |
 | Debuginfo required       |    Yes     |   Yes    |     Yes     |    Yes    |     Yes     |      No       |     No      |   No (BTF)    |   No (BTF)   |   No (BTF)     |     No (BTF)      |
 | Kernel crash risk        |    High    |   High   |     Low     |    Low    |     Low     |     None      |    None     |    None       |     None     |     None       |      None        |
-| Min kernel version       |   <=6.6    |   6.8+   |  5.15 GA    |    6.8+   |     6.8+    |     4.10+     |    5.8+     |    5.8+       |     5.8+     |    5.8+        |      5.8+         |
+| Min kernel (technical)   |   <=4.13   |   6.8+   |  5.15 GA    |    6.8+   |     6.8+    |     4.10+     |    5.8+     |    5.8+       |     5.8+     |    5.8+        |      5.8+         |
+| Kernel tested/gated      | 4.19-<6.8  |  >=4.19  | 5.10-<6.0   | 4.19-<6.8 |   >=4.19    |     >=5.8     |    >=5.8    |    >=5.4      |    >=5.10    |    >=5.10      |      >=5.8        |
 | Per-cgroup attribution   |     No     |    No    |     No      |     No    |     No      |      No       |     Yes     |     No        |      No      |      No        |      Yes         |
 | netp                     |     x      |    x     |      x      |     x     |      x      |       x       |      x      |       x       |       x      |       x        |       x          |
 | nets (service-time)      |     x      |    x     |      x      |     x     |      x      |       ~       |      ~      |       x       |       x      |       x        |       x          |
@@ -314,6 +315,12 @@ its `SYNC.md` names the commit of this repository it is synced with.
 | ARM server compatible    |    No      |   No     |     No      |    No     |     No      |    Partial    |   Partial   |   Partial     |    Partial   |    Partial     |    Partial       |
 
 x = supported, ~ = polling approximation, - = disabled in this build
+
+"Min kernel (technical)" is what the mechanism itself needs (V0 needs the
+`intel_cqm` driver that mainline removed in 4.14). "Kernel tested/gated" is the
+window that `variant_kernel_ok` in `bench/run-intp-bench.sh` enforces; the eBPF
+variants need BTF, and V3 and V3.2 use a 5.10 floor even though the mechanism
+exists from 5.8.
 
 ## The 7 Metrics
 
