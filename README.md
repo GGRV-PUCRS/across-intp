@@ -652,11 +652,11 @@ llcmr llcocc cpu) stays intact. See
 - **IADA (interference-aware scheduler that consumes IntP):** Meyer, V., da Silva, M. L., Kirchoff, D. F., De Rose, C. A. F. (2022). *IADA: A dynamic interference-aware cloud scheduling architecture for latency-sensitive workloads*. Journal of Systems and Software, vol. 194, pp. 111491. PUCRS.
 - **iprof -- eBPF interference profiler (related work, TU Berlin):**
   - Gögge, R. (2023). *Finding noisy neighbours: Measuring application interference with system-level instrumentation using eBPF*. Master's thesis, Technical University of Berlin. Supervised by Sören Becker and Prof. Dr. Odej Kao.
-  - Becker, S., Goegge, R., Kao, O. (2024). *Measuring application interference with system-level instrumentation*. IEEE/ACM International Conference on Utility and Cloud Computing Companion (UCC Companion). Technical University of Berlin.
+  - Becker, S., Gögge, R., Kao, O. (2024). *Measuring application interference with system-level instrumentation*. Proc. IEEE International Conference on Big Data (BigData 2024), pp. 3648-3653. doi:10.1109/BigData62323.2024.10825462. Technical University of Berlin.
 - **PRISM (related work, Utrecht):** Landau, D., Barbosa, J., Saurabh, N. (2025). *eBPF-based instrumentation for generalisable diagnosis of performance degradation*. arXiv:2505.13160. <https://arxiv.org/abs/2505.13160>. Code: <https://github.com/EC-labs/prism>.
-- **eBPF vs SystemTap overhead methodology:** Volpert, S., Eichhammer, P., Held, F., Huffert, T., Wesner, H. P., Domaschka, S. (2025). *Towards eBPF overhead quantification: An exemplary comparison of eBPF and SystemTap*. ICPE '25 Companion. ACM.
+- **eBPF vs SystemTap overhead methodology:** Volpert, S., Winkelhofer, S., Domaschka, J., Wesner, S. (2025). *Towards eBPF overhead quantification: An exemplary comparison of eBPF and SystemTap*. ICPE '25 Companion, pp. 122-129. ACM. doi:10.1145/3680256.3721311.
 - **CO-RE portability study:** Zhong, S., Liu, J., Arpaci-Dusseau, A. C., Arpaci-Dusseau, R. H. (2025). *Revealing the unstable foundations of eBPF-based kernel extensions*. EuroSys '25. ACM. (University of Wisconsin-Madison.)
-- **Intel RDT measurement caveats:** Sohal, P., Tabish, R., Drepper, U., Mancuso, R. (2022). *A closer look at Intel resource director technology (RDT)*. RTNS '22. ACM.
+- **Intel RDT measurement caveats:** Sohal, P., Bechtel, M., Mancuso, R., Yun, H., Krieger, O. (2022). *A closer look at Intel resource director technology (RDT)*. RTNS '22, pp. 127-139. ACM. doi:10.1145/3534879.3534882.
 - **CO-RE reference guide:** Nakryiko, A. *BPF CO-RE reference guide*. <https://nakryiko.com/posts/bpf-core-reference-guide/>.
 
 ## License

@@ -37,7 +37,7 @@ struct {
 /* Global counter map: one struct intp_counters per CPU at key=0. Each
  * probe does an __sync_fetch_and_add() into the current-CPU slot; the
  * userspace poller sums slots across all CPUs at sampling time. This is
- * the iprof pattern (Goege thesis ch. 3.3, Becker et al. UCC Companion
+ * the iprof pattern (Gögge thesis ch. 3.3, Becker et al. IEEE BigData
  * 2024) and what eliminates the ring-buffer consumer entirely. */
 struct {
     __uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);

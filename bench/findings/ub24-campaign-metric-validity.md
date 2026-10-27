@@ -286,7 +286,10 @@ issue→complete **service time** per interval.
 > - **Consequence.** v3.2 `blk` under cgroup/PID scope is the share of completions
 >   that happen to land on workload tasks, not the workload's I/O. Report v3.2
 >   `blk` only from system-wide runs, or state the scope and this limitation.
->   v3.3's bio-blkcg attribution is the design-level fix.
+>   v3.3 does not fully fix this: its per-cgroup service time is still credited
+>   at `block_rq_complete` through the current task's cgroup (`cg_in_filter`),
+>   and its `block_bio_complete` path attributes only byte volume to the owning
+>   blkcg (writeback), not service time.
 > - **Provenance note.** The published v3.2 stress-ng data are from the second
 >   campaign (binary `1b52a8e4…`), but the published manifests pin the first
 >   campaign's hash (`029ab712…`). The published v3.2-versus-others `blk`

@@ -299,7 +299,7 @@ An audit against the accepted camera-ready found the repository publishing a
 context-switch amplification figure the paper contradicts, plus cross-references
 to a draft section numbering that no longer exists.
 
-1. **`194-416x` was wrong; the correct figure is `194-416x`.** Recomputed from
+1. **`188-390x` was wrong; the correct figure is `194-416x`.** Recomputed from
    the published artifact's raw `vmstat` traces
    (`extra/intp-aux-rerun-v3-20260524-164742/`) with `parse_vmstat_cs` from
    `bench/plot/plot-aux-rerun.py`, mean of 3 reps per cell: `ref_stream` 194x,

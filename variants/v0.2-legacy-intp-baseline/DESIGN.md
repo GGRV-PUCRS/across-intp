@@ -25,9 +25,13 @@ Two distinct things later broke that design:
    kernel 6.8 by disabling LLC occupancy; that gap is documented in
    `docs/VARIANT-COMPARISON.md`.
 
-2. **Ubuntu 22.04's 5.15 kernel** ships with RCU-checking backports
-   from Canonical (`CONFIG_PROVE_RCU=y` plus stricter `lockdep` hits)
-   that destabilise stap-2022 even though `cqm_rmid` is still present.
+2. **Sleeping operations in probe context** destabilise stap-2022 on the
+   kernels tested (5.15 and 6.8), independently of item 1. Sleeping inside
+   an RCU read-side critical section was never allowed; since mid-2021 the
+   preemptible-RCU check prints "Voluntary context switch within RCU
+   read-side critical section!" instead of a bare warning. Whether the stock
+   5.15 configuration enables lockdep-based RCU checking (`CONFIG_PROVE_RCU`)
+   is not verified here; check `/boot/config-*` before citing it.
    `perf_event_create_kernel_counter()` called from stap probe context
    triggers `RCU stall` and `BUG: scheduling while atomic` reports;
    `on_each_cpu_mask()` from the `rmid_read()` path tickles

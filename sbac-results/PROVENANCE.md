@@ -104,6 +104,20 @@ names is `VERSIONS.md`. The three measured versions are v0.2
 (legacy-intp-baseline), v2 (C-ABI) and v3.2 (eBPF-CORE); the tree also
 carries v1.1 (stap-modern), the kernel-6.8 architectural proof.
 
+**Erratum (2026-10-26).** The v3.2 entry of the published manifest pins
+`029ab712…`, the binary of `ub24-campaign-20260518_021737` (run3), whose v3.2
+traces were discarded. The published v3.2 stress-ng data come from
+`ub24-campaign-20260522_183908` (run2), binary `1b52a8e4…`; the v3.2 HiBench
+build of `ub24-campaign-20260523_131301` (run1) has no recorded hash. By
+timestamp, `1b52a8e4…` corresponds to commit `2963f77` and `029ab712…` to
+`60f32e5`; no log records the git revision. The manifest will be corrected at
+the next asset refresh. See `bench/findings/ub24-campaign-metric-validity.md`.
+
+**Workload label alias.** Every archived campaign tree, and the cgroup names
+used at run time, label the third disk workload `app15_query_inerge`; the
+current harness and the papers call it `app15_query_merge`. They are the same
+workload (`stress-ng --iomix`); joins must map both names.
+
 ## Published artifact
 
 The public data pointer cited by the paper is release **v0.1.0**. The tag is

@@ -32,7 +32,7 @@ This document tracks how each metric is computed across the 11 variants and whic
 | **mbw** | `bw_bps / 34e9 × 100` (hardcoded 34 GB/s) | ≡ stap-2022 | ≡ stap-2022 (helper-fed via uncore IMC `perf_event_open(2)`) | ≡ stap-2022 (returns 0; helper-fed) | ≡ stap-2022 (helper-fed) | `bw / mem_bw_max × 100` (autodetect) | ≡ C-ABI | ≡ C-ABI |
 | **llcmr** | `(misses / loads) × 100` | ≡ stap-2022 | ≡ stap-2022 | ≡ stap-2022 | ≡ stap-2022 | ≡ stap-2022 | ≡ stap-2022 (refs ≈ loads) | ≡ stap-2022 |
 | **llcocc** | `(occ_count × 49152) / 34e6 × 100` (hardcoded 34 MB) | ≡ stap-2022 | ≡ stap-2022 (helper-fed via resctrl mon_groups) | ≡ stap-2022 (helper-fed) | ≡ stap-2022 (helper-fed) | `occ_bytes / llc_size × 100` (autodetect via resctrl) | ≡ C-ABI | ≡ C-ABI |
-| **cpu** | `(uticks + kticks) / allticks × 100` from `perf.sw.cpu_clock` | ≡ stap-2022 | ≡ stap-2022 | ≡ stap-2022 | ≡ stap-2022 | `(1 - idle/total) × 100` from /proc/stat | `on_cpu_ns / (interval × num_cores) × 100` (mathematically equivalent to stap-2022 — `allticks` in stap-2022 is per-CPU-summed, ebpf-ring divides explicitly) | ≡ ebpf-ring |
+| **cpu** | `(uticks + kticks) / allticks × 100` from `perf.sw.cpu_clock` | ≡ stap-2022 | ≡ stap-2022 | ≡ stap-2022 | ≡ stap-2022 | per-PID `(utime + stime)` delta from `/proc/<pid>/stat` over the `/proc/stat` total-jiffies delta (`procfs_pid`, used in the campaigns); system-wide `(1 - idle/total) × 100` only as fallback (`procfs_system`) | `on_cpu_ns / (interval × num_cores) × 100` (mathematically equivalent to stap-2022 — `allticks` in stap-2022 is per-CPU-summed, ebpf-ring divides explicitly) | ≡ ebpf-ring |
 
 Legend:
 - `≡ V0` = mathematically identical to stap-2022 (possibly with autodetected constants instead of hardcoded values)

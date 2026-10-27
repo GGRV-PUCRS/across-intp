@@ -157,7 +157,7 @@ the steady-state profiler; ebpf-ring is the introspection profiler.
 - **Original IntP:** Xavier, M. G., Cano, C. H. C., Meyer, V., and De Rose, C. A. F. (2022). *IntP: Quantifying cross-application interference via system-level instrumentation*. SBAC-PAD 2022, pp. 231-240. IEEE. PUCRS.
 - **In-kernel aggregation pattern, iprof:**
   - Gögge, R. (2023). *Finding noisy neighbours: Measuring application interference with system-level instrumentation using eBPF*. Master's thesis, Technical University of Berlin. (Chapter 3.3 documents the `PERCPU_ARRAY + HASH` pattern eBPF-CORE reuses.)
-  - Becker, S., Goegge, R., Kao, O. (2024). *Measuring application interference with system-level instrumentation*. UCC Companion 2024, IEEE/ACM.
+  - Becker, S., Gögge, R., Kao, O. (2024). *Measuring application interference with system-level instrumentation*. Proc. IEEE International Conference on Big Data (BigData 2024), pp. 3648-3653. doi:10.1109/BigData62323.2024.10825462. Technical University of Berlin.
 - **PRISM:** Landau, D., Barbosa, J., Saurabh, N. (2025). *eBPF-based instrumentation for generalisable diagnosis of performance degradation*. arXiv:2505.13160. (Statistical summaries polled every second -- adjacent point on the same axis.)
 - **CO-RE portability study:** Zhong, S. et al. (2025). *Revealing the unstable foundations of eBPF-based kernel extensions*. EuroSys '25. ACM.
 - libbpf: <https://github.com/libbpf/libbpf>

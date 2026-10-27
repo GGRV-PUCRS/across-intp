@@ -18,7 +18,7 @@ portability, deployment complexity, and execution environment behavior
 (bare-metal, container, VM).
 
 ebpf-ring is **not** a reimplementation of `iprof` (Gögge 2023, TU Berlin
-master's thesis; Becker, Goegge, Kao 2024, UCC Companion) or PRISM
+master's thesis; Becker, Gögge, Kao 2024, IEEE BigData) or PRISM
 (Landau, Barbosa, Saurabh 2025, Utrecht University,
 arXiv:2505.13160). ebpf-ring implements IntP's exact 7-metric set with
 matching semantics, which neither tool does: `iprof` covers 5 metrics
@@ -111,8 +111,8 @@ via `--ringbuf-size`.
 
 `iprof` is the eBPF-based interference profiler from Gögge's TU
 Berlin master's thesis (advised by Sören Becker and Prof. Odej Kao,
-2023), and the companion paper by Becker, Goegge, and Kao published
-at UCC Companion 2024. ebpf-ring looks at it for architectural ideas only --
+2023), and the companion paper by Becker, Gögge, and Kao published
+at IEEE BigData 2024. ebpf-ring looks at it for architectural ideas only --
 it is **not** a PUCRS predecessor of IntP, and ebpf-ring does not inherit
 code from it. Differences:
 
