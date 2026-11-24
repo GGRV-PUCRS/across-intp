@@ -109,7 +109,7 @@ python3 bench/analyze-tierb.py $D/05-tier-c-dsb --tag-status --tsv $OUT/fp-tierc
 
 # Figures (file names per the map above)
 python3 bench/plot/plot-fig2-3-4-6-8-jsa.py $D/01-tier-a-cross-deployment --tag-status --out $OUT/set1
-python3 bench/plot/plot-fig-arch.py --out $OUT/fig_arch.pdf
+python3 bench/plot/plot-fig-arch.py --attribution-only --out $OUT/fig_arch.pdf
 python3 bench/plot/plot-cadence-curves.py $D/03-cadence-sweep/cadence-fidelity.tsv \
     --out $OUT/cadence --jsa-merged $OUT/fig_cadence.pdf
 python3 bench/analyze-cadence-overhead.py $D/06-cadence-overhead-F9 --tsv $OUT/overhead.tsv \

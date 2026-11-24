@@ -111,6 +111,31 @@ Replace each file in Overleaf `figs/` by hand.
 
 Figs. 6, 9 and 10 are unchanged.
 
+## Figure vocabulary of the revised manuscript (D22)
+
+Figure text only; values do not change. Numbers are the revised
+manuscript's (Figure 1 to 10, Supplementary Figures S1 to S4). Replace each
+file in Overleaf `figs/` and `submission/figures/` with the render of the
+release that carries D22.
+
+| Figure | File | Before (v0.2.1) | Now |
+|---|---|---|---|
+| Figure 1, attribution path | `fig_arch.pdf` | full three-column architecture | column 1 only (`--attribution-only`), as in the manuscript |
+| Figure 2, faithfulness | `fig_faithfulness.pdf` | v2.1 / v3.3 | C / eBPF |
+| Figure 3, `membw_est` | `fig_membwproxy.pdf` | v2.1 / v3.3 | C / eBPF |
+| Figure 4, preemption | `fig_preempt.pdf` | v2.1 / v3.3 | C / eBPF |
+| Figure 5, victim delta | `fig_victim.pdf` | canonical, portable, guard, proxy backend; v2.1 / v3.3 | original, complementary, control, estimate; C / eBPF; C39 deltas |
+| Figure 6, in-guest metrics | `fig_vmproxy.pdf` | canonical RDT, portable proxy, unavailable in this deployment, reading via substitute backend, (proxy) | original (RDT), complementary, unavailable in this environment, reading from an estimate, (est.); C39 deltas |
+| Figure 7, overhead | `fig_overhead.pdf` | v2.1 / v3.3 | C / eBPF |
+| Figure 8, sampling interval | `fig_cadence.pdf` | (dir); v2.1 / v3.3 | (rank); C / eBPF |
+| Figure 9, reliability levels | `fig_claimclass.pdf` | v2.1 / v3.3 | C / eBPF (legend: rank-based, estimate, f42518b) |
+| Figure S2, anomaly | `fig_anomaly.pdf`, `figA_anomaly_v33.pdf` | unchanged | unchanged |
+| Figure S3, real applications | `fig_fingerprint_v33.pdf` | v3.3; regime; reading via substitute backend (proxy) | eBPF; scheduling; reading from an estimate (the manuscript's file printed "isk" for "disk") |
+| Figure S4, availability | `fig_availability.pdf` | v2.1 / v3.3; available (proxy backend); structurally unavailable | C / eBPF; available (estimate); unavailable |
+
+Figure S1 (`fig_pipeline.pdf`) and Figure 10 (TikZ in the manuscript) do not
+change.
+
 ## Not requiring any `.tex` change
 
 - CV-leakage fix (Phase 2.1): implemented, verified, does not move any number the paper currently cites — no text change forced, though a methods-section footnote noting the grouped-CV check would strengthen the reproducibility claim.

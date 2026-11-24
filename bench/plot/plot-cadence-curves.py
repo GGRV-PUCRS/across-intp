@@ -286,7 +286,8 @@ def _draw_sensitivity(ax, cb_ax, cols, rows, M, cls, variants, workloads,
                       fontsize, annot_fontsize):
     im = ax.imshow(M, aspect="auto", cmap="YlOrRd", vmin=0, vmax=100)
     ax.set_xticks(range(len(cols)))
-    ax.set_xticklabels([v for (_w, v) in cols], fontsize=fontsize)
+    ax.set_xticklabels([jsa_style.VARIANT_LABEL.get(v, v) for (_w, v) in cols],
+                       fontsize=fontsize)
     span = len(variants)
     for i, w in enumerate(workloads):
         ax.text(i * span + (span - 1) / 2.0, -0.16, jsa_style.wl_label(w),
@@ -295,7 +296,7 @@ def _draw_sensitivity(ax, cb_ax, cols, rows, M, cls, variants, workloads,
         if i:
             ax.axvline(i * span - 0.5, color="black", lw=0.8)
     ax.set_yticks(range(len(rows)))
-    ax.set_yticklabels([f"{m} ({cls.get(m,'?')})" for m in rows],
+    ax.set_yticklabels([f"{m} ({jsa_style.class_label(cls.get(m,'?'))})" for m in rows],
                        fontsize=fontsize)
     ax.tick_params(length=0)
     for ri in range(len(rows)):
@@ -419,7 +420,7 @@ def _draw_fidelity_panels(fig, axes, fid, dens, cls, med, variants, workloads,
         axd.annotate(f"{int(y)}", (x, y), fontsize=fontsize - 1, ha="left", va="bottom")
 
     handles = [plt.Line2D([0], [0], color=cmap[m], marker=mmap[m], lw=1.3,
-                          label=f"{m} ({cls.get(m,'?')})") for m in drawn_metrics]
+                          label=f"{m} ({jsa_style.class_label(cls.get(m,'?'))})") for m in drawn_metrics]
     for v in variants:
         handles.append(plt.Line2D([0], [0], color="k", ls=style.get(v, "-"),
                                   marker=marker.get(v, "o"),
@@ -571,7 +572,7 @@ def _draw_env_panels(fig, axes, efid, ecls, emed, variants, workloads, fine,
 
     if legend_ax is not None:
         handles = [plt.Line2D([0], [0], color=cmap[m], lw=1.3,
-                              label=f"{m} ({ecls.get(m,'?')})")
+                              label=f"{m} ({jsa_style.class_label(ecls.get(m,'?'))})")
                    for m in cmap]
         handles += [plt.Line2D([0], [0], color="k", ls=ENV_STYLE[e],
                                label=ENV_LABEL[e]) for e in ENV_ORDER]

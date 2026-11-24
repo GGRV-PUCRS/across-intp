@@ -139,11 +139,11 @@ def fig_victim(cells, present, variants, out: Path) -> None:
 
     handles = [
         plt.Line2D([0], [0], marker="o", color=FAM_COLOR["canon"], ls="",
-                   ms=5.5, label="canonical"),
+                   ms=5.5, label="original"),
         plt.Line2D([0], [0], marker="o", color=FAM_COLOR["portable"], ls="",
-                   ms=5.5, label="portable"),
+                   ms=5.5, label="complementary"),
         plt.Line2D([0], [0], marker="o", color=FAM_COLOR["guard"], ls="",
-                   ms=5.5, label="guard (expect flat)"),
+                   ms=5.5, label="control (expect flat)"),
         plt.Line2D([0], [0], marker="o", color="k", mfc="k", ls="",
                    ms=5.5, label="majority signif. (filled)"),
         plt.Line2D([0], [0], marker="o", color="k", mfc="white", ls="",
@@ -152,7 +152,7 @@ def fig_victim(cells, present, variants, out: Path) -> None:
                    mew=1.1, ls="", ms=9, label="saturated |δ|=1.0"),
         plt.Line2D([0], [0], marker="o", color="k", mfc="none",
                    mec=style.VERMILLION, mew=1.0, ls="", ms=11,
-                   label="proxy backend"),
+                   label="estimate"),
     ]
     if len(variants) > 1:
         handles += [
@@ -212,7 +212,7 @@ def fig_vmproxy(cells, present, variants, out: Path) -> None:
                 # absent one ("////" above).
                 hatch.append("...." if st == "PROXY" else None)
                 note = "signif." if fs >= 0.5 else "n.s."
-                notes.append(note + " (proxy)" if st == "PROXY" else note)
+                notes.append(note + " (est.)" if st == "PROXY" else note)
         bars = ax.barh(yy, vals, color=cols, alpha=0.9, zorder=2,
                         edgecolor="black", linewidth=0.3)
         for b, h in zip(bars, hatch):
@@ -234,12 +234,12 @@ def fig_vmproxy(cells, present, variants, out: Path) -> None:
         t.set_color(style.BLUE if m in canon_ms else style.BLUISH_GREEN)
 
     handles = [
-        plt.Rectangle((0, 0), 1, 1, fc=style.BLUE, label="canonical RDT"),
-        plt.Rectangle((0, 0), 1, 1, fc=style.BLUISH_GREEN, label="portable proxy"),
+        plt.Rectangle((0, 0), 1, 1, fc=style.BLUE, label="original (RDT)"),
+        plt.Rectangle((0, 0), 1, 1, fc=style.BLUISH_GREEN, label="complementary"),
         plt.Rectangle((0, 0), 1, 1, fc=style.GREY, hatch="////",
-                      label="unavailable in this deployment"),
+                      label="unavailable in this environment"),
         plt.Rectangle((0, 0), 1, 1, fc=style.BLUE, hatch="....",
-                      label="reading via substitute backend"),
+                      label="reading from an estimate"),
     ]
     fig.legend(handles=handles, loc="outside lower center", ncol=4,
                frameon=False, fontsize=style.LEGEND, handlelength=1.2,

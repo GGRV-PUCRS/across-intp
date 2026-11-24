@@ -199,7 +199,8 @@ def heatmap_panel(ax, med, key, apps, applabels, metrics, norm_max,
             ax.axvline(left - 0.5, color="black", lw=1.0, zorder=5)
     if show_classlabels:
         for pos, c, _, _ in _class_spans(metrics):
-            ax.text(pos, -0.85, c, ha="center", va="bottom", fontsize=8,
+            ax.text(pos, -0.85, style.resource_class_label(c), ha="center",
+                    va="bottom", fontsize=8,
                     color=CLASS_COLOR.get(c, "k"), fontweight="bold")
     return im
 
@@ -239,7 +240,8 @@ def fig_fingerprint(med, status, cls, apps, envs_show, variants, out, *,
                                show_classlabels=(ri == 0), status=status,
                                mask=mask)
             if ri == 0:                      # variant column header (above class row)
-                ax.annotate(v, xy=(0.5, 1.17), xycoords="axes fraction",
+                ax.annotate(style.VARIANT_LABEL.get(v, v), xy=(0.5, 1.17),
+                            xycoords="axes fraction",
                             ha="center", va="bottom", fontsize=12, fontweight="bold")
         # environment row label, just outboard of the app ticks (-0.42 left a
         # blank gutter between the label and the tick text; -0.26 still had
@@ -299,7 +301,7 @@ def _paper_layout(fig, im, nc, mask, flagged):
         Line2D([], [], ls="none", marker="$—$", ms=7, color="grey",
                label="unavailable"),
         Line2D([], [], ls="none", marker="^", ms=5, color="black",
-               label="reading via substitute backend (proxy)"),
+               label=f"reading from an {style.ESTIMATE}"),
     ]
     if flagged:
         handles.append(Line2D([], [], ls="none", marker="$!$", ms=6,
