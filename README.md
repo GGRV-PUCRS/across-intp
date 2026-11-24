@@ -13,7 +13,7 @@ repository as a whole.
 
 | You are citing | Identifier |
 | --- | --- |
-| The JSA article's code | Release [`v0.2.2`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.2). Its version DOI is added here once the release is published (DECISIONS.md D23) |
+| The JSA article's code | **Version DOI [10.5281/zenodo.24507470](https://doi.org/10.5281/zenodo.24507470)** (release [`v0.2.2`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.2)) |
 | The JSA article's data | **Version DOI [10.5281/zenodo.23071202](https://doi.org/10.5281/zenodo.23071202)**, the record of release [`v0.2.1`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.1), which holds the data files; v0.2.2 does not change them |
 | The latest release, whatever it is | Concept DOI [10.5281/zenodo.21959350](https://doi.org/10.5281/zenodo.21959350) (the badge above); it moves with every release, so do not use it to cite the JSA results |
 | The SBAC-PAD 2026 artifact | Release [`v0.1.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.1.0). It predates the Zenodo integration and has no version DOI; cite it by its tag, never by the concept DOI |
@@ -31,8 +31,9 @@ Figures 5 and 6; renders every figure in the revised manuscript's vocabulary
 ### Where the data are
 
 Zenodo record [23071202](https://zenodo.org/records/23071202) holds the source
-snapshot of v0.2.1 and the three data files below; the Zenodo record of v0.2.2
-holds its source snapshot only. The same three files are
+snapshot of v0.2.1 and the three data files below; Zenodo record
+[24507470](https://zenodo.org/records/24507470) (v0.2.2) holds its source
+snapshot only. The same three files are
 attached to the GitHub releases
 [`v0.2.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.0) and
 [`v0.2.1`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.1).
@@ -285,7 +286,7 @@ In [docs/READER-MAP.md](docs/READER-MAP.md) every row is tagged **repo:** or
 | [`v0.1.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.1.0) | The SBAC-PAD 2026 artifact, with the data assets above. The `release/v0.1.0` branch holds the same tree for browsing without downloading. |
 | [`v0.2.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.0) | Superseded by v0.2.1 (code fix; same data). The JSA campaigns ran with this release: the container-based interference work (v2.1 and v3.3 per-cgroup profilers, the cross-deployment suite, the IADA simulator campaigns). Campaign results and the frozen campaign archive are attached as release assets. See `docs/DECISIONS-container.md` and DECISIONS.md D15. |
 | [`v0.2.1`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.1) | The JSA article's data record (Zenodo 23071202); its code is superseded by v0.2.2. Fixes v2.1 per-thread scheduler metrics (`schedlat`, `psp`) and recursive RDT enrollment (C38); the affected cells are not re-measured. The data assets are the v0.2.0 ones, unchanged; see [provenance/v0.2.0/](provenance/v0.2.0/README.md) and DECISIONS.md D16 to D18. |
-| [`v0.2.2`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.2) | The JSA article's code. Rescales the banked v3.3 `mbw` cells in the analysis (C39), renders the figures in the revised manuscript's vocabulary (D22) and adds the opt-in `--cpu-norm cgroup` (C40); nothing re-measured, data in the v0.2.1 record. See DECISIONS.md D23. |
+| [`v0.2.2`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.2) | The JSA article's code (version DOI 10.5281/zenodo.24507470). Rescales the banked v3.3 `mbw` cells in the analysis (C39), renders the figures in the revised manuscript's vocabulary (D22) and adds the opt-in `--cpu-norm cgroup` (C40); nothing re-measured, data in the v0.2.1 record. See DECISIONS.md D23. |
 
 The production profiler built from V2.1 and V3.3 is `intp`, packaged for
 Ubuntu in [`ppa:norohim/intp`](https://launchpad.net/~norohim/+archive/ubuntu/intp);
