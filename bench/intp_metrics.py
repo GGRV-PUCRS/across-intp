@@ -15,10 +15,12 @@ callers that need them (plot-cross-environment.py, the Spearman/MW paths), so an
 analyzer can import this module without acquiring a hard numpy dependency.
 """
 import glob
+import json
 import os
 import re
 import statistics
 from collections import OrderedDict
+from datetime import datetime
 
 # --------------------------------------------------------------- metric model
 
@@ -364,6 +366,77 @@ def parse_gt(path):
     return rows[1:]
 
 
+# ----------------------------------------- mbw ceiling provenance (C34)
+#
+# mbw is a percentage of a memory-bandwidth ceiling passed to the profiler. The
+# banked cross-deployment v3.3 cells were normalized against intp-detect.sh's
+# DDR4 placeholder (42 656 MB/s) instead of the audited 281 600 MB/s, while later
+# campaigns (W5 colocation pairs, real applications) used the audited value.
+# Mixing the two scales inverts every solo-vs-pairwise delta of the v3.3 victim
+# mbw, so the rescale is applied here, in the one per-run summary every
+# adjudicator shares. Runs that record their own ceiling (run.json
+# mbw_ceiling_bps) are trusted as-is.
+
+_MBW_PROVENANCE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "..", "provenance", "mbw-ceiling.tsv")
+_MBW_PROVENANCE = None
+
+
+def _load_mbw_provenance():
+    global _MBW_PROVENANCE
+    if _MBW_PROVENANCE is not None:
+        return _MBW_PROVENANCE
+    rows = []
+    try:
+        with open(_MBW_PROVENANCE_PATH) as fh:
+            header = None
+            for line in fh:
+                s = line.rstrip("\n")
+                if not s or s.startswith("#"):
+                    continue
+                cols = s.split("\t")
+                if header is None:
+                    header = cols
+                    continue
+                r = dict(zip(header, cols))
+                try:
+                    rows.append((r["variant"],
+                                 datetime.fromisoformat(r["start_from"]),
+                                 datetime.fromisoformat(r["start_to"]),
+                                 float(r["used_mbps"]) / float(r["reference_mbps"])))
+                except (KeyError, ValueError):
+                    continue
+    except OSError:
+        rows = []
+    _MBW_PROVENANCE = rows
+    return rows
+
+
+def mbw_scale(rundir):
+    """Factor that brings this run's mbw onto the audited ceiling (1.0 = none)."""
+    if os.environ.get("INTP_MBW_RAW") == "1":
+        return 1.0
+    try:
+        with open(os.path.join(rundir, "run.json")) as fh:
+            meta = json.load(fh)
+    except (OSError, ValueError):
+        return 1.0
+    if str(meta.get("mbw_ceiling_bps", "")).strip():
+        return 1.0
+    try:
+        start = datetime.fromisoformat(meta["start_iso"])
+    except (KeyError, ValueError, TypeError):
+        return 1.0
+    variant = meta.get("variant")
+    for var, t0, t1, factor in _load_mbw_provenance():
+        try:
+            if var == variant and t0 <= start < t1:
+                return factor
+        except TypeError:          # naive vs aware timestamp: no match
+            continue
+    return 1.0
+
+
 def rep_summary(rundir):
     """Per-run medians for whichever metrics the capture carries (prefers
     portable.tsv's 13-metric superset, else profiler.tsv's 7), plus the GT keys
@@ -383,6 +456,9 @@ def rep_summary(rundir):
             xs = [r.get(m) for r in cap if r.get(m) is not None]
             out[m] = statistics.median(xs) if xs else None
             out["avail_" + m] = 1 if xs else 0
+        scale = mbw_scale(rundir)
+        if scale != 1.0 and out.get("mbw") is not None:
+            out["mbw"] *= scale
     gp = os.path.join(rundir, "groundtruth.tsv")
     if os.path.exists(gp):
         gr = parse_gt(gp)

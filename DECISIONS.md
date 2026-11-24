@@ -657,3 +657,89 @@ is untouched; the figures were rendered with the README.md sequence (not
    interpreted"; `pytest bench/plot/tests` passes (50 tests). V6, a before
    and after sheet at 100 dpi went to the author for a visual check. Figs. 9
    and 10 needed no change: their JSA renders already pass the V1 scan.
+
+## D22 - JSA figures in the revised manuscript's vocabulary (2026-11-24)
+
+The revised JSA manuscript names the variants after their mechanism, C
+(v2.1) and eBPF (v3.3), and the metric groups original (the canonical 7),
+complementary (portable), control (guard) and estimate (a reading through a
+substitute backend); the "directional" claim class became rank-based. Its
+figures were rendered with that vocabulary outside the repository, so `main`
+reproduced them only with the D21 labels, and its Figure 1 is the attribution
+column of `fig_arch.pdf` alone. This entry brings the renderers in line.
+Analysis keys, ids, file names and data do not change; only printed text
+does. It supersedes the variant labels of D21 item 1 (v2.1, v3.3) and the
+"canonical" legend of its Fig. 12.
+
+1. **Single source.** `bench/plot/jsa_style.py`: `VARIANT_LABEL` maps v2.1
+   to C and v3.3 to eBPF; new `FAMILY_LABEL`, `ESTIMATE`, `CLASS_LABEL` with
+   `class_label()` (`dir` prints as rank, `directional` as rank-based) and
+   `RESOURCE_CLASS_LABEL` with `resource_class_label()` (`regime` prints as
+   scheduling). `jsa_style` feeds JSA renderers only; the SBAC-PAD and
+   Seminario figures use `paper_style` and do not change.
+2. **Renderers.**
+   - `plot-fig2-3-4-6-8-jsa.py`, availability legend: "available
+     (estimate)" and "unavailable" (were "available (proxy backend)" and
+     "structurally unavailable").
+   - `plot-cadence-curves.py`, JSA functions only: class suffixes through
+     `class_label()`, sensitivity column ticks through `VARIANT_LABEL`.
+   - `plot-tierb-fingerprint.py`: variant header through `VARIANT_LABEL`,
+     class block "scheduling", legend "reading from an estimate".
+   - `plot-fig11-fig12-jsa.py`: "original", "complementary", "control
+     (expect flat)", "estimate", "(est.)", "original (RDT)", "unavailable in
+     this environment", "reading from an estimate"; variant markers through
+     `VARIANT_LABEL`.
+   - The claim-class, faithfulness, `membw_est`, PSI, preemption and
+     overhead figures already read `VARIANT_LABEL`; f42518b already printed
+     "rank-based" and "estimate" in the claim-class legend.
+3. **Figure 1.** `plot-fig-arch.py --attribution-only` writes column 1
+   alone: the same drawing saved through a fixed window 112 pt wide that
+   starts 70.45 pt from the figure's left edge, over the full tight height
+   (112 x 191.4 pt). The README sequence uses it.
+4. **Check against the revised manuscript's files** (README sequence on
+   `IntP-JSA-complete-data-20260918.tar.xz`, Matplotlib 3.11.2, C39
+   applied):
+   - pixel-identical at 600 dpi: `fig_arch`, `fig_anomaly`,
+     `figA_anomaly_v33`, `fig_faithfulness`, `fig_pipeline`, `fig_preempt`,
+     `fig_victim`;
+   - same text and numbers (multiset of `pdftotext` tokens), layout only:
+     `fig_claimclass` (whole page 0.36 pt to the right), `fig_availability`
+     and `fig_overhead` (legend spacing; overhead also marker stacking),
+     `fig_cadence` (legend and glyph placement), `fig_membwproxy`,
+     `fig_psi`, `fig_vmproxy` (glyph edges, at most 0.11 % of pixels);
+   - `fig_fingerprint_v33`: the manuscript's file prints the class header
+     "isk"; the render prints "disk".
+   The manuscript's files came from a code state that is not in the
+   repository. Renders from this commit replace them in Overleaf, so the
+   article's figures are the release's output. `fig_fingerprint_v21_prefix`
+   and `fig_psi` are not in the revised manuscript and follow the same
+   vocabulary. `pytest bench/plot/tests`: 50 passed.
+
+## D23 - v0.2.2: the revised JSA manuscript's code release (2026-11-24)
+
+`v0.2.2` is the patch release D17 anticipated for a correction after
+v0.2.1. It re-measures nothing and carries no data assets.
+
+1. **Contents.** C39 (the mbw ceiling: fallback made fatal, ceiling
+   recorded per run, banked v3.3 cells rescaled in the analysis through
+   `provenance/mbw-ceiling.tsv`, `docs/reports/w5-victim-delta.md`
+   regenerated), C40 (opt-in `--cpu-norm cgroup` for v2.1 and v3.3; the
+   default stays `online`, so no published value moves) and D22 (figures in
+   the revised manuscript's vocabulary, `fig_arch --attribution-only`).
+2. **What the article cites.** The code by the version DOI of v0.2.2; the
+   data by the version DOI of v0.2.1 (10.5281/zenodo.23071202), whose
+   record holds the three data files (D19). The data files are not
+   re-attached to v0.2.2, so its Zenodo record holds the source snapshot
+   only and nothing has to be uploaded by hand this time. The concept DOI
+   (10.5281/zenodo.21959350) is never the citation (D20).
+3. **Tag.** Annotated tag `v0.2.2` on the merge commit of
+   `release/v0.2.2` into `main`, pushed once and never moved (D17). The
+   GitHub release is published from that tag, which creates the Zenodo
+   version.
+4. **After publishing.** Put the new version DOI in `CITATION.cff` (top-level
+   `doi` and a new `identifiers` entry) and in README.md's "What to cite",
+   the way v0.2.1's DOI went in (57d2d94), and in the manuscript (see
+   PAPER-SYNC.md, v0.2.2).
+5. **Production profiler.** intp 0.10.0-beta2 ports C40 (same algorithm,
+   `--print-schema` reports the basis) on top of its v0.2.1 sync; the
+   article names it as the maintained profiler.

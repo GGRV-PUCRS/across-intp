@@ -64,6 +64,15 @@ int procutil_read_proc_io(pid_t pid,
  * set. */
 int procutil_read_cgroup_procs(const char *cgroup_path, pid_t *out, size_t max);
 
+/* Number of CPUs in a cpuset list such as "0-3,8,10-11"; -1 on a parse error. */
+int procutil_count_cpulist(const char *list);
+
+/* CPUs available to a cgroup v2 path: the CPU count of its
+ * cpuset.cpus.effective (online CPUs when the file is absent), capped by the
+ * tightest cpu.max quota/period found on the path or any ancestor. Fractional
+ * when a quota applies (e.g. 1.5). Returns <= 0 when it cannot be determined. */
+double procutil_cgroup_cpu_capacity(const char *cgroup_path);
+
 /* Like procutil_read_cgroup_procs, but recurses into descendant cgroups too.
  * cgroup v2's "no internal processes" rule places a container's payload in LEAF
  * cgroups (incus/lxc, nested k8s pods), so a non-recursive read of the targeted

@@ -19,7 +19,10 @@ abstract: >
   corroborate the measured results. Evaluates portability, overhead, and
   fidelity trade-offs across instrumentation ABIs. Release 0.2.1 fixes v2.1
   per-thread scheduler metrics and recursive RDT enrollment; campaign data
-  unchanged from v0.2.0.
+  unchanged from v0.2.0. Release 0.2.2 rescales the banked v3.3 memory-bandwidth
+  cells onto the audited ceiling in the analysis, renders the JSA figures in
+  the revised manuscript's vocabulary, and adds an opt-in cgroup CPU
+  normalization; campaign data unchanged.
 authors:
   - family-names: "Sacilotto"
     given-names: "André"
@@ -27,11 +30,13 @@ authors:
     email: "andre.santos01@edu.pucrs.br"
     orcid: "https://orcid.org/0000-0002-1639-3238"
 repository-code: "https://github.com/GGRV-PUCRS/across-intp"
+# The version DOI of v0.2.2 is assigned when the release is published; it
+# replaces the top-level doi and gains an identifiers entry then (D23).
 doi: "10.5281/zenodo.23071202"
 identifiers:
   - type: doi
     value: "10.5281/zenodo.23071202"
-    description: "Version DOI of release v0.2.1, the JSA artifact (code and data)"
+    description: "Version DOI of release v0.2.1: the JSA data (and the v0.2.1 code)"
   - type: doi
     value: "10.5281/zenodo.21959350"
     description: "Concept DOI, resolves to the latest release"
@@ -46,8 +51,8 @@ keywords:
   - eBPF
   - performance monitoring
   - cloud computing
-version: "0.2.1"
-date-released: "2026-09-30"
+version: "0.2.2"
+date-released: "2026-11-24"
 preferred-citation:
   type: conference-paper
   title: "Cross-Application Interference Profiling in Consolidated Cloud Servers: Improving Portability, Overhead and Fidelity in IntP"

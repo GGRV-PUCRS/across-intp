@@ -63,6 +63,12 @@ void intp_args_usage(const char *prog, FILE *out)
         "                          idle_preempt) -- separate benchmark (C26)\n"
         "  --per-pid-output PATH   stream per-TGID TSV samples to PATH (optional)\n"
         "\n"
+        "Normalization:\n"
+        "  --cpu-norm MODE         cpu divisor: online (default, interval x online\n"
+        "                          CPUs) | cgroup (interval x CPU capacity of the\n"
+        "                          --cgroup target: cpuset.cpus.effective capped by\n"
+        "                          cpu.max on the path or an ancestor)\n"
+        "\n"
         "Hardware overrides:\n"
         "  --nic-speed-bps N       NIC speed in bytes/sec (default: autodetect)\n"
         "  --mem-bw-max-bps N      max memory bandwidth in bytes/sec (default: autodetect)\n"
@@ -91,7 +97,7 @@ int intp_args_parse(int argc, char **argv, intp_args_t *out)
         O_VERBOSE, O_NIC_SPEED, O_MEM_BW, O_LLC_SIZE,
         O_CLIP_MBW, O_NO_RAW_MBW, O_PER_PID_OUT,
         O_TARGET_CONTAINER, O_TARGET_VM, O_TAP_IFACE, O_EXACT, O_NO_DIAG_COLS,
-        O_PORTABLE_METRICS
+        O_PORTABLE_METRICS, O_CPU_NORM
     };
 
     static struct option long_opts[] = {
@@ -103,6 +109,7 @@ int intp_args_parse(int argc, char **argv, intp_args_t *out)
         { "exact",             no_argument,       NULL, O_EXACT },
         { "no-diag-cols",      no_argument,       NULL, O_NO_DIAG_COLS },
         { "portable-metrics",  no_argument,       NULL, O_PORTABLE_METRICS },
+        { "cpu-norm",          required_argument, NULL, O_CPU_NORM },
         { "interval",          required_argument, NULL, O_INTERVAL },
         { "duration",          required_argument, NULL, O_DURATION },
         { "output",            required_argument, NULL, O_OUTPUT },
@@ -171,6 +178,16 @@ int intp_args_parse(int argc, char **argv, intp_args_t *out)
         case O_CLIP_MBW:     out->clip_mbw          = 1; break;
         case O_NO_RAW_MBW:   out->no_raw_mbw        = 1; break;
         case O_PORTABLE_METRICS: out->portable_metrics = 1; break;
+        case O_CPU_NORM:
+            if (strcmp(optarg, "online") == 0) {
+                out->cpu_norm_cgroup = 0;
+            } else if (strcmp(optarg, "cgroup") == 0) {
+                out->cpu_norm_cgroup = 1;
+            } else {
+                fprintf(stderr, "--cpu-norm must be online | cgroup\n");
+                return -1;
+            }
+            break;
         case O_PER_PID_OUT:  out->per_pid_output    = optarg; break;
         case O_NIC_SPEED:    out->nic_speed_bps_override  = atol(optarg); break;
         case O_MEM_BW:       out->mem_bw_max_bps_override = atol(optarg); break;

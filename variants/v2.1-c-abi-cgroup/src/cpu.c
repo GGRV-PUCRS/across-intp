@@ -44,7 +44,7 @@ static struct {
 static struct {
     int                valid;
     unsigned long long usage_usec;   /* cumulative cgroup CPU time (usec)  */
-    long               ncpus;
+    double             ncpus;    /* normalization basis, may be fractional */
 } cg_state;
 
 static int cpu_cgroup_usage(const char *cgpath, unsigned long long *out)
@@ -76,8 +76,15 @@ static int cpu_cgroup_init(void)
     const intp_target_t *t = intp_target_get();
     if (cpu_cgroup_usage(t->cgroup_path, &cg_state.usage_usec) != 0)
         return -1;
-    cg_state.ncpus = sysconf(_SC_NPROCESSORS_ONLN);
-    if (cg_state.ncpus < 1) cg_state.ncpus = 1;
+    cg_state.ncpus = (double)sysconf(_SC_NPROCESSORS_ONLN);
+    if (t->cpu_norm_cgroup) {
+        /* --cpu-norm=cgroup: share of what the cgroup may use (cpuset and
+         * cpu.max), so a pinned container and a guest of the same size read
+         * the same value. Read once at init. */
+        double cap = procutil_cgroup_cpu_capacity(t->cgroup_path);
+        if (cap > 0.0) cg_state.ncpus = cap;
+    }
+    if (cg_state.ncpus < 1e-3) cg_state.ncpus = 1.0;
     cg_state.valid = 1;
     return 0;
 }
@@ -94,7 +101,7 @@ static int cpu_cgroup_read(metric_sample_t *out, double interval_sec)
 
     /* % of total machine CPU over the window -- same normalization basis as
      * procfs_pid (target CPU time / total available CPU time across cores). */
-    double avail_usec = (double)cg_state.ncpus * interval_sec * 1e6;
+    double avail_usec = cg_state.ncpus * interval_sec * 1e6;
     double v = (avail_usec > 0.0) ? (d_usec / avail_usec) * 100.0 : 0.0;
     if (v < 0.0)   v = 0.0;
     if (v > 100.0) v = 100.0;

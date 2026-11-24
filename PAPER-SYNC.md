@@ -50,6 +50,7 @@ quotes directly; get explicit sign-off before editing those.**
 | `sec:results` portable paragraph + `fig:membwproxy` caption | "on the one-third-footprint host cells, ρ=0.81 over 70 cells" | unchanged, now tool-backed | `docs/reports/p2-portable-15metric.md` §2 host-only rows (0.804/0.807, n=35 per variant = 70 pooled) | Optionally also cite the portable campaign's new host-only rows (0.984/0.979, n=30) as the cleaner estimate |
 | `sec:results` cadence paragraph | "rises by 40 to 45%" / "5.5% at 0.1 s to 68% at 5 s" | unchanged, now tool-backed | new `docs/reports/p2-cadence-sweep-by-env.md` (psp +40%/+45%; v3.3 cpu 6→69) | The by-env report is the citable artifact for both guest-specific effects |
 | `sec:w5` direction sentence | "16 of 17 … 16 of 19" | unchanged, now tool-backed | `docs/reports/w5-victim-delta.md` direction summary | Sentence stays host-scoped; the guest's 4 rising llcocc cells (v2.1 proxy reads) are now visible in the same table |
+| `sec:w5` v3.3 victim `mbw`; `fig_victim.pdf`, `fig_vmproxy.pdf` (Figures 5 and 6 of the revised manuscript) | v3.3 victim `mbw` falls under colocation (δ = −1) while v2.1 rises, read as a disagreement between the variants | v3.3 rises for app01_ml_llc (+3.2 bare metal, +1.8 Docker) and app11_sort_net (+3.0, +2.7), falls for app07_ordering (−3.0 in both) and is flat for app13_query_scan on bare metal (+0.2 in Docker, δ = 0.67), the direction v2.1 reports. Direction summary, host `mbw | v3.3`: 7 significant, 2 falling, 5 rising (was 8, 8, 0). The disagreement was a mixed-ceiling artifact | `bench/intp_metrics.py` `mbw_scale`, `provenance/mbw-ceiling.tsv`, regenerated `docs/reports/w5-victim-delta.md`, `w5-victim-delta-tagged.tsv` and both figures | C39. Already changed in the revised manuscript. No other row of the direction summary moves, so the direction sentence above stands |
 
 ## v0.2.1 (C38 / D16 / D17): v2.1 scheduler metrics and RDT enrollment
 
@@ -109,6 +110,47 @@ Replace each file in Overleaf `figs/` by hand.
 | Graphical abstract | `graphical-abstract-JSA.pdf`, `.png` | title "What survives the deployment boundary?" | new figure: title "Interference profiling across deployment environments", two-line subtitle, metric-family availability panel (D21 item 4) |
 
 Figs. 6, 9 and 10 are unchanged.
+
+## v0.2.2 (C39 / C40 / D22 / D23): release referenced by the revised manuscript
+
+| Section | Manuscript text | Source |
+|---|---|---|
+| Data availability | code: release v0.2.2 of across-intp, by its version DOI (`sacilotto2026zenodo`); data: release v0.2.1 record, DOI 10.5281/zenodo.23071202 (`sacilotto2026data`); the maintained profiler is intp 0.10.0-beta2 (`sacilotto2026intp`) | D23 |
+| §4.3, implementation variants | cpu normalization by the cgroup's CPUs is an option of v0.2.2 (`--cpu-norm cgroup`) and of intp 0.10.0-beta2; the experiments use the default, all online CPUs | C40 |
+| Supplementary S2, correction (iii) | the factor comes from `provenance/mbw-ceiling.tsv` and is applied by the analysis scripts of release v0.2.2; the colocation table archived with the data predates it | C39 |
+| Figures 5 and 6 | deltas with the v3.3 solo arm rescaled (C39) | `w5-victim-delta-tagged.tsv` regenerated |
+| All figures | rendered by v0.2.2 (vocabulary in the table below) | D22 |
+
+To do after the release:
+
+- [ ] Insert the v0.2.2 version DOI in the `sacilotto2026zenodo` entry of `refs.bib` (it replaces the `% TODO(v0.2.2 DOI)` marker), in `CITATION.cff` and in README.md.
+- [ ] Replace the figure files in Overleaf `figs/` and `submission/figures/` with the v0.2.2 renders.
+- [ ] Recompile the Supplementary Material and replace `submission/Supplementary_Material.pdf`.
+
+## Figure vocabulary of the revised manuscript (D22)
+
+Figure text only; values do not change. Numbers are the revised
+manuscript's (Figure 1 to 10, Supplementary Figures S1 to S4). Replace each
+file in Overleaf `figs/` and `submission/figures/` with the render of the
+release that carries D22.
+
+| Figure | File | Before (v0.2.1) | Now |
+|---|---|---|---|
+| Figure 1, attribution path | `fig_arch.pdf` | full three-column architecture | column 1 only (`--attribution-only`), as in the manuscript |
+| Figure 2, faithfulness | `fig_faithfulness.pdf` | v2.1 / v3.3 | C / eBPF |
+| Figure 3, `membw_est` | `fig_membwproxy.pdf` | v2.1 / v3.3 | C / eBPF |
+| Figure 4, preemption | `fig_preempt.pdf` | v2.1 / v3.3 | C / eBPF |
+| Figure 5, victim delta | `fig_victim.pdf` | canonical, portable, guard, proxy backend; v2.1 / v3.3 | original, complementary, control, estimate; C / eBPF; C39 deltas |
+| Figure 6, in-guest metrics | `fig_vmproxy.pdf` | canonical RDT, portable proxy, unavailable in this deployment, reading via substitute backend, (proxy) | original (RDT), complementary, unavailable in this environment, reading from an estimate, (est.); C39 deltas |
+| Figure 7, overhead | `fig_overhead.pdf` | v2.1 / v3.3 | C / eBPF |
+| Figure 8, sampling interval | `fig_cadence.pdf` | (dir); v2.1 / v3.3 | (rank); C / eBPF |
+| Figure 9, reliability levels | `fig_claimclass.pdf` | v2.1 / v3.3 | C / eBPF (legend: rank-based, estimate, f42518b) |
+| Figure S2, anomaly | `fig_anomaly.pdf`, `figA_anomaly_v33.pdf` | unchanged | unchanged |
+| Figure S3, real applications | `fig_fingerprint_v33.pdf` | v3.3; regime; reading via substitute backend (proxy) | eBPF; scheduling; reading from an estimate (the manuscript's file printed "isk" for "disk") |
+| Figure S4, availability | `fig_availability.pdf` | v2.1 / v3.3; available (proxy backend); structurally unavailable | C / eBPF; available (estimate); unavailable |
+
+Figure S1 (`fig_pipeline.pdf`) and Figure 10 (TikZ in the manuscript) do not
+change.
 
 ## Not requiring any `.tex` change
 

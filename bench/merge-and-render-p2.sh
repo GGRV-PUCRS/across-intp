@@ -117,12 +117,25 @@ fi
 # Analyzer emits a clean report (no C34 invalidity caveat -- v2.1 mbw is valid
 # now). We re-apply the manual title suffix and a concise mbw-ceiling note.
 say "regenerating reports from merged tree..."
+# bench/intp_metrics.py rescales the banked v3.3 mbw onto the audited ceiling
+# (C39); INTP_MBW_RAW=1 turns that off, and only then does the C34 "multiply
+# by 0.151" advice still apply to the regenerated tables.
+if [ "${INTP_MBW_RAW:-0}" = "1" ]; then
 NOTE_BLOCK='> **NOTE (mbw ceiling, C34):** v2.1 `mbw` is correctly scoped (per-cgroup
 > resctrl, D12) against the audited machine ceiling (281600 MB/s, 2026-06-13
 > re-run). Banked v3.3 `mbw` was computed against the pre-audit ceiling
 > (42656 MB/s) and reads ~6.6x high in absolute terms (multiply by 0.151 for
 > the corrected ceiling); within-variant ratios-vs-bare and rank correlations
 > are ceiling-invariant and unaffected.'
+else
+NOTE_BLOCK='> **NOTE (mbw ceiling, C34/C39):** v2.1 `mbw` is correctly scoped (per-cgroup
+> resctrl, D12) against the audited machine ceiling (281600 MB/s, 2026-06-13
+> re-run). Banked v3.3 `mbw` was logged against the pre-audit ceiling
+> (42656 MB/s); bench/intp_metrics.py rescales it by 0.151
+> (provenance/mbw-ceiling.tsv), so the v3.3 `mbw` values below are already on
+> the audited ceiling. INTP_MBW_RAW=1 reproduces the as-logged values.
+> Within-variant ratios-vs-bare and rank correlations are ceiling-invariant.'
+fi
 
 regen_report() {  # $1 analyzer  $2 out-report
     local raw="$RES/.report.raw.md"

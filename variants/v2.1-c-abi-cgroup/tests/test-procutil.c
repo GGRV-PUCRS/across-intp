@@ -148,6 +148,50 @@ static int test_proc_tasks(void)
     return 0;
 }
 
+static void write_cg_file(const char *dir, const char *name, const char *body)
+{
+    char p[512];
+    snprintf(p, sizeof(p), "%s/%s", dir, name);
+    FILE *f = fopen(p, "w");
+    if (f) { fputs(body, f); fclose(f); }
+}
+
+static int near(double a, double b) { return a - b < 1e-9 && b - a < 1e-9; }
+
+/* --cpu-norm=cgroup basis: cpuset count capped by the tightest cpu.max on the
+ * path or its ancestors (fake tree under /tmp). */
+static int test_cpu_capacity(void)
+{
+    ASSERT(procutil_count_cpulist("0-15\n") == 16);
+    ASSERT(procutil_count_cpulist("0-3,8,10-11") == 7);
+    ASSERT(procutil_count_cpulist("5") == 1);
+    ASSERT(procutil_count_cpulist("3-1") == -1);
+    ASSERT(procutil_count_cpulist("a-b") == -1);
+
+    char top[] = "/tmp/intp-cputest-XXXXXX";
+    ASSERT(mkdtemp(top) != NULL);
+    char child[96], leaf[128];
+    snprintf(child, sizeof(child), "%s/child", top);
+    snprintf(leaf, sizeof(leaf), "%s/leaf", child);
+    ASSERT(mkdir(child, 0755) == 0);
+    ASSERT(mkdir(leaf, 0755) == 0);
+
+    write_cg_file(top, "cpuset.cpus.effective", "0-15\n");
+    write_cg_file(top, "cpu.max", "max 100000\n");
+    ASSERT(near(procutil_cgroup_cpu_capacity(top), 16.0));
+
+    write_cg_file(child, "cpuset.cpus.effective", "0-3,8,10-11\n");
+    ASSERT(near(procutil_cgroup_cpu_capacity(child), 7.0));
+
+    write_cg_file(leaf, "cpuset.cpus.effective", "0-3,8,10-11\n");
+    write_cg_file(leaf, "cpu.max", "150000 100000\n");
+    ASSERT(near(procutil_cgroup_cpu_capacity(leaf), 1.5));
+
+    write_cg_file(child, "cpu.max", "100000 100000\n");      /* tighter ancestor */
+    ASSERT(near(procutil_cgroup_cpu_capacity(leaf), 1.0));
+    return 0;
+}
+
 int main(void)
 {
     char buf[128];
@@ -180,8 +224,9 @@ int main(void)
     ASSERT(test_cgroup_procs_recursion() == 0);
     ASSERT(test_cgroup_threads_recursion() == 0);
     ASSERT(test_proc_tasks() == 0);
+    ASSERT(test_cpu_capacity() == 0);
 
-    printf("test-procutil: OK (disks=%d ifaces=%d total_jiffies=%lu, cgroup-recursion, threads, tasks)\n",
+    printf("test-procutil: OK (disks=%d ifaces=%d total_jiffies=%lu, cgroup-recursion, threads, tasks, cpu-capacity)\n",
            nd, nn, total);
     return 0;
 }

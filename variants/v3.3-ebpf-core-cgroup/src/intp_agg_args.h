@@ -49,6 +49,11 @@ typedef struct {
                               * (schedlat psi_mem membw_est psi_io schedthr steal)
                               * as a separate benchmark; canonical 7 untouched (C26) */
 
+    int    cpu_norm_cgroup;  /* --cpu-norm cgroup: divide cpu by the target
+                              * cgroup's CPU capacity (cpuset.cpus.effective
+                              * capped by cpu.max) instead of online CPUs.
+                              * Default 0 = online CPUs (canonical IntP). */
+
     long   nic_speed_bps_override;   /* 0 = autodetect */
     long   mem_bw_max_bps_override;  /* 0 = autodetect */
     long   llc_size_bytes_override;  /* 0 = autodetect */

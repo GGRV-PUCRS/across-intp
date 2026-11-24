@@ -220,9 +220,9 @@ def fig_availability(cells, out: Path, status=None) -> None:
     handles = [
         plt.Rectangle((0, 0), 1, 1, fc=OK, label="available"),
         plt.Rectangle((0, 0), 1, 1, fc=OK, hatch="....",
-                      label="available (proxy backend)"),
+                      label=f"available ({style.ESTIMATE})"),
         plt.Rectangle((0, 0), 1, 1, fc=GONE, hatch="////",
-                      label="structurally unavailable"),
+                      label="unavailable"),
     ]
     # Centered, horizontal, below both panels. The metric-code -> full-name
     # mapping moved to the manuscript text (author decision 2026-09-15), so

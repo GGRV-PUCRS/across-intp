@@ -76,6 +76,14 @@ worker thread of a multi-threaded workload (C38). A source that is absent
 never a fake 0. See [DESIGN.md](DESIGN.md) and `docs/reports/8th-metric-vm-portable-design.md`;
 adjudicate with `bench/analyze-portable.py`.
 
+`--cpu-norm cgroup` changes only the divisor of the `cpu` column for a
+`--cgroup` target: on-CPU time is divided by interval × the CPUs the cgroup may
+use (CPU count of `cpuset.cpus.effective`, capped by the tightest `cpu.max`
+quota on the path or an ancestor) instead of interval × online CPUs. The default
+`--cpu-norm online` keeps the original IntP semantics used by every published
+campaign and by the IADA training data. A `# cpu normalization:` comment line
+declares the basis in use whenever the cgroup cpu backend is active.
+
 ## Privileges
 
 | capability                               | what it unlocks                       |

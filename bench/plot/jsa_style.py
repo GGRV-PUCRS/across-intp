@@ -72,7 +72,32 @@ OKABE_ITO = (BLUE, VERMILLION, BLUISH_GREEN, ORANGE, REDDISH_PURPLE,
 # to figure, which is itself part of "every figure must stand alone".
 VARIANT_COLOR = {"v2.1": BLUE, "v3.3": VERMILLION}
 VARIANT_MARKER = {"v2.1": "o", "v3.3": "^"}
-VARIANT_LABEL = {"v2.1": "v2.1", "v3.3": "v3.3"}
+# Printed variant names follow the revised manuscript (DECISIONS.md D22): the
+# variants are named after their mechanism, "C" (v2.1, C ABI) and "eBPF"
+# (v3.3). The ids v2.1/v3.3 stay in the data, file names and selection code.
+VARIANT_LABEL = {"v2.1": "C", "v3.3": "eBPF"}
+
+# Metric vocabulary of the revised manuscript (D22). The analysis keys stay as
+# they are; only printed text changes:
+#   canonical-7 metrics -> "original"; portable metrics -> "complementary";
+#   guard metrics -> "control"; a reading through a substitute (proxy)
+#   backend -> "estimate"; the directional claim class -> "rank" ("rank-based"
+#   in full); the scheduling-regime class block -> "scheduling".
+FAMILY_LABEL = {"canon": "original", "canonical": "original",
+                "portable": "complementary", "guard": "control"}
+ESTIMATE = "estimate"
+CLASS_LABEL = {"dir": "rank", "directional": "rank-based"}
+RESOURCE_CLASS_LABEL = {"regime": "scheduling"}
+
+
+def class_label(c: str) -> str:
+    """Printed claim-class name; unknown classes print as given."""
+    return CLASS_LABEL.get(c, c)
+
+
+def resource_class_label(c: str) -> str:
+    """Printed resource-class block name (fingerprint figures)."""
+    return RESOURCE_CLASS_LABEL.get(c, c)
 
 # Deployment environments as the manuscript text and Table 2 name them
 # (DECISIONS.md D21). The internal ids stay in the data and the directory

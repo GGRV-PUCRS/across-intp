@@ -21,6 +21,11 @@ and shows, left to right:
      not define them (D21).
 
 Usage: python3 plot-fig-arch.py --out /path/to/Figure_1.pdf
+       python3 plot-fig-arch.py --attribution-only --out fig_arch.pdf
+
+--attribution-only writes column 1 alone, the revised manuscript's Figure 1
+(fig_arch.pdf, 112 x 191.4 pt, DECISIONS.md D22): the same drawing, cropped
+to a fixed 112 pt window over the attribution path.
 """
 from __future__ import annotations
 
@@ -29,6 +34,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
+from matplotlib.transforms import Bbox
 
 import jsa_style as style
 
@@ -195,11 +201,19 @@ def draw(ax) -> None:
         fontsize=style.ANNOT - 0.5)
 
 
+# Left edge and width (points) of the attribution-path window, measured
+# from the figure's left edge (--attribution-only).
+ATTRIBUTION_WINDOW_PT = (70.45, 112.0)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="output PDF path")
     ap.add_argument("--png", default=None,
                      help="optional sibling PNG path (deck use)")
+    ap.add_argument("--attribution-only", action="store_true",
+                     help="write only column 1 (the attribution path), as in "
+                          "the revised manuscript's Figure 1 (D22)")
     args = ap.parse_args()
 
     style.apply()
@@ -208,6 +222,19 @@ def main() -> int:
     draw(ax)
 
     out = Path(args.out)
+    if args.attribution_only:
+        # Column 1 only: a fixed window, in points from the figure's left
+        # edge, over the full tight height. It reproduces the manuscript's
+        # fig_arch.pdf pixel for pixel at 300 dpi (D22).
+        fig.canvas.draw()
+        bb = fig.get_tightbbox(fig.canvas.get_renderer()).padded(style.PAD_INCHES)
+        x0, width = ATTRIBUTION_WINDOW_PT
+        crop = Bbox.from_extents(x0 / 72.0, bb.y0, (x0 + width) / 72.0, bb.y1)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out, bbox_inches=crop)
+        print(f"wrote {out} ({crop.width:.2f} x {crop.height:.2f} in)")
+        plt.close(fig)
+        return 0
     spec = style.FigSpec(style.TEXT_WIDTH, 3.4, "fig:arch")
     w, h = style.save(fig, out, spec)
     print(f"wrote {out} ({w:.2f} x {h:.2f} in)")
