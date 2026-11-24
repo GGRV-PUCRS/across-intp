@@ -1550,3 +1550,77 @@ PSP, which counts switches to PID 0 as a throttling indicator (that role is
 `schedthr`'s); `schedthr` reads 0, not `--`, without a `cpu.max` limit and is
 non-hierarchical; `idle_preempt` is an idle-CPU takeover rate; the docs now
 list all 8 portable and regime columns.
+
+### C39: mbw ceiling, silent fallback made fatal, provenance recorded, banked v3.3 cells rescaled in analysis; W5 victim mbw inversion was a mixed-ceiling artifact (2026-11-24)
+
+**What C34 left in place.** C34 closed the ceiling audit by noting that the
+campaign's `capabilities.env` already carried the audited 281 600 MB/s, and
+told readers to multiply the banked v3.3 `mbw` by 42 656/281 600 ~= 0.151 for
+absolute claims. Three things stayed as they were: `intp-detect.sh` still
+falls back to the DDR4-2666 x 2 placeholder without saying so; nothing in
+`run.json` records the ceiling a run was normalized against; and no analysis
+script applies the factor.
+
+**Consequence found while revising the JSA draft.** W5 (colocation) reuses the
+banked v3.3 solo cells (2026-06-10 to 06-12, ceiling 42 656, confirmed by the
+`ceiling=42656 MB/s` warnings in their `.v3.3.log`) as the reference for the
+pairwise cells (2026-06-13/14, ceiling 281 600; no run after 06-12 logs the
+low ceiling). Mixing the two scales made every v3.3 victim `mbw` delta
+negative with Cliff's delta = -1 (e.g. app11 bare 46.5 -> 10.0). With the solo
+cells rescaled the v3.3 victim `mbw` rises for app01 (+3.2 bare, +1.8
+container) and app11 (+3.0, +2.7), falls for app07 (-3.0) and is flat for
+app13, which is the direction v2.1 reports. The "eBPF and C disagree on the
+victim's `mbw`" reading was this artifact, not a variant difference. Other W5
+cells are unchanged; only the BH q-values move, because the family changes.
+
+**Changes.**
+- `shared/intp-detect.sh` emits `INTP_MEM_BW_SOURCE` and
+  `INTP_MEM_BW_FALLBACK` and warns on stderr when it falls back.
+- `bench/run-intp-bench.sh` resolves the ceiling once in a preflight and
+  aborts on a fallback unless `INTP_BENCH_ALLOW_MBW_FALLBACK=1` (smoke tests
+  only); `run.json` gains `mbw_ceiling_bps` and `mbw_ceiling_source`; v2.1
+  now also receives `--mem-bw-max-bps`, so both variants share one scale.
+- `provenance/mbw-ceiling.tsv` records the banked window (v3.3, start
+  2026-06-09 to 2026-06-13, used 42 656, reference 281 600).
+- `bench/intp_metrics.py` `rep_summary()` rescales `mbw` for runs inside a
+  recorded window and leaves alone any run whose `run.json` carries its own
+  ceiling. `INTP_MBW_RAW=1` disables the rescale to reproduce the old tables.
+  On the archived data it touches exactly the 504 Tier-A v3.3 cells and the
+  504 W5 v3.3 solo cells copied from them.
+- `bench/merge-and-render-p2.sh` no longer tells readers to multiply v3.3
+  `mbw` by 0.151, since the analyzers now apply the factor; with
+  `INTP_MBW_RAW=1` it keeps the old note. `docs/reports/w5-victim-delta.md`
+  is regenerated (only the `mbw | v3.3` row of its direction summary
+  changes) and `PAPER-SYNC.md` gains a `sec:w5` row.
+
+**v2.1 scale.** On the testbed v2.1 already self-detected 281 600 MB/s (8
+`uncore_imc` PMUs x 4400 MT/s x 8 B, `src/detect.c`; see
+`bench/iada/results/sim-experiments-20260917-s16/r3-mbw-audit.md`), so passing
+the campaign ceiling changes no v2.1 value there. On a host whose IMC PMU count
+differs from its channel count it does change v2.1's scale, which `run.json`
+now records.
+
+**app07_ordering.** R3 (`r3-mbw-audit.md`, item 4) left the ceiling of its W5
+v3.3 solo cells open. They ran on 2026-06-13 between 13:59 and 15:25 (+02:00),
+after the audit closed, so they fall outside the window and are not rescaled.
+The data agree: the v3.3/v2.1 ratio of the app07 `mbw` medians is 1.57 solo
+(11 vs 7) and 1.6 pairwise (8 vs 5), and the pairwise cells are known to be on
+281 600 MB/s; on the fallback the solo ratio would be about 6.6 times larger.
+The -3.0 delta stands, in the direction v2.1 reports (-2.0).
+
+**Check on the archive** (`IntP-JSA-complete-data-20260918.tar.xz`, Zenodo
+record 23071202; 2026-11-24):
+- W5: the rescale touches 504 v3.3 runs. 118 of them log the 42 656 MB/s
+  ceiling; the other 386 never exceeded it, so their logs are silent. No run
+  outside the window logs it. Outside the v3.3 `mbw` rows only 18 BH q-values
+  move and no cell changes significance. In the direction summary only the
+  host `mbw | v3.3` row changes: 8 significant, 8 falling, 0 rising becomes 7,
+  2, 5. app13_query_scan is flat on bare metal (-0.05, n.s.) and rises by 0.2
+  in Docker (delta 0.67).
+- Tier-A: the same 504 runs. In `cross-deployment-tagged.tsv` only
+  `bare_median`, `env_median` and `delta` of the 24 v3.3 `mbw` rows change;
+  ratio, CI, Cliff's delta, p, q and claim class do not. Figures 2, 3, 4, 6,
+  8, 14, 6_v2, 9, A3 and the graphical abstract render pixel-identical with
+  and without the rescale.
+- `INTP_MBW_RAW=1` reproduces the previous `w5-victim-delta.md` and the
+  archive's `w5-victim-delta.tsv` byte for byte.

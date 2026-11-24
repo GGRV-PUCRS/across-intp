@@ -73,7 +73,7 @@ Counts of significant victim-delta cells by direction. `host` pools bare+contain
 | blk | v2.1 | 2 | 0 | 2 | 1 | 0 | 1 |
 | blk | v3.3 | 0 | 0 | 0 | 1 | 0 | 1 |
 | mbw | v2.1 | 7 | 2 | 4 | 0 | 0 | 0 |
-| mbw | v3.3 | 8 | 8 | 0 | 0 | 0 | 0 |
+| mbw | v3.3 | 7 | 2 | 5 | 0 | 0 | 0 |
 | llcmr | v2.1 | 9 | 0 | 9 | 5 | 1 | 4 |
 | llcmr | v3.3 | 10 | 0 | 10 | 5 | 1 | 4 |
 | llcocc | v2.1 | 8 | 8 | 0 | 4 | 0 | 4 |

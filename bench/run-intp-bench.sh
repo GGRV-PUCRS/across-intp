@@ -260,6 +260,10 @@ SYSTEMTAP_READ_TIMEOUT_S="${INTP_BENCH_SYSTEMTAP_READ_TIMEOUT_S:-2}"
 # INTP_MEM_BW_MBPS in MB/s, so the ×1e6 conversion is done here, in the script.
 MEM_BW_MAX_BPS="${INTP_BENCH_MEM_BW_MAX_BPS:-}"
 _MEM_BW_MAX_BPS_RESOLVED=""
+_MEM_BW_SOURCE=""
+# Set to 1 to accept intp-detect.sh's placeholder ceiling (INTP_MEM_BW_FALLBACK=1)
+# instead of aborting. Only for smoke tests: absolute mbw values are then wrong.
+ALLOW_MBW_FALLBACK="${INTP_BENCH_ALLOW_MBW_FALLBACK:-0}"
 
 ACTIVE_RESCTRL_HELPER=0
 CURRENT_WORKLOAD_CGROUP=""
@@ -857,6 +861,10 @@ write_metadata() {
 
     if [ -x "$DETECT_SH" ]; then
         "$DETECT_SH" > "$OUTPUT_DIR/capabilities.env" || true
+        # Surface the ceiling and whether it is a placeholder in the metadata
+        # snapshot too, so a campaign directory documents its own mbw scale.
+        awk -F= '/^INTP_MEM_BW_(MBPS|SOURCE|FALLBACK)=/{print tolower(substr($1,6)) "=" $2}' \
+            "$OUTPUT_DIR/capabilities.env" >> "$OUTPUT_DIR/metadata.txt" 2>/dev/null || true
     fi
 
     # Per-variant version manifest (helps detect tooling drift across runs)
@@ -3576,6 +3584,10 @@ run_profiler_v2_1() {
         args+=( --target-vm "$CURRENT_VM_TAP_IFACE" )
         scope="$scope tap=$CURRENT_VM_TAP_IFACE"
     fi
+    # Same campaign ceiling as v3.3 (resolved once in preflight), so the two
+    # variants never normalize mbw against different scales (C34).
+    local mbw_bps; mbw_bps="$(resolve_mem_bw_max_bps)"
+    [ -n "$mbw_bps" ] && args+=( --mem-bw-max-bps "$mbw_bps" )
     {
         printf '# variant=v2.1 scope=%s\n' "$scope"
         "$V2_1_BIN" "${args[@]}" 2>"${outfile%.tsv}.v2.1.log" \
@@ -3613,27 +3625,56 @@ resolve_mem_bw_max_bps() {
     if [ -n "$_MEM_BW_MAX_BPS_RESOLVED" ]; then
         printf '%s\n' "$_MEM_BW_MAX_BPS_RESOLVED"; return 0
     fi
-    local bps="$MEM_BW_MAX_BPS" mbps=""
+    local bps="$MEM_BW_MAX_BPS" mbps="" fb="" src=""
     if [ -z "$bps" ]; then
+        local capsrc=""
         if [ -n "${OUTPUT_DIR:-}" ] && [ -f "$OUTPUT_DIR/capabilities.env" ]; then
-            mbps=$(awk -F= '/^INTP_MEM_BW_MBPS=/{v=$2} END{print v}' "$OUTPUT_DIR/capabilities.env" || true)
+            capsrc=$(cat "$OUTPUT_DIR/capabilities.env" 2>/dev/null || true)
         fi
         # `|| true` and the END-print awk (no early `exit`) keep this safe
         # under `set -o pipefail` -- an early awk exit would SIGPIPE detect.
-        if [ -z "$mbps" ] && [ -x "$DETECT_SH" ]; then
-            mbps=$("$DETECT_SH" 2>/dev/null | awk -F= '/^INTP_MEM_BW_MBPS=/{v=$2} END{print v}' || true)
+        if ! printf '%s\n' "$capsrc" | grep -q '^INTP_MEM_BW_MBPS=' && [ -x "$DETECT_SH" ]; then
+            capsrc=$("$DETECT_SH" 2>/dev/null || true)
         fi
+        mbps=$(printf '%s\n' "$capsrc" | awk -F= '/^INTP_MEM_BW_MBPS=/{v=$2} END{print v}')
+        fb=$(printf '%s\n' "$capsrc" | awk -F= '/^INTP_MEM_BW_FALLBACK=/{v=$2} END{print v}')
+        src=$(printf '%s\n' "$capsrc" | awk -F= '/^INTP_MEM_BW_SOURCE=/{v=$2} END{print v}')
         case "$mbps" in
             ''|*[!0-9]*) bps="" ;;
             *)           bps=$(( mbps * 1000000 )) ;;   # MB/s -> B/s
         esac
+        # A placeholder ceiling silently rescales every mbw cell (C34): fail
+        # closed unless the operator explicitly accepts it.
+        if [ -n "$bps" ] && [ "$fb" = "1" ]; then
+            if [ "$ALLOW_MBW_FALLBACK" = "1" ]; then
+                warn "mbw ceiling is a PLACEHOLDER (${src:-unknown}); continuing because INTP_BENCH_ALLOW_MBW_FALLBACK=1; absolute mbw values are NOT valid" >&2
+            else
+                die "mbw ceiling is a placeholder (${src:-unknown}). Pass INTP_BENCH_MEM_BW_MAX_BPS=<bytes/s> (e.g. the DRAM theoretical peak or a measured STREAM peak), or INTP_BENCH_ALLOW_MBW_FALLBACK=1 for a smoke test."
+            fi
+        fi
+        _MEM_BW_SOURCE="detect:${src:-unknown}"
         # log to stderr -- stdout is this function's return channel.
-        [ -n "$bps" ] && log "mbw ceiling: ${bps} B/s (derived: ${mbps} MB/s × 1e6 from intp-detect.sh)" >&2
+        [ -n "$bps" ] && log "mbw ceiling: ${bps} B/s (derived: ${mbps} MB/s × 1e6 from intp-detect.sh; ${src:-no source line})" >&2
     else
+        _MEM_BW_SOURCE="override"
         log "mbw ceiling: ${bps} B/s (explicit override)" >&2
     fi
     _MEM_BW_MAX_BPS_RESOLVED="$bps"
     printf '%s\n' "$bps"
+}
+
+# Resolve the mbw ceiling ONCE in the parent shell, before any run. The
+# capture sites call resolve_mem_bw_max_bps inside $(...), where a `die` only
+# ends the subshell and the cache is lost; resolving here makes the fail-closed
+# check effective and fixes the value recorded in every run.json.
+preflight_mem_bw_ceiling() {
+    case ",$VARIANTS_CSV," in
+        *,v3,*|*,v3.2,*|*,v3.3,*|*,v2.1,*) ;;
+        *) return 0 ;;
+    esac
+    [ "$DRY_RUN" -eq 1 ] && return 0
+    resolve_mem_bw_max_bps >/dev/null
+    log "mbw ceiling for this campaign: ${_MEM_BW_MAX_BPS_RESOLVED:-unresolved} B/s (${_MEM_BW_SOURCE:-n/a})"
 }
 
 run_profiler_v3() {
@@ -4153,6 +4194,8 @@ run_one() {
   "bench_cpus": "$BENCH_CPUS",
   "bench_mem": "$BENCH_MEM",
   "caps_applied": "$caps_applied",
+  "mbw_ceiling_bps": "${_MEM_BW_MAX_BPS_RESOLVED}",
+  "mbw_ceiling_source": "${_MEM_BW_SOURCE}",
   "notes": "$notes"
 }
 EOF
@@ -4712,6 +4755,7 @@ main() {
     setup_cpu_env
     prepare_output_dir
     write_metadata
+    preflight_mem_bw_ceiling
 
     trap 'restore_cpu_env; stop_resctrl_helper; _vm_kill_orphan_qpids; _vm_cleanup_tmpdirs; _vm_guest_cleanup' EXIT INT TERM
 

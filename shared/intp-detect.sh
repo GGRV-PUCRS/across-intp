@@ -207,13 +207,14 @@ detect_sockets() {
 # or fall back to a conservative default.
 
 detect_memory_bw() {
-    local bw_mbps=0
+    local bw_mbps=0 source="" fallback=0
 
     # Try dmidecode if available and we have root
     if command -v dmidecode >/dev/null 2>&1 && [ "$(id -u)" -eq 0 ]; then
-        # Get memory speed (MT/s) and data width (bits) from first DIMM
+        # Get memory speed (MT/s) and data width (bits) from first DIMM.
+        # "Configured Clock Speed" is the label dmidecode < 3.1 printed.
         local speed width channels
-        speed=$(dmidecode --type 17 2>/dev/null | grep -m1 'Configured Memory Speed' | grep -oP '\d+') || speed=""
+        speed=$(dmidecode --type 17 2>/dev/null | grep -m1 -E 'Configured (Memory|Clock) Speed' | grep -oP '\d+') || speed=""
         width=$(dmidecode --type 17 2>/dev/null | grep -m1 'Data Width' | grep -oP '\d+') || width=""
 
         # Count populated DIMMs as proxy for channels
@@ -225,16 +226,35 @@ detect_memory_bw() {
             local effective_channels=$(( (channels + 1) / 2 ))
             [ "$effective_channels" -lt 1 ] && effective_channels=1
             bw_mbps=$(( speed * width / 8 * effective_channels ))
+            source="dmidecode:${speed}MT/s,${width}bit,${channels}DIMMs->${effective_channels}ch"
         fi
     fi
 
     if [ "$bw_mbps" -eq 0 ]; then
         # Conservative default: assume DDR4-2666 dual-channel
         # 2666 MT/s * 64 bits / 8 bytes * 2 channels = 42656 MB/s
+        # This value is a PLACEHOLDER, not a measurement: on the Sapphire
+        # Rapids testbed it understated the ceiling ~6.6x and silently
+        # rescaled every v3.3 mbw cell of the banked cross-deployment
+        # campaign (DECISIONS-container C34). It is therefore flagged, and
+        # run-intp-bench.sh refuses to start a campaign on it unless the
+        # operator passes an explicit ceiling.
         bw_mbps=42656
+        fallback=1
+        if ! command -v dmidecode >/dev/null 2>&1; then
+            source="fallback:DDR4-2666x2ch(dmidecode missing)"
+        elif [ "$(id -u)" -ne 0 ]; then
+            source="fallback:DDR4-2666x2ch(dmidecode needs root)"
+        else
+            source="fallback:DDR4-2666x2ch(dmidecode gave no speed/width)"
+        fi
+        echo "WARNING: memory-bandwidth ceiling is a placeholder ($source);" \
+             "pass an explicit ceiling (INTP_BENCH_MEM_BW_MAX_BPS / --mem-bw-max-bps)" >&2
     fi
 
     echo "INTP_MEM_BW_MBPS=$bw_mbps"
+    echo "INTP_MEM_BW_SOURCE=$source"
+    echo "INTP_MEM_BW_FALLBACK=$fallback"
 }
 
 # -- BTF availability ----------------------------------------------------------

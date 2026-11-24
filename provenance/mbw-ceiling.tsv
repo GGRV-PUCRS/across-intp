@@ -1,0 +1,9 @@
+# mbw normalization ceilings that differ from the audited ceiling of the host.
+# bench/intp_metrics.py rescales the mbw median of every matching run by
+# used_mbps / reference_mbps, so cells measured against different ceilings
+# become comparable. Runs whose run.json records mbw_ceiling_bps are never
+# rescaled. Set INTP_MBW_RAW=1 to reproduce the uncorrected values.
+# Columns: variant, start_from (inclusive), start_to (exclusive), used_mbps,
+# reference_mbps, note. Times are ISO 8601 with offset.
+variant	start_from	start_to	used_mbps	reference_mbps	note
+v3.3	2026-06-09T00:00:00+02:00	2026-06-13T00:00:00+02:00	42656	281600	C34: intp-detect.sh DDR4 placeholder captured in capabilities.env and cached for the whole cross-deployment campaign process; v3.3 cells banked, not re-run. Covers the W5 solo baselines copied from that campaign.
