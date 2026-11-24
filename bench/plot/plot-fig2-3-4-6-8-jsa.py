@@ -301,14 +301,14 @@ def fig_claimclass(df: pd.DataFrame, out: Path) -> None:
 
     handles = [plt.Rectangle((0, 0), 1, 1, color=c, alpha=0.55)
                for c in cls_color.values()]
-    labels = list(cls_color.keys())
+    labels = [{"directional": "rank-based"}.get(k, k) for k in cls_color.keys()]
     handles.append(plt.Rectangle((0, 0), 1, 1, facecolor="white",
                                   edgecolor="#999999"))
     labels.append("unavailable (blank)")
     if "status" in df:
         handles.append(plt.Rectangle((0, 0), 1, 1, color=style.GREY,
                                       alpha=0.55, hatch="...."))
-        labels.append("proxy backend")
+        labels.append("estimate")
     # Shading-intensity legend: three alpha steps of one class colour.
     shade_handles = [plt.Rectangle((0, 0), 1, 1, color=style.BLUE,
                                     alpha=0.30 + 0.23 * k / 3)
