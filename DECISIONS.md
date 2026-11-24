@@ -714,3 +714,32 @@ does. It supersedes the variant labels of D21 item 1 (v2.1, v3.3) and the
    article's figures are the release's output. `fig_fingerprint_v21_prefix`
    and `fig_psi` are not in the revised manuscript and follow the same
    vocabulary. `pytest bench/plot/tests`: 50 passed.
+
+## D23 - v0.2.2: the revised JSA manuscript's code release (2026-11-24)
+
+`v0.2.2` is the patch release D17 anticipated for a correction after
+v0.2.1. It re-measures nothing and carries no data assets.
+
+1. **Contents.** C39 (the mbw ceiling: fallback made fatal, ceiling
+   recorded per run, banked v3.3 cells rescaled in the analysis through
+   `provenance/mbw-ceiling.tsv`, `docs/reports/w5-victim-delta.md`
+   regenerated), C40 (opt-in `--cpu-norm cgroup` for v2.1 and v3.3; the
+   default stays `online`, so no published value moves) and D22 (figures in
+   the revised manuscript's vocabulary, `fig_arch --attribution-only`).
+2. **What the article cites.** The code by the version DOI of v0.2.2; the
+   data by the version DOI of v0.2.1 (10.5281/zenodo.23071202), whose
+   record holds the three data files (D19). The data files are not
+   re-attached to v0.2.2, so its Zenodo record holds the source snapshot
+   only and nothing has to be uploaded by hand this time. The concept DOI
+   (10.5281/zenodo.21959350) is never the citation (D20).
+3. **Tag.** Annotated tag `v0.2.2` on the merge commit of
+   `release/v0.2.2` into `main`, pushed once and never moved (D17). The
+   GitHub release is published from that tag, which creates the Zenodo
+   version.
+4. **After publishing.** Put the new version DOI in `CITATION.cff` (top-level
+   `doi` and a new `identifiers` entry) and in README.md's "What to cite",
+   the way v0.2.1's DOI went in (57d2d94), and in the manuscript (see
+   PAPER-SYNC.md, v0.2.2).
+5. **Production profiler.** intp 0.10.0-beta2 ports C40 (same algorithm,
+   `--print-schema` reports the basis) on top of its v0.2.1 sync; the
+   article names it as the maintained profiler.

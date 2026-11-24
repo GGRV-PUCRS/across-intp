@@ -2,7 +2,7 @@
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21959350.svg)](https://doi.org/10.5281/zenodo.21959350)
 
-## JSA artifact (release v0.2.1)
+## JSA artifact (release v0.2.2)
 
 This repository is the artifact of the JSA article *Interference Profiling in
 Containers and Virtual Machines with IntP*. Everything a reader needs to check
@@ -13,18 +13,26 @@ repository as a whole.
 
 | You are citing | Identifier |
 | --- | --- |
-| The JSA article's code and data | **Version DOI [10.5281/zenodo.23071202](https://doi.org/10.5281/zenodo.23071202)** (release [`v0.2.1`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.1)) |
+| The JSA article's code | Release [`v0.2.2`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.2). Its version DOI is added here once the release is published (DECISIONS.md D23) |
+| The JSA article's data | **Version DOI [10.5281/zenodo.23071202](https://doi.org/10.5281/zenodo.23071202)**, the record of release [`v0.2.1`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.1), which holds the data files; v0.2.2 does not change them |
 | The latest release, whatever it is | Concept DOI [10.5281/zenodo.21959350](https://doi.org/10.5281/zenodo.21959350) (the badge above); it moves with every release, so do not use it to cite the JSA results |
 | The SBAC-PAD 2026 artifact | Release [`v0.1.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.1.0). It predates the Zenodo integration and has no version DOI; cite it by its tag, never by the concept DOI |
 
 The campaigns ran with release v0.2.0. Release v0.2.1 adds a post-campaign fix
 to the v2.1 profiler (thread and subtree enumeration, DECISIONS.md D16) and
 does not re-measure anything: its data files are the v0.2.0 ones, unchanged.
+Release v0.2.2 does not re-measure anything either. It rescales the banked
+v3.3 `mbw` cells onto the audited memory-bandwidth ceiling in the analysis
+(docs/DECISIONS-container.md C39), which corrects the v3.3 victim `mbw` of
+Figures 5 and 6; renders every figure in the revised manuscript's vocabulary
+(DECISIONS.md D22); and adds the opt-in `--cpu-norm cgroup` to v2.1 and v3.3
+(C40), which no figure uses.
 
 ### Where the data are
 
 Zenodo record [23071202](https://zenodo.org/records/23071202) holds the source
-snapshot of v0.2.1 and the three data files below. The same three files are
+snapshot of v0.2.1 and the three data files below; the Zenodo record of v0.2.2
+holds its source snapshot only. The same three files are
 attached to the GitHub releases
 [`v0.2.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.0) and
 [`v0.2.1`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.1).
@@ -47,33 +55,33 @@ writes when it differs from the manuscript's file name.
 
 | Manuscript | File | Script | Input | Output |
 | --- | --- | --- | --- | --- |
-| Fig. 1, availability | `fig_availability.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_2.pdf` |
-| Fig. 2, architecture | `fig_arch.pdf` | `plot/plot-fig-arch.py` | none (schematic) | |
-| Fig. 3, pipeline | `fig_pipeline.pdf` | `plot/plot-fig-pipeline.py` | none (schematic) | |
-| Fig. 4, claim class | `fig_claimclass.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_8.pdf` |
-| Fig. 5, faithfulness | `fig_faithfulness.pdf` | `plot/plot-fig6-v2-jsa.py` | `01-tier-a-cross-deployment/cross-deployment.tsv` (regenerated, see below) and `docs/reports/W4-faithfulness-r2.md` (repository) | `Figure_6_v2.pdf` |
-| Fig. 6, `membw_est` proxy | `fig_membwproxy.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_4.pdf` |
-| Fig. 7, PSI | `fig_psi.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_3.pdf` |
-| Fig. 8, preemption | `fig_preempt.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_14.pdf` |
-| Fig. 9, cadence | `fig_cadence.pdf` | `plot/plot-cadence-curves.py --jsa-merged` | `03-cadence-sweep/cadence-fidelity.tsv` | |
-| Fig. 10, overhead | `fig_overhead.pdf` | `analyze-cadence-overhead.py --jsa-style` | `06-cadence-overhead-F9/` | |
-| Fig. 11, anomaly (v2.1) | `fig_anomaly.pdf` | `plot/plot-fig9-a3-jsa.py` | `01-tier-a-cross-deployment/aggregate-means.tsv` (from `plot/make-aggregate-means.py`) | `Figure_9.pdf` |
-| Fig. 12, victim delta | `fig_victim.pdf` | `plot/plot-fig11-fig12-jsa.py` | `02-w5-colocation/w5-victim-delta-tagged.tsv` | `Figure_11.pdf` |
-| Fig. 13, in-guest proxy | `fig_vmproxy.pdf` | `plot/plot-fig11-fig12-jsa.py` | `02-w5-colocation/w5-victim-delta-tagged.tsv` | `Figure_12.pdf` |
-| Fig. 14, fingerprint (v3.3) | `fig_fingerprint_v33.pdf` | `plot/plot-tierb-fingerprint.py --variants v3.3` | `04-tier-b-realapps/` and `05-tier-c-dsb/` via `analyze-tierb.py --tag-status` | |
-| Fig. 15, decision procedure | | none: TikZ in the manuscript | none | |
-| Fig. A.1, anomaly (v3.3) | `figA_anomaly_v33.pdf` | `plot/plot-fig9-a3-jsa.py` | as Fig. 11 | `Figure_A3.pdf` |
-| Fig. A.2, fingerprint (v2.1, masked) | `fig_fingerprint_v21_prefix.pdf` | `plot/plot-tierb-fingerprint.py --variants v2.1 --mask c38-prefix` | as Fig. 14 | |
-| Graphical abstract | `graphical-abstract-JSA.pdf`, `.png` | `plot/plot-graphical-abstract-jsa.py` | as Fig. 1 | |
+| Figure 1, attribution path | `fig_arch.pdf` | `plot/plot-fig-arch.py --attribution-only` | none (schematic) | |
+| Figure 2, faithfulness | `fig_faithfulness.pdf` | `plot/plot-fig6-v2-jsa.py` | `01-tier-a-cross-deployment/cross-deployment.tsv` (regenerated, see below) and `docs/reports/W4-faithfulness-r2.md` (repository) | `Figure_6_v2.pdf` |
+| Figure 3, `membw_est` | `fig_membwproxy.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_4.pdf` |
+| Figure 4, preemption | `fig_preempt.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_14.pdf` |
+| Figure 5, victim delta | `fig_victim.pdf` | `plot/plot-fig11-fig12-jsa.py` | `02-w5-colocation/w5-victim-delta-tagged.tsv` (regenerated, see below; C39) | `Figure_11.pdf` |
+| Figure 6, in-guest metrics | `fig_vmproxy.pdf` | `plot/plot-fig11-fig12-jsa.py` | `02-w5-colocation/w5-victim-delta-tagged.tsv` (regenerated, see below; C39) | `Figure_12.pdf` |
+| Figure 7, overhead | `fig_overhead.pdf` | `analyze-cadence-overhead.py --jsa-style` | `06-cadence-overhead-F9/` | |
+| Figure 8, sampling interval | `fig_cadence.pdf` | `plot/plot-cadence-curves.py --jsa-merged` | `03-cadence-sweep/cadence-fidelity.tsv` | |
+| Figure 9, reliability levels | `fig_claimclass.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_8.pdf` |
+| Figure 10, decision procedure | | none: TikZ in the manuscript | none | |
+| Figure S1, pipeline | `fig_pipeline.pdf` | `plot/plot-fig-pipeline.py` | none (schematic) | |
+| Figure S2, anomaly | `fig_anomaly.pdf`, `figA_anomaly_v33.pdf` | `plot/plot-fig9-a3-jsa.py` | `01-tier-a-cross-deployment/aggregate-means.tsv` (from `plot/make-aggregate-means.py`) | `Figure_9.pdf`, `Figure_A3.pdf` |
+| Figure S3, real applications | `fig_fingerprint_v33.pdf` | `plot/plot-tierb-fingerprint.py --variants v3.3` | `04-tier-b-realapps/` and `05-tier-c-dsb/` via `analyze-tierb.py --tag-status` | |
+| Figure S4, availability | `fig_availability.pdf` | `plot/plot-fig2-3-4-6-8-jsa.py --tag-status` | `01-tier-a-cross-deployment/` | `Figure_2.pdf` |
+
+The sequence below also renders `fig_psi.pdf`, `fig_fingerprint_v21_prefix.pdf`
+and the graphical abstract, which are not in the revised manuscript.
 
 | Manuscript | Source |
 | --- | --- |
-| Table 2, deployment environments | `final/*/metadata.txt`, `capabilities.env`, `variants.manifest` in the archive; host build in [bench/setup/REPRODUCTION.md](bench/setup/REPRODUCTION.md). The table names the environments Docker, Podman, Incus, k3s and KVM guest, as the figures do; the archive keeps the ids `container`, `container-podman`, `container-lxc`, `container-k8s` and `vm-guest` (DECISIONS.md D21) |
-| Table 3, workload set | `bench/run-intp-bench.sh` (synthetic layer), `bench/workloads/compose/` and `bench/setup/stage-next-campaigns.sh` (real applications and DeathStarBench) |
-| Table 4, campaign inventory | `final/MANIFEST.md` in the archive (cell counts per campaign) |
-| Table 5, faithfulness verdicts | [docs/reports/W4-faithfulness-r2.md](docs/reports/W4-faithfulness-r2.md), [docs/reports/portable-faithfulness.md](docs/reports/portable-faithfulness.md) |
-| Table 6, summary of results | Summarizes Figs. 1, 5, 6, 7, 8, 13 and 14; each row's numbers come from the figure's input above and from [docs/reports/p2-cross-deployment-15metric.md](docs/reports/p2-cross-deployment-15metric.md), [docs/reports/w5-victim-delta.md](docs/reports/w5-victim-delta.md) and [docs/reports/p2-tierb-15metric.md](docs/reports/p2-tierb-15metric.md) |
-| Table 7, corrections and open findings | [docs/DECISIONS-container.md](docs/DECISIONS-container.md) (mid-campaign corrections, C-entries) and [DECISIONS.md](DECISIONS.md) D16 to D18 (the v0.2.1 fix) |
+| Table 2, environments | `final/*/metadata.txt`, `capabilities.env`, `variants.manifest` in the archive; host build in [bench/setup/REPRODUCTION.md](bench/setup/REPRODUCTION.md). The table names the environments Docker, Podman, Incus, k3s and KVM guest, as the figures do; the archive keeps the ids `container`, `container-podman`, `container-lxc`, `container-k8s` and `vm-guest` (DECISIONS.md D21) |
+| Table 3, workloads | `bench/run-intp-bench.sh` (synthetic layer), `bench/workloads/compose/` and `bench/setup/stage-next-campaigns.sh` (real applications and DeathStarBench) |
+| Table 4, experiment sets | `final/MANIFEST.md` in the archive (cell counts per experiment set) |
+| Table 5, reliability level of the original metrics | [docs/reports/p2-cross-deployment-15metric.md](docs/reports/p2-cross-deployment-15metric.md), [docs/reports/W4-faithfulness-r2.md](docs/reports/W4-faithfulness-r2.md) and the claim classes in `bench/intp_metrics.py` |
+| Table 6, original and complementary metrics in the VM | [docs/reports/portable-faithfulness.md](docs/reports/portable-faithfulness.md), [docs/reports/w5-victim-delta.md](docs/reports/w5-victim-delta.md) |
+| Table S1, corrections and open findings | [docs/DECISIONS-container.md](docs/DECISIONS-container.md) (C-entries, including C39) and [DECISIONS.md](DECISIONS.md) D16 to D18 (the v0.2.1 fix) |
+| Table S2, evidence for the reliability levels | [docs/reports/W4-faithfulness-r2.md](docs/reports/W4-faithfulness-r2.md), [docs/reports/portable-faithfulness.md](docs/reports/portable-faithfulness.md) |
 
 Table 1 (comparison with prior systems) is drawn from the literature and has no
 data source here. [PAPER-SYNC.md](PAPER-SYNC.md) records how each figure and
@@ -85,7 +93,7 @@ Needs Python 3 with `pip install -r bench/plot/requirements.txt`; no root, no
 RDT hardware. From an empty directory:
 
 ```bash
-git clone --branch v0.2.1 https://github.com/GGRV-PUCRS/across-intp.git
+git clone --branch v0.2.2 https://github.com/GGRV-PUCRS/across-intp.git
 mkdir jsa-data && cd jsa-data
 for f in IntP-JSA-complete-data-20260918.tar.xz SHA256SUMS; do
   curl -LO "https://zenodo.org/records/23071202/files/$f"
@@ -126,28 +134,19 @@ python3 bench/plot/plot-tierb-fingerprint.py $OUT/fingerprints-tagged.tsv \
 python3 bench/plot/plot-graphical-abstract-jsa.py $D/01-tier-a-cross-deployment --out $OUT
 ```
 
-Checked on 2026-10-01 from a clean clone and the release tarball (Python 3.14,
-Matplotlib 3.11.2) against the manuscript's figure files, rasterized at
-150 dpi:
-
-- **Identical pixels and text**: Figs. 1, 3 to 13 and A.1. Fig. 2 matched
-  as well before the context marking described in DECISIONS.md D20.
-- **Visually identical, same values**: Figs. 14 and A.2. The page is about
-  0.4% wider because the manuscript files were rendered with Matplotlib
-  3.10.7.
-- **Byte-identical**: none. Matplotlib embeds a creation date in every PDF.
-
-Since DECISIONS.md D21 (figure numbers above are the current ones) the
-figure text uses the manuscript's names (v2.1, v3.3, Docker, Podman, Incus,
-k3s, KVM guest) and Fig. 2 drops the classifier configurations. Values, page
-sizes and layout are unchanged, so the comparison above holds for everything
-except those labels.
+Checked on 2026-11-24 against the revised manuscript's figure files (Python 3,
+Matplotlib 3.11.2, the tarball above): every figure carries the same text and
+numbers; Figures 1, 2, 4, 5 and S1, S2 are pixel-identical at 600 dpi, and the
+others differ only in layout (legend spacing, glyph placement, a 0.36 pt shift
+of Figure 9). The manuscript's Figure S3 printed "isk" for "disk"; the render
+does not. Details in DECISIONS.md D22, item 4. Matplotlib embeds a creation
+date in every PDF, so no file is byte-identical.
 
 Two traps, both avoided by the sequence above:
 
 - `bench/render-jsa-paper-figures.sh` reads `cross-deployment.tsv` as
-  shipped, so Fig. 5 loses its app16/app17 rows.
-- The same script passes `--by-env-tsv`, which adds a third row to Fig. 9 that
+  shipped, so Figure 2 loses its app16/app17 rows.
+- The same script passes `--by-env-tsv`, which adds a third row to Figure 8 that
   the manuscript does not have.
 
 ### Requirements to re-run the campaigns
@@ -248,14 +247,14 @@ If you use this software in your research, please cite it using the metadata in
 **The campaign data and the rendered figures are not files in this repository.**
 Cloning the repository will not produce them; download them instead.
 
-- **JSA article (v0.2.0 campaigns, cited as v0.2.1)**: Zenodo record
+- **JSA article (v0.2.0 campaigns; code cited as v0.2.2, data as v0.2.1)**: Zenodo record
   [23071202](https://zenodo.org/records/23071202) (version DOI
   10.5281/zenodo.23071202) holds `across-intp-jsa-results-v0.2.0.tar.gz`,
   `IntP-JSA-complete-data-20260918.tar.xz` and `SHA256SUMS`. The same files are
   attached to the GitHub releases
   [`v0.2.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.0) and
   [`v0.2.1`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.1). See
-  [JSA artifact](#jsa-artifact-release-v021) for what each file holds.
+  [JSA artifact](#jsa-artifact-release-v022) for what each file holds.
 - **SBAC-PAD paper**: release assets of
   [`v0.1.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.1.0) only
   (no Zenodo record), about 350 MB of measurement output that would swamp a
@@ -285,11 +284,14 @@ In [docs/READER-MAP.md](docs/READER-MAP.md) every row is tagged **repo:** or
 | --- | --- |
 | [`v0.1.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.1.0) | The SBAC-PAD 2026 artifact, with the data assets above. The `release/v0.1.0` branch holds the same tree for browsing without downloading. |
 | [`v0.2.0`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.0) | Superseded by v0.2.1 (code fix; same data). The JSA campaigns ran with this release: the container-based interference work (v2.1 and v3.3 per-cgroup profilers, the cross-deployment suite, the IADA simulator campaigns). Campaign results and the frozen campaign archive are attached as release assets. See `docs/DECISIONS-container.md` and DECISIONS.md D15. |
-| [`v0.2.1`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.1) | The JSA artifact as cited. Fixes v2.1 per-thread scheduler metrics (`schedlat`, `psp`) and recursive RDT enrollment (C38); the affected cells are not re-measured. The data assets are the v0.2.0 ones, unchanged; see [provenance/v0.2.0/](provenance/v0.2.0/README.md) and DECISIONS.md D16 to D18. |
+| [`v0.2.1`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.1) | The JSA article's data record (Zenodo 23071202); its code is superseded by v0.2.2. Fixes v2.1 per-thread scheduler metrics (`schedlat`, `psp`) and recursive RDT enrollment (C38); the affected cells are not re-measured. The data assets are the v0.2.0 ones, unchanged; see [provenance/v0.2.0/](provenance/v0.2.0/README.md) and DECISIONS.md D16 to D18. |
+| [`v0.2.2`](https://github.com/GGRV-PUCRS/across-intp/releases/tag/v0.2.2) | The JSA article's code. Rescales the banked v3.3 `mbw` cells in the analysis (C39), renders the figures in the revised manuscript's vocabulary (D22) and adds the opt-in `--cpu-norm cgroup` (C40); nothing re-measured, data in the v0.2.1 record. See DECISIONS.md D23. |
 
 The production profiler built from V2.1 and V3.3 is `intp`, packaged for
 Ubuntu in [`ppa:norohim/intp`](https://launchpad.net/~norohim/+archive/ubuntu/intp);
-its `SYNC.md` names the commit of this repository it is synced with.
+its `SYNC.md` names the commit of this repository it is synced with. intp
+0.10.0-beta2 carries the v0.2.1 sync and the opt-in `--cpu-norm cgroup` of
+v0.2.2 (C40).
 
 ## Variant Comparison
 

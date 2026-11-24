@@ -111,6 +111,22 @@ Replace each file in Overleaf `figs/` by hand.
 
 Figs. 6, 9 and 10 are unchanged.
 
+## v0.2.2 (C39 / C40 / D22 / D23): release referenced by the revised manuscript
+
+| Section | Manuscript text | Source |
+|---|---|---|
+| Data availability | code: release v0.2.2 of across-intp, by its version DOI (`sacilotto2026zenodo`); data: release v0.2.1 record, DOI 10.5281/zenodo.23071202 (`sacilotto2026data`); the maintained profiler is intp 0.10.0-beta2 (`sacilotto2026intp`) | D23 |
+| §4.3, implementation variants | cpu normalization by the cgroup's CPUs is an option of v0.2.2 (`--cpu-norm cgroup`) and of intp 0.10.0-beta2; the experiments use the default, all online CPUs | C40 |
+| Supplementary S2, correction (iii) | the factor comes from `provenance/mbw-ceiling.tsv` and is applied by the analysis scripts of release v0.2.2; the colocation table archived with the data predates it | C39 |
+| Figures 5 and 6 | deltas with the v3.3 solo arm rescaled (C39) | `w5-victim-delta-tagged.tsv` regenerated |
+| All figures | rendered by v0.2.2 (vocabulary in the table below) | D22 |
+
+To do after the release:
+
+- [ ] Insert the v0.2.2 version DOI in the `sacilotto2026zenodo` entry of `refs.bib` (it replaces the `% TODO(v0.2.2 DOI)` marker), in `CITATION.cff` and in README.md.
+- [ ] Replace the figure files in Overleaf `figs/` and `submission/figures/` with the v0.2.2 renders.
+- [ ] Recompile the Supplementary Material and replace `submission/Supplementary_Material.pdf`.
+
 ## Figure vocabulary of the revised manuscript (D22)
 
 Figure text only; values do not change. Numbers are the revised
