@@ -123,7 +123,8 @@ Figs. 6, 9 and 10 are unchanged.
 
 To do after the release:
 
-- [ ] Insert the v0.2.2 version DOI in the `sacilotto2026zenodo` entry of `refs.bib` (it replaces the `% TODO(v0.2.2 DOI)` marker), in `CITATION.cff` and in README.md.
+- [x] v0.2.2 version DOI `10.5281/zenodo.24507470` in `CITATION.cff` and README.md (D24).
+- [ ] The same DOI in the manuscript: `sacilotto2026zenodo` in `refs.bib` and Data availability (replaces `NNNNNNNN` and the `% TODO(v0.2.2 DOI)` markers).
 - [ ] Replace the figure files in Overleaf `figs/` and `submission/figures/` with the v0.2.2 renders.
 - [ ] Recompile the Supplementary Material and replace `submission/Supplementary_Material.pdf`.
 

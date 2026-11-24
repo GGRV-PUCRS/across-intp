@@ -30,10 +30,11 @@ authors:
     email: "andre.santos01@edu.pucrs.br"
     orcid: "https://orcid.org/0000-0002-1639-3238"
 repository-code: "https://github.com/GGRV-PUCRS/across-intp"
-# The version DOI of v0.2.2 is assigned when the release is published; it
-# replaces the top-level doi and gains an identifiers entry then (D23).
-doi: "10.5281/zenodo.23071202"
+doi: "10.5281/zenodo.24507470"
 identifiers:
+  - type: doi
+    value: "10.5281/zenodo.24507470"
+    description: "Version DOI of release v0.2.2, the code the JSA article cites"
   - type: doi
     value: "10.5281/zenodo.23071202"
     description: "Version DOI of release v0.2.1: the JSA data (and the v0.2.1 code)"

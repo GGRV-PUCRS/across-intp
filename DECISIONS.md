@@ -743,3 +743,14 @@ v0.2.1. It re-measures nothing and carries no data assets.
 5. **Production profiler.** intp 0.10.0-beta2 ports C40 (same algorithm,
    `--print-schema` reports the basis) on top of its v0.2.1 sync; the
    article names it as the maintained profiler.
+
+## D24 - v0.2.2 Zenodo record 24507470 (2026-11-24)
+
+Publishing the `v0.2.2` release (tag on `a1aad1a`, the merge of
+`release/v0.2.2` into `main`, D17) produced Zenodo record 24507470,
+version DOI 10.5281/zenodo.24507470, under the unchanged concept DOI
+10.5281/zenodo.21959350. As D23 planned, the record holds the source
+zipball only (`GGRV-PUCRS/across-intp-v0.2.2.zip`); no data file was
+attached, so nothing was uploaded by hand. `CITATION.cff` takes the new
+DOI as its top-level `doi` and lists it next to the v0.2.1 DOI, which
+stays the citation for the data; README.md's "What to cite" gives both.
