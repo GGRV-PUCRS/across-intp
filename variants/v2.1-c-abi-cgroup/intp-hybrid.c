@@ -84,6 +84,10 @@ static void usage(const char *p)
         "  --mem-bw-max-bps N\n"
         "  --llc-size-bytes N\n"
         "  --disk-bw-max-bps N     device max bandwidth for cgroup blk (else assumed)\n"
+        "  --cpu-norm MODE         cpu normalization basis for a --cgroup target:\n"
+        "                          online (default: share of all online CPUs) or\n"
+        "                          cgroup (share of the CPUs the cgroup may use:\n"
+        "                          cpuset.cpus.effective capped by cpu.max)\n"
         "  --iface NAME            network interface (default: autodetect)\n"
         "  --disk NAME             block device (default: autodetect)\n"
         "\n"
@@ -158,6 +162,21 @@ static void emit_header_tsv(FILE *out, int want_portable)
         }
     }
     fprintf(out, "\n");
+    /* Declare the cpu normalization basis whenever the cgroup backend is the
+     * active cpu source (the only backend the basis applies to). */
+    const char *cpu_bid = "none";
+    for (int j = 0; j < n; j++)
+        if (strcmp(all[j]->metric_name, "cpu") == 0 && all[j]->active)
+            cpu_bid = all[j]->active->backend_id;
+    const intp_target_t *t = intp_target_get();
+    if (t && t->cgroup_path && strcmp(cpu_bid, "cgroup") == 0) {
+        if (t->cpu_norm_cgroup)
+            fprintf(out, "# cpu normalization: cgroup, %.2f CPUs\n",
+                    procutil_cgroup_cpu_capacity(t->cgroup_path));
+        else
+            fprintf(out, "# cpu normalization: online, %ld CPUs\n",
+                    sysconf(_SC_NPROCESSORS_ONLN));
+    }
     if (want_portable)
         fprintf(out, "# portable metrics (C26 / DESIGN §10; SEPARATE benchmark): "
                      "schedlat psi_mem psi_io schedthr steal are %% of interval; "
@@ -263,7 +282,7 @@ int main(int argc, char *argv[])
            OPT_OUTPUT, OPT_HEADER, OPT_NO_HEADER, OPT_FORCE, OPT_DISABLE,
            OPT_LIST, OPT_NIC_SPEED, OPT_MEM_BW, OPT_LLC, OPT_IFACE, OPT_DISK,
            OPT_DISK_BW, OPT_TARGET_CONTAINER, OPT_TARGET_VM, OPT_TAP_IFACE,
-           OPT_PORTABLE };
+           OPT_PORTABLE, OPT_CPU_NORM };
 
     static struct option long_opts[] = {
         { "pids",            required_argument, NULL, OPT_PIDS },
@@ -287,6 +306,7 @@ int main(int argc, char *argv[])
         { "disk",            required_argument, NULL, OPT_DISK },
         { "disk-bw-max-bps", required_argument, NULL, OPT_DISK_BW },
         { "portable-metrics",no_argument,       NULL, OPT_PORTABLE },
+        { "cpu-norm",        required_argument, NULL, OPT_CPU_NORM },
         { "help",            no_argument,       NULL, 'h' },
         { 0, 0, 0, 0 }
     };
@@ -350,6 +370,14 @@ int main(int argc, char *argv[])
         case OPT_IFACE:       target.iface = optarg; break;
         case OPT_DISK:        target.disk  = optarg; break;
         case OPT_DISK_BW:     target.disk_bw_max_bps_override = atol(optarg); break;
+        case OPT_CPU_NORM:
+            if (strcmp(optarg, "cgroup") == 0)      target.cpu_norm_cgroup = 1;
+            else if (strcmp(optarg, "online") == 0) target.cpu_norm_cgroup = 0;
+            else {
+                fprintf(stderr, "--cpu-norm: expected 'online' or 'cgroup', got '%s'\n", optarg);
+                return 1;
+            }
+            break;
         case 'h':
         default:
             usage(argv[0]);
@@ -361,6 +389,9 @@ int main(int argc, char *argv[])
         fprintf(stderr, "interval must be > 0\n");
         return 1;
     }
+    if (target.cpu_norm_cgroup && !target.cgroup_path)
+        fprintf(stderr, "warning: --cpu-norm cgroup needs a --cgroup target; "
+                        "using online CPUs\n");
 
     intp_target_set(&target);
     setvbuf(stdout, NULL, _IOLBF, 0);

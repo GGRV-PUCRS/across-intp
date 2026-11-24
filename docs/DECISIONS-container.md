@@ -1624,3 +1624,21 @@ record 23071202; 2026-11-24):
   and without the rescale.
 - `INTP_MBW_RAW=1` reproduces the previous `w5-victim-delta.md` and the
   archive's `w5-victim-delta.tsv` byte for byte.
+
+### C40: opt-in `--cpu-norm cgroup` for v2.1 and v3.3 (2026-11-24)
+
+The canonical `cpu` divides on-CPU time by interval x online CPUs, so a
+tenant pinned to 16 of 48 host threads saturates at 33, while the same work in
+a 16-vCPU guest reads 100. C37 measured this as the 3.0x vm-guest ratio and
+corrected it after the fact (`vm-cpu-renormalized.tsv`).
+
+`--cpu-norm cgroup` (both variants, same algorithm and unit test) divides by
+the CPU capacity of the `--cgroup` target instead: the CPU count of
+`cpuset.cpus.effective`, capped by the tightest `cpu.max` quota on the path or
+an ancestor (fractional under a quota). v3.3 keeps `schedlat` on the online
+budget. The default stays `online`: every published campaign, the IADA
+training data and the SBAC-PAD and JSA figures use it, and changing it would
+silently rescale them. Both binaries declare the basis in a
+`# cpu normalization:` header line; the harness passes the mode through
+`INTP_BENCH_CPU_NORM` (host-side and in-guest `--cgroup` invocations) and
+records it in `run.json`. Not yet run on the testbed.

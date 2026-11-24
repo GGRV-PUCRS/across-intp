@@ -264,6 +264,13 @@ _MEM_BW_SOURCE=""
 # Set to 1 to accept intp-detect.sh's placeholder ceiling (INTP_MEM_BW_FALLBACK=1)
 # instead of aborting. Only for smoke tests: absolute mbw values are then wrong.
 ALLOW_MBW_FALLBACK="${INTP_BENCH_ALLOW_MBW_FALLBACK:-0}"
+# cpu normalization for the c-abi-cgroup variants (v2.1, v3.3): 'online' keeps
+# the canonical IntP divisor (interval x online CPUs, all published campaigns);
+# 'cgroup' divides by the target cgroup's CPU capacity (cpuset.cpus.effective
+# capped by cpu.max). Only passed to the binaries when != online, so default
+# command lines are unchanged.
+CPU_NORM="${INTP_BENCH_CPU_NORM:-online}"
+case "$CPU_NORM" in online|cgroup) ;; *) echo "INTP_BENCH_CPU_NORM must be online or cgroup (got '$CPU_NORM')" >&2; exit 2 ;; esac
 
 ACTIVE_RESCTRL_HELPER=0
 CURRENT_WORKLOAD_CGROUP=""
@@ -3588,6 +3595,7 @@ run_profiler_v2_1() {
     # variants never normalize mbw against different scales (C34).
     local mbw_bps; mbw_bps="$(resolve_mem_bw_max_bps)"
     [ -n "$mbw_bps" ] && args+=( --mem-bw-max-bps "$mbw_bps" )
+    [ "$CPU_NORM" != "online" ] && args+=( --cpu-norm "$CPU_NORM" )
     {
         printf '# variant=v2.1 scope=%s\n' "$scope"
         "$V2_1_BIN" "${args[@]}" 2>"${outfile%.tsv}.v2.1.log" \
@@ -3822,6 +3830,7 @@ run_profiler_v3_3() {
     fi
     local mbw_bps; mbw_bps="$(resolve_mem_bw_max_bps)"
     [ -n "$mbw_bps" ] && args+=( --mem-bw-max-bps "$mbw_bps" )
+    [ "$CPU_NORM" != "online" ] && args+=( --cpu-norm "$CPU_NORM" )
     {
         printf '# variant=v3.3 scope=%s\n' "$scope"
         "$V3_3_BIN" "${args[@]}" 2>"${outfile%.tsv}.v3.3.log" \
@@ -3844,10 +3853,14 @@ _inguest_profiler_cmd() {
     # memory/scheduling dimensions in-guest where mbw/llcocc/llcmr are gapped.
     local pm=""
     [ "$PORTABLE_METRICS" = "1" ] && pm=" --portable-metrics"
+    # --cpu-norm only applies with a --cgroup target; the --pids fallbacks keep
+    # the online divisor.
+    local cn=""
+    [ "$CPU_NORM" != "online" ] && cn=" --cpu-norm $CPU_NORM"
     case "$variant" in
         v2)   echo "$prefix/variants/v2-c-abi/intp-c-abi --pid $pid --interval $interval --duration $duration --no-prom" ;;
         v2.1) if [ -n "$cgroup" ]; then
-                  echo "$prefix/variants/v2.1-c-abi-cgroup/intp-c-abi-cgroup --cgroup $cgroup --interval $interval --duration $duration$pm"
+                  echo "$prefix/variants/v2.1-c-abi-cgroup/intp-c-abi-cgroup --cgroup $cgroup --interval $interval --duration $duration$pm$cn"
               else
                   echo "$prefix/variants/v2.1-c-abi-cgroup/intp-c-abi-cgroup --pids $pid --interval $interval --duration $duration$pm"
               fi ;;
@@ -3855,7 +3868,7 @@ _inguest_profiler_cmd() {
         v3.1) echo "bash $prefix/variants/v3.1-bpftrace/run-intp-bpftrace.sh --pid $pid --interval $interval --duration $duration" ;;
         v3.2) echo "$prefix/variants/v3.2-ebpf-core/intp-ebpf-core --pids $pid --interval $interval --duration $duration --no-raw-mbw" ;;
         v3.3) if [ -n "$cgroup" ]; then
-                  echo "$prefix/variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup --cgroup $cgroup --interval $interval --duration $duration --no-diag-cols$pm"
+                  echo "$prefix/variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup --cgroup $cgroup --interval $interval --duration $duration --no-diag-cols$pm$cn"
               else
                   echo "$prefix/variants/v3.3-ebpf-core-cgroup/intp-ebpf-core-cgroup --pids $pid --interval $interval --duration $duration --no-diag-cols$pm"
               fi ;;
@@ -4196,6 +4209,7 @@ run_one() {
   "caps_applied": "$caps_applied",
   "mbw_ceiling_bps": "${_MEM_BW_MAX_BPS_RESOLVED}",
   "mbw_ceiling_source": "${_MEM_BW_SOURCE}",
+  "cpu_norm": "${CPU_NORM}",
   "notes": "$notes"
 }
 EOF

@@ -48,6 +48,7 @@ BPF_SKEL    := $(SRC_DIR)/intp_agg.skel.h
 VMLINUX_H   := $(SRC_DIR)/vmlinux.h
 
 USER_SRCS   := $(SRC_DIR)/intp_agg.c $(SRC_DIR)/intp_agg_args.c \
+               $(SRC_DIR)/cgroup_cap.c \
                $(RESCTRL_DIR)/resctrl.c $(DETECT_DIR)/detect.c
 USER_OBJS   := $(USER_SRCS:.c=.o)
 
@@ -131,6 +132,10 @@ test-unit:
 	  -o tests/unit/test-counter-snapshot \
 	  tests/unit/test-counter-snapshot.c
 	@./tests/unit/test-counter-snapshot
+	@$(CC) -Wall -Wextra -Wpedantic -Werror -std=c11 $(INCLUDES) \
+	  -o tests/unit/test-cgroup-cap \
+	  tests/unit/test-cgroup-cap.c $(SRC_DIR)/cgroup_cap.c -lm
+	@./tests/unit/test-cgroup-cap
 
 test-full: $(BINARY) test-unit
 	@bash tests/integration/test-load-attach.sh

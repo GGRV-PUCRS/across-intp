@@ -46,6 +46,10 @@ typedef struct {
     long        mem_bw_max_bps_override;/* 0 = use detection                  */
     long        llc_size_bytes_override;/* 0 = use detection                  */
     long        disk_bw_max_bps_override;/* 0 = use detection/assumed default */
+    int         cpu_norm_cgroup;        /* 1 = normalize cgroup cpu by the CPUs
+                                         * available to the cgroup (cpuset,
+                                         * cpu.max); 0 = by online CPUs (default,
+                                         * original IntP semantics) */
 } intp_target_t;
 
 void intp_target_set(const intp_target_t *t);

@@ -52,6 +52,15 @@ columns — a SEPARATE benchmark that never alters the canonical 7 (C27). Run it
 `run-intp-bench.sh --portable-metrics --variants v2.1,v3.3` and adjudicate with
 `bench/analyze-portable.py`.
 
+`--cpu-norm cgroup` changes only the divisor of the canonical `cpu` column:
+per-cgroup on-CPU time is divided by interval × the target cgroup's CPU capacity
+(CPU count of `cpuset.cpus.effective`, capped by the tightest `cpu.max` quota on
+the path or an ancestor) instead of interval × online CPUs. `schedlat` keeps the
+online-core budget. The default `--cpu-norm online` is the original IntP
+semantics (all published campaigns, IADA training data). The TSV header declares
+the basis in a `# cpu normalization:` line. The algorithm matches v2.1
+(`src/cgroup_cap.c`, unit test `tests/unit/test-cgroup-cap.c`).
+
 ## Metric provenance vs v2.1 (headline divergence)
 
 - `netp` — **canonical = per-cgroup** (`cgroup_skb`); device-level retained as the

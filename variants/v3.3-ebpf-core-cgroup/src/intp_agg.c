@@ -52,6 +52,7 @@
 
 #include "intp_agg.bpf.h"
 #include "intp_agg.skel.h"
+#include "cgroup_cap.h"
 #include "intp_agg_args.h"
 
 #include "../detect/detect.h"
@@ -566,6 +567,7 @@ static void compute_sample(const struct intp_counters *d_cg,
                            const system_capabilities_t *caps,
                            double interval_sec,
                            int num_cores,
+                           double cpu_basis,
                            double vm_netp_pct,
                            intp_sample_t *out)
 {
@@ -625,9 +627,15 @@ static void compute_sample(const struct intp_counters *d_cg,
             ? ((double)d_cg->blk_bytes / interval_sec) / 1e6
             : 0.0;
 
-    /* --- canonical cpu: per-cgroup on-CPU ns / (interval * cores). --- */
+    /* --- canonical cpu: per-cgroup on-CPU ns / (interval * cores). ---
+     * cpu_basis is the online core count by default; with --cpu-norm cgroup it
+     * is the target cgroup's CPU capacity (cpuset.cpus.effective capped by
+     * cpu.max), so a container pinned to 4 of 16 CPUs reads 100 when it
+     * saturates its own share. schedlat below keeps the online-core budget. */
     double cpu_ns_available = interval_ns * (num_cores > 0 ? num_cores : 1);
-    out->cpu = safe_pct((double)d_cg->cpu_on_ns_sum, cpu_ns_available);
+    double cpu_ns_basis = interval_ns * (cpu_basis > 0.0 ? cpu_basis
+                                         : (num_cores > 0 ? num_cores : 1));
+    out->cpu = safe_pct((double)d_cg->cpu_on_ns_sum, cpu_ns_basis);
 
     /* --- schedlat: per-cgroup run-queue wait, %-of-capacity (C26). The BPF
      * tp_schedlat program sums the incoming task's wakeup->dispatch wait into
@@ -653,7 +661,8 @@ static void emit_tsv_header(FILE *out,
                             const system_capabilities_t *caps,
                             int no_perf, int no_resctrl,
                             int no_diag_cols, int clip_mbw,
-                            int vm_mode, int portable)
+                            int vm_mode, int portable,
+                            int cpu_norm_cgroup, double cpu_basis)
 {
     /* Per-metric backend map + nets PROXY provenance (C2). */
     fprintf(out,
@@ -674,6 +683,12 @@ static void emit_tsv_header(FILE *out,
     fprintf(out, "# mbw_pct = (mbm_total_bytes_delta / interval) / "
                  "mem_bw_max_bps * 100  (clip_mbw=%s)\n",
             clip_mbw ? "on (legacy V3 cap-at-99)" : "off (raw, may exceed 100)");
+    if (cpu_norm_cgroup)
+        fprintf(out, "# cpu normalization: cgroup, %.2f CPUs (cpuset.cpus.effective "
+                     "capped by cpu.max)\n", cpu_basis);
+    else
+        fprintf(out, "# cpu normalization: online, %d CPUs\n",
+                caps->num_cores > 0 ? caps->num_cores : 1);
     if (!no_diag_cols)
         fprintf(out, "# diagnostic trailing columns: netp_dev (device-level "
                      "host-wide netp %%, v3.2 cross-check), nets_sys "
@@ -1001,6 +1016,21 @@ int main(int argc, char **argv)
         }
     }
 
+    /* ------- cpu normalization basis (--cpu-norm) ------- */
+    double cpu_basis = (double)(caps.num_cores > 0 ? caps.num_cores : 1);
+    int cpu_norm_active = 0;
+    if (args.cpu_norm_cgroup) {
+        double cap = have_cgroup ? intp_cgroup_cpu_capacity(args.cgroup) : -1.0;
+        if (cap > 0.0) {
+            cpu_basis = cap;
+            cpu_norm_active = 1;
+        } else {
+            fprintf(stderr,
+                "warning: --cpu-norm cgroup needs a resolvable --cgroup target; "
+                "using online CPUs (%d)\n", caps.num_cores);
+        }
+    }
+
     /* ------- output header ------- */
     int is_tsv  = strcmp(args.output_fmt, "tsv") == 0;
     int is_json = strcmp(args.output_fmt, "json") == 0;
@@ -1008,7 +1038,7 @@ int main(int argc, char **argv)
     if (is_tsv && args.want_header)
         emit_tsv_header(stdout, &caps, args.no_perf_events, args.no_resctrl,
                         args.no_diag_cols, args.clip_mbw, vm_mode,
-                        args.portable_metrics);
+                        args.portable_metrics, cpu_norm_active, cpu_basis);
 
     signal(SIGINT,  on_signal);
     signal(SIGTERM, on_signal);
@@ -1114,7 +1144,7 @@ int main(int argc, char **argv)
 
         intp_sample_t sample;
         compute_sample(&delta_c, &delta_g, &caps, interval_real,
-                       caps.num_cores, vm_netp_pct, &sample);
+                       caps.num_cores, cpu_basis, vm_netp_pct, &sample);
 
         /* ------- VM-portable block (C26 / DESIGN §10). schedlat is already
          * filled by compute_sample from the BPF counter; here we add the five

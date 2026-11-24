@@ -16,6 +16,7 @@ tests/unit/*.o
 # Binaries
 intp-ebpf-core-cgroup
 tests/unit/test-counter-snapshot
+tests/unit/test-cgroup-cap
 
 # Editor scratch
 *~
